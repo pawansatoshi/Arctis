@@ -50,22 +50,34 @@ export async function POST(req: NextRequest) {
     }
 
     const totalCredits = pkg.credits + pkg.bonus;
-    await addCredits(walletAddress, totalCredits, 'purchase', `Credit pack: ${pkg.label || pkg.id}`, txHash);
+    try {
+      await addCredits(walletAddress, totalCredits, 'purchase', `Credit pack: ${pkg.label || pkg.id}`, txHash);
 
-    await logTreasuryEvent(
-      'credit_purchase',
-      pkg.usdcAmount,
-      `Credit purchase ${pkg.id} — ${walletAddress.slice(0, 8)}`,
-      walletAddress,
-      txHash,
-      {
-        explorerUrl: txUrl(txHash),
-        networkName: NETWORK_NAME,
-        chainId: CHAIN_ID,
-        blockNumber: verification.blockNumber?.toString(),
-        gasUsed: verification.gasUsed?.toString(),
-      }
-    );
+      await logTreasuryEvent(
+        'credit_purchase',
+        pkg.usdcAmount,
+        `Credit purchase ${pkg.id} — ${walletAddress.slice(0, 8)}`,
+        walletAddress,
+        txHash,
+        {
+          explorerUrl: txUrl(txHash),
+          networkName: NETWORK_NAME,
+          chainId: CHAIN_ID,
+          blockNumber: verification.blockNumber?.toString(),
+          gasUsed: verification.gasUsed?.toString(),
+        }
+      );
+    } catch (recordingError) {
+      const message = (recordingError as Error).message;
+      void obs.error('credits', 'Payment succeeded but credit recording failed', { error: message, txHash, packageId }, walletAddress);
+      return NextResponse.json({
+        error: 'Payment succeeded on-chain, but server-side credit recording failed. Contact support with this transaction hash.',
+        paymentStatus: 'succeeded',
+        recordingStatus: 'failed',
+        txHash,
+        details: message,
+      }, { status: 500 });
+    }
 
     void obs.info('credits', 'Credits purchased and verified', { packageId, totalCredits, txHash }, walletAddress);
 

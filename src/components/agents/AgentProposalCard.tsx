@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Bot, CheckCircle2, XCircle, Loader2, AlertCircle, Coins, Clock, Cpu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import type { PendingFinancialAction } from '@/lib/store';
 
 export interface ProposalSummary {
   proposalId: string;
@@ -18,12 +19,14 @@ export interface ProposalSummary {
   model: string;
   status: 'proposed';
   createdAt: string;
+  actionProposal?: PendingFinancialAction;
+  requiresWalletAction?: boolean;
 }
 
 interface AgentProposalCardProps {
   proposal: ProposalSummary;
   walletAddress: string;
-  onApproved: (result: { outputSummary: string; executionId: string }) => void;
+  onApproved: (result: { outputSummary: string; executionId: string; requiresWalletAction?: boolean; actionProposal?: PendingFinancialAction }) => void;
   onRejected: () => void;
 }
 
@@ -46,8 +49,8 @@ export function AgentProposalCard({ proposal, walletAddress, onApproved, onRejec
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? 'Execution failed'); return; }
-      toast.success('Agent task completed');
-      onApproved({ outputSummary: data.outputSummary, executionId: data.executionId });
+      toast.success(data.requiresWalletAction ? 'Approved — continue to wallet confirmation' : 'Agent task completed');
+      onApproved({ outputSummary: data.outputSummary, executionId: data.executionId, requiresWalletAction: data.requiresWalletAction, actionProposal: data.actionProposal });
     } catch (err) { toast.error((err as Error).message); }
     finally { setDeciding(null); }
   };
@@ -86,6 +89,11 @@ export function AgentProposalCard({ proposal, walletAddress, onApproved, onRejec
       <div className="space-y-1">
         <p className="text-surface-600 text-[10px] uppercase tracking-wider">Task</p>
         <p className="text-surface-900 text-sm leading-relaxed">{proposal.task}</p>
+        {proposal.requiresWalletAction && proposal.actionProposal && (
+          <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+            This is an agent-proposed {proposal.actionProposal.action} action. Approval will not move funds; it opens the existing {proposal.actionProposal.action} module for your final review and wallet confirmation.
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2">

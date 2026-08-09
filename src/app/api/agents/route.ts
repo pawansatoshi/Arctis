@@ -3,6 +3,7 @@ import { getUserAgents, createAgent, countUserAgents } from '@/lib/agents/servic
 import { getMembership } from '@/lib/memberships/service';
 import { MEMBERSHIP_PLANS } from '@/lib/memberships/plans';
 import { obs } from '@/lib/observability/logger';
+import { verifyApiWallet } from '@/lib/auth/middleware';
 import type { AgentType } from '@/types';
 
 // GET /api/agents?wallet=0x...
@@ -39,10 +40,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'walletAddress, name, type required' }, { status: 400 });
     }
 
+    const auth = await verifyApiWallet(req, walletAddress, true);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.reason ?? 'Wallet signature required' }, { status: 401 });
+    }
+    const ownerWallet = auth.walletAddress;
+
     // Check agent limit against membership
     const [currentCount, membership] = await Promise.all([
-      countUserAgents(walletAddress),
-      getMembership(walletAddress),
+      countUserAgents(ownerWallet),
+      getMembership(ownerWallet),
     ]);
 
     const tier = membership?.tier ?? 'free';
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest) {
       }, { status: 403 });
     }
 
-    const agent = await createAgent(walletAddress, {
+    const agent = await createAgent(ownerWallet, {
       name: body.name,
       type: body.type,
       description: body.description || '',
@@ -70,7 +77,7 @@ export async function POST(req: NextRequest) {
       tags: body.tags || [],
     });
 
-    void obs.info('ai', 'Agent created via API', { agentId: agent.id, type: agent.type }, walletAddress);
+    void obs.info('ai', 'Agent created via API', { agentId: agent.id, type: agent.type }, ownerWallet);
     return NextResponse.json({ agent });
   } catch (err) {
     const e = err as Error;

@@ -3,6 +3,7 @@
 // Reuses existing OpenRouter infrastructure and credit system
 // ============================================================
 import { routeAIRequest, routeAIStream } from '@/lib/ai/router';
+import { parseFinancialIntent, describeIntent } from '@/lib/ai/intent/parser';
 import { getCreditBalance } from '@/lib/credits/engine';
 import { OPERATION_COSTS } from '@/lib/memberships/plans';
 import { obs } from '@/lib/observability/logger';
@@ -12,6 +13,7 @@ import {
   updateExecution, chargeAgentExecution, saveAgentReport, updateAgent,
 } from './service';
 import type { Agent, AgentExecution, AgentReport, AgentType } from '@/types';
+import type { PendingFinancialAction } from '@/lib/store';
 
 // Per-type system prompts — injected alongside agent instructions
 const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
@@ -299,6 +301,8 @@ export interface AgentProposal {
   model: string;
   status: 'proposed';
   createdAt: string;
+  actionProposal?: PendingFinancialAction;
+  requiresWalletAction?: boolean;
 }
 
 /**
@@ -322,7 +326,8 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     throw new Error('Unauthorized: you do not own this agent');
   }
 
-  const estimatedCredits = OPERATION_COSTS.agentExecution;
+  const financialIntent = parseFinancialIntent(task);
+  const estimatedCredits = financialIntent ? 0 : OPERATION_COSTS.agentExecution;
 
   const globalBalance = await getCreditBalance(owner);
   if (globalBalance.remaining < estimatedCredits) {
@@ -351,7 +356,8 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     completedAt: null,
     durationMs: null,
     relatedTxHashes: [],
-  };
+    ...(financialIntent ? { outputSummary: describeIntent(financialIntent), actionProposal: financialIntent, requiresWalletAction: true } : {}),
+  } as AgentExecution & { actionProposal?: PendingFinancialAction; requiresWalletAction?: boolean };
 
   await recordExecution(proposal);
   void obs.info('ai', 'Agent proposal created — awaiting approval', { proposalId, agentId }, owner);
@@ -370,6 +376,7 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     model,
     status: 'proposed',
     createdAt: proposal.startedAt,
+    ...(financialIntent ? { actionProposal: financialIntent, requiresWalletAction: true } : {}),
   };
 }
 
@@ -381,7 +388,7 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
 export async function approveProposal(
   proposalId: string,
   callerWallet: string
-): Promise<ExecuteAgentResult> {
+): Promise<ExecuteAgentResult | { executionId: string; outputSummary: string; outputFull: string; creditsConsumed: number; durationMs: number; requiresWalletAction: true; actionProposal: PendingFinancialAction }> {
   const { getAdminDb } = await import('@/lib/firebase/admin');
   const db = getAdminDb();
   const snap = await db.collection('agent_executions').doc(proposalId).get();
@@ -395,6 +402,27 @@ export async function approveProposal(
   if (proposal.ownerWallet.toLowerCase() !== callerWallet.toLowerCase()) {
     void obs.warn('ai', 'Unauthorized approval attempt', { proposalId, callerWallet });
     throw new Error('Unauthorized: you do not own this proposal');
+  }
+
+  const actionProposal = (proposal as AgentExecution & { actionProposal?: PendingFinancialAction }).actionProposal;
+  if (actionProposal) {
+    await updateExecution(proposalId, {
+      status: 'approved',
+      outputSummary: `Approved wallet action: ${describeIntent(actionProposal)}`,
+      outputFull: 'Human approved this agent-proposed financial action. Final wallet confirmation and execution continue in the existing Transfer/Swap/Bridge module.',
+      creditsConsumed: 0,
+      completedAt: new Date().toISOString(),
+      durationMs: 0,
+    });
+    return {
+      executionId: proposalId,
+      outputSummary: `Approved wallet action: ${describeIntent(actionProposal)}`,
+      outputFull: 'Continue to the existing financial module to review and confirm in your wallet.',
+      creditsConsumed: 0,
+      durationMs: 0,
+      requiresWalletAction: true,
+      actionProposal,
+    };
   }
 
   await updateExecution(proposalId, { status: 'approved' });

@@ -15,6 +15,33 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 let app: App | undefined;
 let db: Firestore | undefined;
 
+export function normalizePrivateKey(rawKey: string): string {
+  let key = rawKey.trim();
+
+  // Support common secure deployment formats: quoted .env values, literal\n
+  // sequences, JSON-escaped newlines, and base64-encoded PEM content.
+  if ((key.startsWith('\"') && key.endsWith('\"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+
+  key = key.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+
+  if (!key.includes('BEGIN PRIVATE KEY')) {
+    try {
+      const decoded = Buffer.from(key, 'base64').toString('utf8').trim();
+      if (decoded.includes('BEGIN PRIVATE KEY')) key = decoded.replace(/\r\n/g, '\n');
+    } catch {
+      // Keep original value; cert() will reject invalid material below.
+    }
+  }
+
+  if (!key.includes('-----BEGIN PRIVATE KEY-----') || !key.includes('-----END PRIVATE KEY-----')) {
+    throw new Error('Firebase Admin SDK private key is not a valid PEM. Check FIREBASE_PRIVATE_KEY formatting.');
+  }
+
+  return key;
+}
+
 function getAdminApp(): App {
   if (app) return app;
 
@@ -34,9 +61,7 @@ function getAdminApp(): App {
     );
   }
 
-  // .env files store the PEM key with literal "\n" sequences; convert
-  // them back into real newlines or the key will fail to parse.
-  const privateKey = rawKey.replace(/\\n/g, '\n');
+  const privateKey = normalizePrivateKey(rawKey);
 
   app = initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),

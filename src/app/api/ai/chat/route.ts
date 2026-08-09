@@ -17,6 +17,13 @@ import type { AIMode } from '@/types';
 const ESTIMATED_MIN_CREDITS = 2;
 const GENERIC_ERROR = 'ARCTIS AI is temporarily busy — please try again in a moment.';
 
+function publicAiError(error: Error): string {
+  if (/api key|OPENROUTER|provider|model|fetch|network|credits|Firebase|configured/i.test(error.message)) {
+    return `AI provider/configuration error: ${error.message}`;
+  }
+  return GENERIC_ERROR;
+}
+
 function modeLabel(mode: AIMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
@@ -118,7 +125,7 @@ export async function POST(req: NextRequest) {
             void obs.info('ai', 'Stream complete', { ms: Date.now() - start, credits: result.creditsUsed, model: result.model }, walletAddress);
           } catch (err) {
             const e = err as Error;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: GENERIC_ERROR })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: publicAiError(e) })}\n\n`));
             void obs.error('ai', 'Stream error', { error: e.message }, walletAddress);
           } finally {
             controller.close();
@@ -143,6 +150,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const e = err as Error;
     void obs.error('ai', 'Chat route error', { error: e.message });
-    return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 });
+    return NextResponse.json({ error: publicAiError(e) }, { status: 500 });
   }
 }

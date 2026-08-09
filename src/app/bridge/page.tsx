@@ -13,6 +13,7 @@ import { CCTP_TOKEN_MESSENGER_ABI, ERC20_ABI, txUrl } from '@/lib/contracts';
 import { buildBridgeMemo } from '@/lib/memo/service';
 import { useMemo as useArcMemo } from '@/lib/memo/useMemo';
 import { useAppStore } from '@/lib/store';
+import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import toast from 'react-hot-toast';
 
 interface BridgeRoute {
@@ -55,6 +56,7 @@ export default function BridgePage() {
   const [burnTxHash, setBurnTxHash] = useState<`0x${string}` | undefined>();
   const [forwardTxHash, setForwardTxHash] = useState<string | null>(null);
   const { pendingAction, setPendingAction } = useAppStore();
+  const { getAuthHeaders } = useWalletAuth();
 
   // AI-orchestrated handoff — pre-fill the amount from a confirmed chat
   // proposal, then clear it so it's only ever consumed once. The source
@@ -103,13 +105,16 @@ export default function BridgePage() {
   useEffect(() => {
     if (!burnConfirmed || step !== 'burning' || !burnTxHash || !address || !selectedRoute) return;
     setStep('attesting');
-    fetch('/api/bridge/execute', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ burnTxHash, sourceChainId: selectedRoute.sourceChainId, walletAddress: address, amount: parseFloat(amount) }),
-    }).then((r) => r.json()).then((d) => {
-      if (d.error && !d.bridgeId) { setErrorMsg(d.error); setStep('error'); }
-    }).catch((err) => { setErrorMsg(err.message); setStep('error'); });
-  }, [burnConfirmed, step, burnTxHash, address, selectedRoute, amount]);
+    void (async () => {
+      const headers = await getAuthHeaders();
+      fetch('/api/bridge/execute', {
+        method: 'POST', headers,
+        body: JSON.stringify({ burnTxHash, sourceChainId: selectedRoute.sourceChainId, walletAddress: address, amount: parseFloat(amount) }),
+      }).then((r) => r.json()).then((d) => {
+        if (d.error && !d.bridgeId) { setErrorMsg(d.error); setStep('error'); }
+      }).catch((err) => { setErrorMsg(err.message); setStep('error'); });
+    })();
+  }, [burnConfirmed, step, burnTxHash, address, selectedRoute, amount, getAuthHeaders]);
 
   useEffect(() => {
     if (step !== 'attesting' || !burnTxHash) return;
@@ -127,7 +132,7 @@ export default function BridgePage() {
       }).catch(() => {});
     }, STATUS_POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [step, burnTxHash, amount]);
+  }, [step, burnTxHash, amount, dispatchMemo, selectedRoute]);
 
   const amountNum = parseFloat(amount);
   const amountValid = amount !== '' && !isNaN(amountNum) && amountNum > 0 &&

@@ -4,6 +4,7 @@ import { getAdminDb } from '@/lib/firebase/admin';
 import type { Passport } from './types';
 
 const COL = 'passports';
+const WALLET_INDEX_COL = 'passport_wallets';
 
 function toIso(ts: unknown): string {
   if (!ts) return new Date().toISOString();
@@ -41,12 +42,31 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 export async function createPassport(username: string, walletAddress: string, displayName?: string): Promise<void> {
   const db = getAdminDb();
   const usernameLower = username.toLowerCase();
-  await db.collection(COL).doc(usernameLower).set({
-    username: usernameLower,
-    walletAddress: walletAddress.toLowerCase(),
-    displayName: displayName?.trim() || undefined,
-    verified: false,
-    createdAt: FieldValue.serverTimestamp(),
+  const walletLower = walletAddress.toLowerCase();
+  const passportRef = db.collection(COL).doc(usernameLower);
+  const walletRef = db.collection(WALLET_INDEX_COL).doc(walletLower);
+
+  await db.runTransaction(async (tx) => {
+    const [passportSnap, walletSnap] = await Promise.all([tx.get(passportRef), tx.get(walletRef)]);
+
+    if (passportSnap.exists) throw new Error('Username already taken');
+    if (walletSnap.exists) {
+      const existingUsername = walletSnap.data()?.username;
+      throw new Error(existingUsername ? `This wallet already has a Passport: ${existingUsername}` : 'This wallet already has a Passport');
+    }
+
+    tx.create(passportRef, {
+      username: usernameLower,
+      walletAddress: walletLower,
+      displayName: displayName?.trim() || undefined,
+      verified: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.create(walletRef, {
+      username: usernameLower,
+      walletAddress: walletLower,
+      createdAt: FieldValue.serverTimestamp(),
+    });
   });
 }
 

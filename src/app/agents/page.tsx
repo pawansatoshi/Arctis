@@ -9,10 +9,13 @@ import {
   Code2, TrendingUp, Wrench, Eye, Database, Cpu, ShoppingBag, X,
 } from 'lucide-react';
 import { useAccount } from 'wagmi';
+import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
+import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import { cn, formatRelative, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Agent, AgentType, AgentExecution, AgentReport } from '@/types';
+import type { PendingFinancialAction } from '@/lib/store';
 import { AgentProposalCard, type ProposalSummary } from '@/components/agents/AgentProposalCard';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { MarkdownContent } from '@/components/ai/MarkdownContent';
@@ -153,6 +156,7 @@ function CreateAgentModal({
     tags: [] as string[],
   });
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const setType = (type: AgentType) => {
     setSelectedType(type);
@@ -188,6 +192,7 @@ function CreateAgentModal({
   const handleCreate = async () => {
     if (!selectedType || !form.name.trim()) return;
     setCreating(true);
+    setCreateError(null);
     try {
       await onCreate({
         type: selectedType,
@@ -201,7 +206,10 @@ function CreateAgentModal({
         tags: form.tags,
       });
       onClose();
-    } catch {
+    } catch (err) {
+      const message = (err as Error).message || 'Failed to create agent';
+      setCreateError(message);
+      toast.error(message);
       setCreating(false);
     }
   };
@@ -375,6 +383,12 @@ function CreateAgentModal({
               </div>
             </div>
 
+            {createError && (
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
+                {createError}
+              </div>
+            )}
+
             <button
               onClick={handleCreate}
               disabled={!form.name.trim() || creating}
@@ -400,6 +414,8 @@ function AgentDetail({
   onArchive: (agentId: string, name: string) => Promise<void>;
 }) {
   const [task, setTask] = useState('');
+  const router = useRouter();
+  const { setPendingAction } = useAppStore();
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [reports, setReports]       = useState<AgentReport[]>([]);
   const [running, setRunning]       = useState(false);
@@ -440,9 +456,14 @@ function AgentDetail({
   };
 
   // ── Phase 3 (approve callback): show output, refresh reports ────
-  const handleApproveResult = (result: { outputSummary: string; executionId: string }) => {
+  const handleApproveResult = (result: { outputSummary: string; executionId: string; requiresWalletAction?: boolean; actionProposal?: PendingFinancialAction }) => {
     setPendingProposal(null);
     setOutput(result.outputSummary);
+    if (result.requiresWalletAction && result.actionProposal) {
+      setPendingAction({ ...result.actionProposal, createdAt: Date.now() });
+      router.push(`/${result.actionProposal.action}`);
+      return;
+    }
     Promise.all([
       fetch(`/api/agents/reports?agentId=${agent.id}`).then((r) => r.json()),
       fetch(`/api/agents/executions?agentId=${agent.id}`).then((r) => r.json()),
@@ -629,6 +650,7 @@ function AgentDetail({
 export default function AgentsPage() {
   const { address, isConnected } = useAccount();
   const { membership, creditBalance } = useAppStore();
+  const { getAuthHeaders } = useWalletAuth();
   const [agents, setAgents]               = useState<Agent[]>([]);
   const [loading, setLoading]             = useState(true);
   const [showCreate, setShowCreate]       = useState(false);
@@ -639,8 +661,10 @@ export default function AgentsPage() {
     try {
       const res  = await fetch(`/api/agents?wallet=${address}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not load agents');
       setAgents(data.agents ?? []);
-    } catch {
+    } catch (err) {
+      console.error('[agents] load failed', err);
       toast.error('Could not load agents — please try refreshing');
     }
     setLoading(false);
@@ -652,14 +676,14 @@ export default function AgentsPage() {
     if (!address) return;
     const res = await fetch('/api/agents', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ walletAddress: address, ...data }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? 'Failed to create agent');
     toast.success(`${json.agent.name} created`);
     await fetchAgents();
-  }, [address, fetchAgents]);
+  }, [address, fetchAgents, getAuthHeaders]);
 
   const handleExecute = useCallback(async (agentId: string, task: string) => {
     // Handled inside AgentDetail via streaming

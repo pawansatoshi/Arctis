@@ -10,9 +10,9 @@ import {
 } from 'lucide-react';
 import { cn, formatRelative } from '@/lib/utils';
 import { CONTRACTS, ERC20_ABI, txUrl } from '@/lib/contracts';
-import { buildSwapMemo } from '@/lib/memo/service';
 import { useMemo as useArcMemo } from '@/lib/memo/useMemo';
 import { useAppStore } from '@/lib/store';
+import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import toast from 'react-hot-toast';
 
 type SwapToken = 'USDC' | 'tUSDC' | 'tARC';
@@ -46,6 +46,7 @@ export default function SwapPage() {
   const [history, setHistory] = useState<SwapRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const { pendingAction, setPendingAction } = useAppStore();
+  const { getAuthHeaders } = useWalletAuth();
 
   // AI-orchestrated handoff — pre-fill from a confirmed chat proposal,
   // then clear it so it's only ever consumed once.
@@ -81,17 +82,20 @@ export default function SwapPage() {
   useEffect(() => {
     if (!inboundConfirmed || step !== 'sending' || !inboundTxHash || !address || !quote) return;
     setStep('processing');
-    fetch('/api/swap/execute', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ walletAddress: address, fromToken, toToken, amount: parseFloat(amount), inboundTxHash }),
-    }).then((r) => r.json()).then((d) => {
-      if (d.success) {
-        setOutboundTxHash(d.outboundTxHash); setStep('completed');
-        toast.success(`Swapped! ${amount} ${fromToken} → ${d.outputAmount.toFixed(4)} ${toToken}`);
-        if (d.memoPayload) void dispatchMemo(d.memoPayload);
-      } else { setErrorMsg(d.error ?? 'Swap failed'); setStep('error'); }
-    }).catch((err) => { setErrorMsg(err.message); setStep('error'); });
-  }, [inboundConfirmed, step, inboundTxHash, address, quote, fromToken, toToken, amount, dispatchMemo]);
+    void (async () => {
+      const headers = await getAuthHeaders();
+      fetch('/api/swap/execute', {
+        method: 'POST', headers,
+        body: JSON.stringify({ walletAddress: address, fromToken, toToken, amount: parseFloat(amount), inboundTxHash }),
+      }).then((r) => r.json()).then((d) => {
+        if (d.success) {
+          setOutboundTxHash(d.outboundTxHash); setStep('completed');
+          toast.success(`Swapped! ${amount} ${fromToken} → ${d.outputAmount.toFixed(4)} ${toToken}`);
+          if (d.memoPayload) void dispatchMemo(d.memoPayload);
+        } else { setErrorMsg(d.error ?? 'Swap failed'); setStep('error'); }
+      }).catch((err) => { setErrorMsg(err.message); setStep('error'); });
+    })();
+  }, [inboundConfirmed, step, inboundTxHash, address, quote, fromToken, toToken, amount, dispatchMemo, getAuthHeaders]);
 
   const handleFlip = () => { const f = fromToken; setFromToken(toToken); setToToken(f); setAmount(''); setQuote(null); };
 
@@ -102,7 +106,6 @@ export default function SwapPage() {
     if (!canSwap || !address || !quote) return;
     setStep('sending');
     try {
-      const swapWalletRes = await fetch('/api/swap'); // ensure route exists (sanity, not strictly required)
       const amountBig = parseUnits(amountNum.toFixed(TOKEN_DECIMALS[fromToken]), TOKEN_DECIMALS[fromToken]);
       const hash = await writeContractAsync({
         address: TOKEN_CONTRACT[fromToken], abi: ERC20_ABI, functionName: 'transfer',

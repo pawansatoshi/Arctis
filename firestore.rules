@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // All Firestore access now goes through the Next.js server
+    // (Firebase Admin SDK), which bypasses these rules entirely.
+    // Trust boundary = wallet-signature verification at the API
+    // layer (src/lib/auth/middleware.ts), NOT these rules.
+    //
+    // These rules exist purely to make sure the BROWSER can never
+    // read/write Firestore directly, even if someone opens devtools
+    // and tries to call the Firestore client SDK by hand.
+    // ============================================================
+
+    // Public read-only profile lookup (e.g. arctis.app/@username).
+    // Writes always go through /api/passport/* (Admin SDK).
+    match /passports/{username} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Everything else: no direct client access at all.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

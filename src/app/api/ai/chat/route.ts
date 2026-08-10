@@ -75,9 +75,11 @@ export async function POST(req: NextRequest) {
     if (pendingAction?.missing) {
       const resolved = resolveClarification(pendingAction, lastUserMessage);
       const extractedSomething =
+        resolved.amount !== pendingAction.amount ||
         resolved.recipient !== pendingAction.recipient ||
         resolved.toToken !== pendingAction.toToken ||
         resolved.sourceChain !== pendingAction.sourceChain ||
+        resolved.destinationChain !== pendingAction.destinationChain ||
         !resolved.missing;
       if (extractedSomething) {
         intent = resolved;

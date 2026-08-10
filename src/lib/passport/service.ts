@@ -58,7 +58,7 @@ export async function createPassport(username: string, walletAddress: string, di
     tx.create(passportRef, {
       username: usernameLower,
       walletAddress: walletLower,
-      displayName: displayName?.trim() || undefined,
+      displayName: displayName?.trim() || null,
       verified: false,
       createdAt: FieldValue.serverTimestamp(),
     });

@@ -33,13 +33,43 @@ export default function PassportPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isConnected || !address) { setLoadingExisting(false); return; }
+    let cancelled = false;
+
+    // Passport ownership is wallet-specific. Never carry the previous
+    // wallet's Passport into the newly connected wallet.
+    setOwned(null);
+
+    if (!isConnected || !address) {
+      setLoadingExisting(false);
+      return;
+    }
+
     setLoadingExisting(true);
-    fetch(`/api/passport/by-wallet?walletAddress=${address}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data) setOwned(data); })
-      .catch(() => { toast.error('Could not check for an existing Passport'); })
-      .finally(() => setLoadingExisting(false));
+
+    fetch(`/api/passport/by-wallet?walletAddress=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    })
+      .then(async (r) => {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error('Passport lookup failed');
+        return r.json();
+      })
+      .then((data) => {
+        if (!cancelled) setOwned(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOwned(null);
+          toast.error('Could not check for an existing Passport');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isConnected, address]);
 
   useEffect(() => {

@@ -4,6 +4,7 @@
 // ============================================================
 import { routeAIRequest, routeAIStream } from '@/lib/ai/router';
 import { parseFinancialIntent, describeIntent } from '@/lib/ai/intent/parser';
+import { getPassportByUsername } from '@/lib/passport/service';
 import { getCreditBalance } from '@/lib/credits/engine';
 import { OPERATION_COSTS } from '@/lib/memberships/plans';
 import { obs } from '@/lib/observability/logger';
@@ -331,7 +332,35 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
   // so treat it the same as no financial intent at all rather than
   // proposing an incomplete action.
   const rawFinancialIntent = parseFinancialIntent(task);
-  const financialIntent = rawFinancialIntent && !rawFinancialIntent.missing ? rawFinancialIntent : null;
+  let financialIntent = rawFinancialIntent && !rawFinancialIntent.missing
+    ? rawFinancialIntent
+    : null;
+
+  // Resolve ARCTIS Passport recipients before creating the proposal.
+  // Direct 0x addresses continue unchanged.
+  if (
+    financialIntent?.action === 'transfer' &&
+    financialIntent.recipient &&
+    !/^0x[a-fA-F0-9]{40}$/.test(financialIntent.recipient)
+  ) {
+    const username = financialIntent.recipient
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, '')
+      .replace(/\\.arc$/, '');
+
+    const passport = await getPassportByUsername(username);
+
+    if (!passport) {
+      throw new Error(`Passport not found: ${username}`);
+    }
+
+    financialIntent = {
+      ...financialIntent,
+      recipient: passport.walletAddress,
+      missing: undefined,
+    };
+  }
   const estimatedCredits = financialIntent ? 0 : OPERATION_COSTS.agentExecution;
 
   const globalBalance = await getCreditBalance(owner);

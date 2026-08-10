@@ -1,7 +1,7 @@
 import type { PendingFinancialAction } from '@/lib/store';
 import { getRouteId, getSwapRoute } from '@/lib/swap/service';
 import type { SwapToken } from '@/lib/swap/types';
-import { CCTP_SOURCE_CHAINS } from '@/lib/contracts';
+import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
 
 // ============================================================
 // ARCTIS Financial Intent Parser
@@ -30,39 +30,60 @@ function normalizeToken(raw?: string): Token | undefined {
 }
 
 const ADDRESS_RE = '0x[a-fA-F0-9]{40}';
+const PASSPORT_RE = '@?[a-z0-9_-]{3,20}(?:\\.arc)?';
 const AMOUNT_RE = '\\d+(?:\\.\\d+)?';
 const TOKEN_RE = '(usdc|tusdc|tarc)';
 
+function normalizePassportRecipient(value: string): string {
+  return value.trim().toLowerCase().replace(/^@/, '').replace(/\\.arc$/, '');
+}
+
+function isPassportRecipient(value: string): boolean {
+  return new RegExp(`^${PASSPORT_RE}$`, 'i').test(value.trim());
+}
+
 // ── Bridge source chains: the real CCTP config is the source of
 // truth (src/lib/contracts.ts), never a hard-coded guess. ───────
-interface SourceChainMatch { name: string; chainId: number; domain: number }
+interface BridgeChainMatch { name: string; chainId: number; domain: number }
 
-const SOURCE_CHAIN_LIST: SourceChainMatch[] = Object.entries(CCTP_SOURCE_CHAINS).map(
-  ([chainId, chain]) => ({ name: chain.name, chainId: Number(chainId), domain: chain.domain })
+const BRIDGE_CHAIN_LIST: BridgeChainMatch[] = Object.entries(CCTP_BRIDGE_CHAINS).map(
+  ([chainId, chain]) => ({
+    name: chain.name,
+    chainId: Number(chainId),
+    domain: chain.domain,
+  })
 );
 
 /** Loose match against the actual configured CCTP source chains — accepts
  * the full name ("Base Sepolia") or a short form ("base", "arbitrum", "eth"). */
-function matchSourceChain(text: string): SourceChainMatch | null {
+function matchBridgeChain(text: string): BridgeChainMatch | null {
   const lower = text.toLowerCase();
-  for (const chain of SOURCE_CHAIN_LIST) {
+
+  for (const chain of BRIDGE_CHAIN_LIST) {
     if (lower.includes(chain.name.toLowerCase())) return chain;
   }
+
   const SHORTHANDS: Record<string, string> = {
-    eth: 'Ethereum Sepolia', ethereum: 'Ethereum Sepolia', sepolia: 'Ethereum Sepolia',
+    arc: 'Arc Testnet',
+    ethereum: 'Ethereum Sepolia',
+    eth: 'Ethereum Sepolia',
+    sepolia: 'Ethereum Sepolia',
     base: 'Base Sepolia',
-    arbitrum: 'Arbitrum Sepolia', arb: 'Arbitrum Sepolia',
+    arbitrum: 'Arbitrum Sepolia',
+    arb: 'Arbitrum Sepolia',
   };
+
   for (const [short, full] of Object.entries(SHORTHANDS)) {
     if (new RegExp(`\\b${short}\\b`, 'i').test(lower)) {
-      return SOURCE_CHAIN_LIST.find((c) => c.name === full) ?? null;
+      return BRIDGE_CHAIN_LIST.find((c) => c.name === full) ?? null;
     }
   }
+
   return null;
 }
 
 export function listSourceChainNames(): string[] {
-  return SOURCE_CHAIN_LIST.map((c) => c.name);
+  return BRIDGE_CHAIN_LIST.map((c) => c.name);
 }
 
 /**
@@ -70,17 +91,93 @@ export function listSourceChainNames(): string[] {
  * - Returns a complete PendingFinancialAction (no `missing`) when every
  *   required field is present and valid.
  * - Returns a PendingFinancialAction with `missing` set when the action
- *   is recognized but a required field (recipient / destination token /
- *   source chain) is absent — the caller should ask the corresponding
- *   clarification question rather than propose anything.
+ *   is recognized but a required field (amount / recipient / destination
+ *   token / source chain) is absent — the caller should ask only for the
+ *   next missing field rather than asking for multiple fields at once.
  * - Returns null when no financial action is recognized at all.
  */
 export function parseFinancialIntent(message: string): PendingFinancialAction | null {
   const text = message.trim();
 
+  // ── Selection-only commands from the Economic Agent UI ──────
+  // The UI may already have selected the action/pair/route.
+  // Never ask for fields that are already known from that selection.
+
+  // Transfer selection: "Transfer USDC to a Passport"
+  const transferSelectionRe = new RegExp(
+    `\\b(?:send|transfer)\\s+${TOKEN_RE}\\s+(?:to\\s+)?(?:a\\s+)?passport\\b`,
+    'i'
+  );
+  const transferSelectionMatch = text.match(transferSelectionRe);
+  if (transferSelectionMatch) {
+    return {
+      action: 'transfer',
+      amount: '',
+      fromToken: normalizeToken(transferSelectionMatch[1]) ?? 'USDC',
+      missing: 'amount',
+      createdAt: Date.now(),
+    };
+  }
+
+  // Swap selection: "Swap USDC to tUSDC"
+  const swapSelectionRe = new RegExp(
+    `\\bswap\\s+${TOKEN_RE}\\s+(?:to|for|into)\\s+${TOKEN_RE}\\b`,
+    'i'
+  );
+  const swapSelectionMatch = text.match(swapSelectionRe);
+  if (swapSelectionMatch) {
+    const fromToken = normalizeToken(swapSelectionMatch[1]);
+    const toToken = normalizeToken(swapSelectionMatch[2]);
+
+    if (fromToken && toToken && fromToken !== toToken) {
+      const routeId = getRouteId(fromToken as SwapToken, toToken as SwapToken);
+      const route = routeId ? getSwapRoute(routeId) : null;
+
+      if (route?.enabled) {
+        return {
+          action: 'swap',
+          amount: '',
+          fromToken,
+          toToken,
+          missing: 'amount',
+          createdAt: Date.now(),
+        };
+      }
+    }
+  }
+
+  // Bridge selection:
+  // "Bridge USDC from Arc Testnet to Base Sepolia"
+  // Both source AND destination are captured. Never infer the destination.
+  const bridgeSelectionRe = new RegExp(
+    `\\bbridge\\s+${TOKEN_RE}\\s+from\\s+(.+?)\\s+to\\s+(.+?)\\s*$`,
+    'i'
+  );
+  const bridgeSelectionMatch = text.match(bridgeSelectionRe);
+
+  if (bridgeSelectionMatch) {
+    const fromToken = normalizeToken(bridgeSelectionMatch[1]) ?? 'USDC';
+    const source = matchBridgeChain(bridgeSelectionMatch[2]);
+    const destination = matchBridgeChain(bridgeSelectionMatch[3]);
+
+    if (source && destination && source.chainId !== destination.chainId) {
+      return {
+        action: 'bridge',
+        amount: '',
+        fromToken,
+        sourceChain: source.name,
+        sourceChainId: source.chainId,
+        destinationChain: destination.name,
+        destinationChainId: destination.chainId,
+        missing: 'amount',
+        createdAt: Date.now(),
+      };
+    }
+  }
+
   // ── Transfer: "send/transfer 5 USDC to 0x..." ──────────────
   const transferFullRe = new RegExp(
-    `\\b(?:send|transfer)\\s+(${AMOUNT_RE})\\s*${TOKEN_RE}?\\s+to\\s+(${ADDRESS_RE})`, 'i'
+    `\\b(?:send|transfer)\\s+(${AMOUNT_RE})\\s*${TOKEN_RE}?\\s+to\\s+(${ADDRESS_RE}|${PASSPORT_RE})`, 'i'
   );
   const transferFullMatch = text.match(transferFullRe);
   if (transferFullMatch) {
@@ -88,7 +185,9 @@ export function parseFinancialIntent(message: string): PendingFinancialAction | 
       action: 'transfer',
       amount: transferFullMatch[1],
       fromToken: normalizeToken(transferFullMatch[2]) ?? 'USDC',
-      recipient: transferFullMatch[3],
+      recipient: isPassportRecipient(transferFullMatch[3])
+        ? normalizePassportRecipient(transferFullMatch[3])
+        : transferFullMatch[3],
       createdAt: Date.now(),
     };
   }
@@ -135,19 +234,53 @@ export function parseFinancialIntent(message: string): PendingFinancialAction | 
     }
   }
 
-  // ── Bridge: "bridge 5 USDC [from <chain>]" (destination is always Arc Testnet) ──
-  const bridgeRe = new RegExp(`\\bbridge\\s+(${AMOUNT_RE})\\s*${TOKEN_RE}?`, 'i');
+  // ── Bridge: "bridge 5 USDC from Arc Testnet to Base Sepolia" ──
+  const bridgeRe = new RegExp(
+    `\\bbridge\\s+(${AMOUNT_RE})\\s*${TOKEN_RE}?\\s+from\\s+(.+?)\\s+to\\s+(.+?)\\s*$`,
+    'i'
+  );
   const bridgeMatch = text.match(bridgeRe);
+
   if (bridgeMatch) {
-    const chain = matchSourceChain(text);
+    const source = matchBridgeChain(bridgeMatch[3]);
+    const destination = matchBridgeChain(bridgeMatch[4]);
+
     const base: PendingFinancialAction = {
       action: 'bridge',
       amount: bridgeMatch[1],
       fromToken: normalizeToken(bridgeMatch[2]) ?? 'USDC',
       createdAt: Date.now(),
     };
-    if (chain) return { ...base, sourceChain: chain.name, sourceChainId: chain.chainId };
-    return { ...base, missing: 'sourceChain' };
+
+    if (!source) return { ...base, missing: 'sourceChain' };
+
+    if (!destination) {
+      return {
+        ...base,
+        sourceChain: source.name,
+        sourceChainId: source.chainId,
+        missing: 'sourceChain',
+        error: 'Please specify a supported destination chain.',
+      };
+    }
+
+    if (source.chainId === destination.chainId) {
+      return {
+        ...base,
+        sourceChain: source.name,
+        sourceChainId: source.chainId,
+        missing: 'sourceChain',
+        error: 'Source and destination chains must be different.',
+      };
+    }
+
+    return {
+      ...base,
+      sourceChain: source.name,
+      sourceChainId: source.chainId,
+      destinationChain: destination.name,
+      destinationChainId: destination.chainId,
+    };
   }
 
   return null;
@@ -170,9 +303,51 @@ export function resolveClarification(pending: PendingFinancialAction, replyText:
       const reparsed = parseFinancialIntent(`${pending.action} ${text}`);
       return reparsed ?? clean;
     }
+    case 'amount': {
+      const amountMatch = text.match(new RegExp(`^${AMOUNT_RE}$`));
+
+      if (!amountMatch) {
+        return {
+          ...clean,
+          missing: 'amount',
+          error: 'Please enter a valid numeric amount.',
+        };
+      }
+
+      const amount = amountMatch[0];
+
+      // After amount is supplied, ask only for the next genuinely
+      // missing field. Swap/bridge selections are already complete.
+      if (pending.action === 'transfer') {
+        return {
+          ...clean,
+          amount,
+          missing: 'recipient',
+          error: undefined,
+        };
+      }
+
+      return {
+        ...clean,
+        amount,
+        missing: undefined,
+        error: undefined,
+      };
+    }
+
     case 'recipient': {
-      const m = text.match(new RegExp(ADDRESS_RE, 'i'));
-      if (m) return { ...clean, recipient: m[0], missing: undefined };
+      const address = text.match(new RegExp(`^${ADDRESS_RE}$`, 'i'));
+      if (address) return { ...clean, recipient: address[0], missing: undefined };
+
+      const passport = text.match(new RegExp(`^${PASSPORT_RE}$`, 'i'));
+      if (passport) {
+        return {
+          ...clean,
+          recipient: normalizePassportRecipient(passport[0]),
+          missing: undefined,
+        };
+      }
+
       return clean;
     }
     case 'toToken': {
@@ -187,8 +362,15 @@ export function resolveClarification(pending: PendingFinancialAction, replyText:
       return clean;
     }
     case 'sourceChain': {
-      const chain = matchSourceChain(text);
-      if (chain) return { ...clean, sourceChain: chain.name, sourceChainId: chain.chainId, missing: undefined };
+      const chain = matchBridgeChain(text);
+      if (chain) {
+        return {
+          ...clean,
+          sourceChain: chain.name,
+          sourceChainId: chain.chainId,
+          missing: undefined,
+        };
+      }
       return clean;
     }
     default:
@@ -201,17 +383,21 @@ export function clarificationQuestion(pending: PendingFinancialAction): string {
   const chains = listSourceChainNames().join(', ');
   switch (pending.missing) {
     case 'full':
-      if (pending.action === 'transfer') return "How much would you like to send, and to which wallet address?";
-      if (pending.action === 'swap') return "How much would you like to swap, and into which token?";
-      return `How much would you like to bridge, and from which source chain (${chains})?`;
+      // Legacy fallback only. New UI selections should resolve to a
+      // specific action/pair/route and therefore use `missing: amount`.
+      return `Please provide the details for this ${pending.action} action.`;
+    case 'amount':
+      if (pending.action === 'transfer') return `How much ${pending.fromToken ?? 'USDC'} would you like to send?`;
+      if (pending.action === 'swap') return `How much ${pending.fromToken ?? 'USDC'} would you like to swap?`;
+      return `How much ${pending.fromToken ?? 'USDC'} would you like to bridge?`;
     case 'recipient':
-      return `Got it — ${pending.amount} ${pending.fromToken}. What wallet address should this go to?`;
+      return `Got it — ${pending.amount} ${pending.fromToken}. What wallet address or Passport username should this go to?`;
     case 'toToken':
       return (pending as PendingFinancialAction & { error?: string }).error
         ? `${(pending as PendingFinancialAction & { error?: string }).error} Which token would you like instead?`
         : `Got it — ${pending.amount} ${pending.fromToken}. Which token would you like to receive?`;
     case 'sourceChain':
-      return `Got it — ${pending.amount} ${pending.fromToken} to Arc Testnet. Which source chain are you bridging from (${chains})?`;
+      return `Which source and destination chains should I use? Supported: ${chains}.`;
     default:
       return 'Could you clarify that?';
   }
@@ -225,7 +411,7 @@ export function describeIntent(intent: PendingFinancialAction): string {
     case 'swap':
       return `Swap ${intent.amount} ${intent.fromToken} for ${intent.toToken}`;
     case 'bridge':
-      return `Bridge ${intent.amount} ${intent.fromToken} from ${intent.sourceChain ?? 'source chain'} to Arc Testnet`;
+      return `Bridge ${intent.amount} ${intent.fromToken} from ${intent.sourceChain ?? 'source chain'} to ${intent.destinationChain ?? 'destination chain'}`;
     default:
       return 'Review this action';
   }

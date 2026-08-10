@@ -19,16 +19,36 @@ type LockedAction = 'transfer' | 'swap' | 'bridge';
 
 const INTRO_COPY: Record<LockedAction, { prompt: string; examples: string[] }> = {
   transfer: {
-    prompt: 'What would you like to transfer?',
-    examples: ['Send 5 USDC to 0x742d...1234', 'Transfer 2 USDC to 0x...'],
+    prompt: 'Choose how you want to transfer:',
+    examples: [
+      'Send USDC to a Passport',
+      'Send USDC to a wallet address',
+      'Transfer USDC to a Passport',
+    ],
   },
+
   swap: {
-    prompt: 'What would you like to swap?',
-    examples: ['Swap 5 USDC to tUSDC', 'Swap 10 USDC for tARC'],
+    prompt: 'Choose a swap pair:',
+    examples: [
+      'Swap USDC to tUSDC',
+      'Swap tUSDC to USDC',
+      'Swap USDC to tARC',
+      'Swap tARC to USDC',
+      'Swap tUSDC to tARC',
+      'Swap tARC to tUSDC',
+    ],
   },
+
   bridge: {
-    prompt: 'What would you like to bridge?',
-    examples: ['Bridge 0.1 USDC from Base Sepolia', 'Bridge 5 USDC from Ethereum Sepolia'],
+    prompt: 'Choose a bridge route:',
+    examples: [
+      'Bridge USDC from Arc Testnet to Base Sepolia',
+      'Bridge USDC from Base Sepolia to Arc Testnet',
+      'Bridge USDC from Arc Testnet to Ethereum Sepolia',
+      'Bridge USDC from Ethereum Sepolia to Arc Testnet',
+      'Bridge USDC from Base Sepolia to Ethereum Sepolia',
+      'Bridge USDC from Ethereum Sepolia to Base Sepolia',
+    ],
   },
 };
 
@@ -91,10 +111,18 @@ function ProposalCard({
             <span className="text-surface-950">{proposal.sourceChain}</span>
           </div>
         )}
-        <div className="flex justify-between">
-          <span className="text-surface-600">Network</span>
-          <span className="text-surface-950">Arc Testnet</span>
-        </div>
+        {proposal.destinationChain && (
+          <div className="flex justify-between">
+            <span className="text-surface-600">To Chain</span>
+            <span className="text-surface-950">{proposal.destinationChain}</span>
+          </div>
+        )}
+        {action !== 'bridge' && (
+          <div className="flex justify-between">
+            <span className="text-surface-600">Network</span>
+            <span className="text-surface-950">Arc Testnet</span>
+          </div>
+        )}
         {action === 'bridge' && (
           <div className="flex justify-between">
             <span className="text-surface-600">Protocol</span>

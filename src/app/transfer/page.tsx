@@ -42,6 +42,22 @@ function TransferPageInner() {
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<ExecutionMode>('manual');
   const [agentExecuting, setAgentExecuting] = useState(false);
+
+  // Keep the execution surface stable across wallet/receipt-driven
+  // remounts. An Economic Agent transaction must never fall back
+  // into the Manual success screen.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedMode = window.sessionStorage.getItem('arctis-transfer-mode');
+    if (storedMode === 'agent' || storedMode === 'manual') {
+      setMode(storedMode as ExecutionMode);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem('arctis-transfer-mode', mode);
+  }, [mode]);
   const { pendingAction, setPendingAction } = useAppStore();
 
   useEffect(() => {
@@ -62,11 +78,80 @@ function TransferPageInner() {
   }, [pendingAction, setPendingAction]);
   const [note, setNote] = useState('');
   const [touched, setTouched] = useState({ to: false, amount: false });
+  const [passportResolving, setPassportResolving] = useState(false);
+  const [passportResolvedAddress, setPassportResolvedAddress] = useState<string | null>(null);
+  const [passportError, setPassportError] = useState<string | null>(null);
 
   const addressValid = isValidAddress(toAddress);
+
+  const passportName = toAddress.trim().toLowerCase().replace(/\\.arc$/, '');
+  const passportFormatValid =
+    !addressValid &&
+    /^[a-z0-9_-]{3,20}$/.test(passportName);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setPassportResolvedAddress(null);
+    setPassportError(null);
+
+    if (!passportFormatValid) {
+      setPassportResolving(false);
+      return;
+    }
+
+    setPassportResolving(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/passport/resolve?username=${encodeURIComponent(passportName)}`
+        );
+
+        const data = await response.json() as {
+          walletAddress?: string;
+          error?: string;
+        };
+
+        if (cancelled) return;
+
+        if (!response.ok || !data.walletAddress) {
+          setPassportError(data.error || 'Passport not found');
+          setPassportResolvedAddress(null);
+          return;
+        }
+
+        setPassportResolvedAddress(data.walletAddress);
+        setPassportError(null);
+      } catch {
+        if (!cancelled) {
+          setPassportError('Unable to verify Passport');
+          setPassportResolvedAddress(null);
+        }
+      } finally {
+        if (!cancelled) setPassportResolving(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [passportFormatValid, passportName]);
+
+  const recipientValid = addressValid || !!passportResolvedAddress;
+
   const amountNum = parseFloat(amount);
   const amountValid = amount !== '' && !isNaN(amountNum) && amountNum > 0;
-  const canSubmit = addressValid && amountValid && !isPending && !isConfirming && isConnected && isCorrectChain;
+
+  const canSubmit =
+    recipientValid &&
+    amountValid &&
+    !passportResolving &&
+    !isPending &&
+    !isConfirming &&
+    isConnected &&
+    isCorrectChain;
 
   const handleMaxAmount = useCallback(() => {
     if (balanceRaw > 0n) {
@@ -83,6 +168,14 @@ function TransferPageInner() {
 
   const executeAgentTransfer = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
     if (!proposal.recipient || !proposal.amount) throw new Error('Transfer proposal is incomplete');
+
+    // Explicitly lock the UI to the Economic Agent surface before
+    // starting wallet execution.
+    setMode('agent');
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('arctis-transfer-mode', 'agent');
+    }
+
     setToAddress(proposal.recipient);
     setAmount(proposal.amount);
     setAgentExecuting(true);
@@ -111,6 +204,9 @@ function TransferPageInner() {
     setAmount('');
     setNote('');
     setTouched({ to: false, amount: false });
+    setPassportResolvedAddress(null);
+    setPassportError(null);
+    setPassportResolving(false);
   }, [reset]);
 
   // Fire Transaction Memo once, after transfer confirms — non-blocking, never surfaced to user on failure
@@ -157,7 +253,7 @@ function TransferPageInner() {
       >
         <AnimatePresence mode="wait">
           {/* Success state */}
-          {isSuccess && txHash && (
+          {mode === 'manual' && isSuccess && txHash && (
             <motion.div
               key="success"
               initial={{ opacity: 0, scale: 0.96 }}
@@ -202,7 +298,7 @@ function TransferPageInner() {
           )}
 
           {/* Form state */}
-          {!isSuccess && (
+          {mode === 'manual' && !isSuccess && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {/* Not connected */}
               {!isConnected && (
@@ -240,25 +336,60 @@ function TransferPageInner() {
                     <span className="text-surface-950 font-mono text-sm font-semibold">{balance} USDC</span>
                   </div>
 
-                  {/* To address */}
+                  {/* Recipient: Wallet Address or Passport */}
                   <div className="space-y-1.5">
-                    <label className="text-surface-700 text-xs font-medium">Recipient Address</label>
+                    <label className="text-surface-700 text-xs font-medium">
+                      Recipient
+                    </label>
+
                     <input
                       type="text"
                       value={toAddress}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setToAddress(e.target.value)}
                       onBlur={() => setTouched((t: { to: boolean; amount: boolean }) => ({ ...t, to: true }))}
-                      placeholder="0x..."
+                      placeholder="0x... or Passport ID"
                       className={cn(
                         'input-base font-mono',
-                        touched.to && toAddress && !addressValid && 'border-rose-500/50 focus:border-rose-500/50 focus:ring-rose-500/10'
+                        passportResolvedAddress && 'border-emerald-500/40 focus:border-emerald-500/50',
+                        touched.to && toAddress && !recipientValid && !passportResolving &&
+                          'border-rose-500/50 focus:border-rose-500/50 focus:ring-rose-500/10'
                       )}
                       spellCheck={false}
                       autoComplete="off"
                     />
-                    {touched.to && toAddress && !addressValid && (
+
+                    {passportResolving && (
+                      <p className="text-surface-500 text-xs flex items-center gap-1.5">
+                        <span className="w-3 h-3 border-2 border-surface-400/30 border-t-surface-600 rounded-full animate-spin" />
+                        Verifying Passport…
+                      </p>
+                    )}
+
+                    {passportResolvedAddress && (
+                      <div className="flex items-start gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+                            Passport verified
+                          </p>
+                          <p className="text-surface-500 text-[11px] font-mono truncate mt-0.5">
+                            {passportResolvedAddress}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {passportError && (
                       <p className="text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> Invalid Ethereum address
+                        <AlertCircle className="w-3 h-3" />
+                        {passportError}
+                      </p>
+                    )}
+
+                    {touched.to && toAddress && !recipientValid && !passportResolving && !passportError && (
+                      <p className="text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Enter a valid wallet address or Passport ID
                       </p>
                     )}
                   </div>
@@ -318,7 +449,7 @@ function TransferPageInner() {
                   )}
 
                   {/* Preview */}
-                  {addressValid && amountValid && (
+                  {recipientValid && amountValid && (
                     <div className="p-3 rounded-xl bg-surface-200/30 border border-black/[0.04] dark:border-white/[0.04] space-y-2 text-xs">
                       <div className="flex justify-between">
                         <span className="text-surface-600">Sending</span>
@@ -326,7 +457,11 @@ function TransferPageInner() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-surface-600">To</span>
-                        <span className="text-surface-950 font-mono">{formatAddress(toAddress, 6)}</span>
+                        <span className="text-surface-950 font-mono">
+                          {addressValid
+                            ? formatAddress(toAddress, 6)
+                            : `${toAddress.replace(/\\.arc$/i, '')} → ${formatAddress(passportResolvedAddress || '', 6)}`}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-surface-600">Network</span>
@@ -345,9 +480,10 @@ function TransferPageInner() {
                     disabled={!canSubmit}
                     className="btn-primary w-full py-3.5 text-base shadow-lg shadow-blue-500/20 disabled:shadow-none"
                   >
-                    {isPending && <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Confirm in wallet…</>}
-                    {isConfirming && <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Confirming on Arc…</>}
-                    {!isPending && !isConfirming && <><ArrowUpRight className="w-5 h-5" />Send USDC</>}
+                    {passportResolving && <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Verifying Passport…</>}
+                    {!passportResolving && isPending && <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Confirm in wallet…</>}
+                    {!passportResolving && isConfirming && <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Confirming on Arc…</>}
+                    {!passportResolving && !isPending && !isConfirming && <><ArrowUpRight className="w-5 h-5" />Send USDC</>}
                   </button>
                 </div>
               )}

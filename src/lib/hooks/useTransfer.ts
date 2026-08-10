@@ -11,6 +11,49 @@ import type { TransactionRecord } from '@/types';
 
 interface TransferParams { to: string; amount: string; note?: string; }
 
+function isPassportRecipient(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\\.arc)?$/.test(v);
+}
+
+async function resolveTransferRecipient(value: string): Promise<string> {
+  const recipient = value.trim();
+
+  // Normal wallet address: no Passport lookup required.
+  if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) {
+    return recipient;
+  }
+
+  if (!isPassportRecipient(recipient)) {
+    throw new Error('Enter a valid wallet address or Passport ID');
+  }
+
+  const username = recipient.toLowerCase().endsWith('.arc')
+    ? recipient.slice(0, -4)
+    : recipient;
+
+  const response = await fetch(
+    `/api/passport/resolve?username=${encodeURIComponent(username)}`,
+  );
+
+  let data: { walletAddress?: string; error?: string } = {};
+  try {
+    data = await response.json();
+  } catch {
+    // Keep the explicit error below.
+  }
+
+  if (!response.ok || !data.walletAddress) {
+    throw new Error(data.error || `Passport not found: ${recipient}`);
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(data.walletAddress)) {
+    throw new Error('Passport resolved to an invalid wallet address');
+  }
+
+  return data.walletAddress;
+}
+
 // ── Server boundary helpers ─────────────────────────────────
 // Replaces direct imports of '@/lib/firebase/transactions' and
 // '@/lib/observability/logger' (both 'server-only' / firebase-admin
@@ -109,10 +152,24 @@ export function useTransfer() {
 
     const localId = generateId();
     localIdRef.current = localId;
+
+    let resolvedTo: string;
+    try {
+      resolvedTo = await resolveTransferRecipient(to);
+    } catch (err) {
+      const msg = err instanceof Error
+        ? err.message
+        : 'Unable to resolve recipient';
+
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+
     const amountBigInt = parseUnits(amount, PRIMARY_DECIMALS);
 
     const pendingTx: TransactionRecord = {
-      id: localId, walletAddress: address, toAddress: to,
+      id: localId, walletAddress: address, toAddress: resolvedTo,
       amount: amountBigInt.toString(), amountFormatted: amount,
       status: 'pending', token: 'USDC', chainId: CHAIN_ID,
       createdAt: new Date().toISOString(), note, type: 'send',
@@ -125,7 +182,7 @@ export function useTransfer() {
       try {
         docId = await Promise.race([
           createTransferRecord({
-            walletAddress: address, toAddress: to, amount: amountBigInt.toString(),
+            walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(),
             amountFormatted: amount, token: 'USDC', note,
           }),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
@@ -137,7 +194,7 @@ export function useTransfer() {
         address: PRIMARY_CONTRACT,
         abi: ERC20_ABI,
         functionName: 'transfer',
-        args: [to as `0x${string}`, amountBigInt],
+        args: [resolvedTo as `0x${string}`, amountBigInt],
       });
 
       setTxHash(hash);

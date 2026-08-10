@@ -8,9 +8,11 @@ export interface PendingFinancialAction {
   fromToken?: string;
   toToken?: string;
   recipient?: string;
-  sourceChain?: string;   // human-readable name — matched against real CCTP source chains
-  sourceChainId?: number; // numeric chain ID — matches BridgeRoute.sourceChainId in bridge/page.tsx
-  missing?: 'recipient' | 'toToken' | 'sourceChain' | 'full';
+  sourceChain?: string;   // human-readable source chain
+  sourceChainId?: number; // numeric source chain ID
+  destinationChain?: string;   // human-readable destination chain
+  destinationChainId?: number; // numeric destination chain ID
+  missing?: 'amount' | 'recipient' | 'toToken' | 'sourceChain' | 'full';
   error?: string; // set when the last clarification reply resolved to something invalid
   createdAt: number; // epoch ms — used to expire stale pending actions
 }

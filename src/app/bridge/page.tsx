@@ -171,6 +171,12 @@ function BridgePageInner() {
       );
     }
 
+    if (pendingAction.destinationChainId) {
+      setDestinationChain(
+        chains.find((chain) => chain.chainId === pendingAction.destinationChainId) ?? destinationChain,
+      );
+    }
+
     setPendingAction(null);
     toast.success('Pre-filled from ARCTIS AI — review before bridging');
   }, [pendingAction, chains, sourceChain, setPendingAction]);
@@ -305,18 +311,22 @@ function BridgePageInner() {
     });
   }, [address]);
 
-  const executeBridge = useCallback(async (bridgeAmount: string, route: BridgeChain) => {
+  const executeBridge = useCallback(async (
+    bridgeAmount: string,
+    route: BridgeChain,
+    target: BridgeChain = destinationChain!,
+  ) => {
     if (!isConnected || !address || !connector) {
       throw new Error('Connect a compatible EVM wallet first');
     }
 
-    if (!destinationChain) throw new Error('Choose a destination network');
-    if (route.chainId === destinationChain.chainId) {
+    if (!target) throw new Error('Choose a destination network');
+    if (route.chainId === target.chainId) {
       throw new Error('Source and destination networks must be different');
     }
 
     const sourceAppKitChain = route.appKitChain;
-    const destinationAppKitChain = destinationChain.appKitChain;
+    const destinationAppKitChain = target.appKitChain;
     const parsed = Number(bridgeAmount);
 
     if (!Number.isFinite(parsed) || parsed < 0.000001 || parsed > 1000) {
@@ -391,7 +401,7 @@ function BridgePageInner() {
             burnTxHash: hashes.burnTxHash,
             forwardTxHash: hashes.forwardTxHash,
             sourceChainId: route.chainId,
-            destinationChainId: destinationChain.chainId,
+            destinationChainId: target.chainId,
             walletAddress: address,
             amount: parsed,
           }),
@@ -403,8 +413,8 @@ function BridgePageInner() {
         walletAddress: address,
         sourceChain: route.chain,
         sourceChainId: route.chainId,
-        destinationChain: destinationChain.chain,
-        destinationChainId: destinationChain.chainId,
+        destinationChain: target.chain,
+        destinationChainId: target.chainId,
         amount: parsed,
         status: 'completed',
         forwardTxHash: hashes.forwardTxHash,
@@ -412,7 +422,7 @@ function BridgePageInner() {
         completedAt: new Date().toISOString(),
       });
 
-      toast.success(`${parsed} USDC bridged to ${destinationChain.chain}`);
+      toast.success(`${parsed} USDC bridged from ${route.chain} to ${target.chain}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Bridge failed';
       setErrorMsg(message);
@@ -436,19 +446,28 @@ function BridgePageInner() {
       chains.find((chain) => chain.chainId === proposal.sourceChainId) ??
       sourceChain;
 
+    const target =
+      chains.find((chain) => chain.chainId === proposal.destinationChainId) ??
+      destinationChain;
+
     if (!route) throw new Error('Choose a supported bridge source chain');
+    if (!target) throw new Error('Choose a supported bridge destination chain');
     if (!proposal.amount) throw new Error('Bridge proposal is incomplete');
+    if (route.chainId === target.chainId) {
+      throw new Error('Source and destination networks must be different');
+    }
 
     setAmount(proposal.amount);
     setSourceChain(route);
+    setDestinationChain(target);
     setAgentExecuting(true);
 
     try {
-      await executeBridge(proposal.amount, route);
+      await executeBridge(proposal.amount, route, target);
     } finally {
       setAgentExecuting(false);
     }
-  }, [chains, sourceChain, executeBridge]);
+  }, [chains, sourceChain, destinationChain, executeBridge]);
 
   const handleManualBridge = async () => {
     if (!sourceChain || !destinationChain) return;

@@ -151,7 +151,7 @@ function BridgePageInner() {
       .then((data: { bridges?: BridgeRecord[] }) => {
         if (!data.bridges?.length) return;
         setHistory((prev) => {
-          const merged = [...(data.bridges ?? []), ...prev];
+          const merged = [...data.bridges, ...prev];
           return Array.from(
             new Map(merged.map((item) => [item.burnTxHash, item])).values(),
           ).slice(0, 50);
@@ -335,46 +335,25 @@ function BridgePageInner() {
       const adapter = await createViemAdapterFromProvider({ provider: provider as never });
       const kit = new AppKit();
 
-      // Arc App Kit bridge lifecycle:
-      // source wallet -> approve -> burn -> attestation -> destination mint.
-      // The same call supports Arc -> external and external -> Arc.
-      let result = await kit.bridge({
+      const result = await kit.bridge({
         from: { adapter, chain: sourceAppKitChain },
         to: { adapter, chain: destinationAppKitChain },
         amount: parsed.toFixed(6),
       });
 
-      // Arc Docs recommends retryBridge() when the bridge returns an error.
-      if ((result as { state?: string }).state === 'error') {
-        result = await kit.retryBridge(result, {
-          from: adapter,
-          to: adapter,
-        });
-      }
-
       const resultState = (result as { state?: string }).state;
-
       if (resultState !== 'success') {
         const steps = (result as {
-          steps?: Array<{
-            name?: string;
-            state?: string;
-            txHash?: string;
-            error?: { message?: string };
-          }>;
+          steps?: Array<{ state?: string; error?: { message?: string } }>;
         }).steps;
 
         const failedStep = Array.isArray(steps)
           ? steps.find((item) => item.state === 'error')
           : undefined;
 
-        const failedName = failedStep?.name
-          ? ` (${failedStep.name})`
-          : '';
-
         throw new Error(
           failedStep?.error?.message ??
-          `Bridge did not complete${failedName}`,
+          'Circle App Kit did not complete the bridge',
         );
       }
 
@@ -602,11 +581,9 @@ function BridgePageInner() {
           action="bridge"
           onExecute={executeAgentBridge}
           executionStatus={
-            step === 'error'
-              ? 'failed'
-                : agentExecuting
-                  ? 'executing'
-                  : 'idle'
+            agentExecuting
+              ? step === 'error' ? 'failed' : 'executing'
+              : 'idle'
           }
           executionError={step === 'error' ? errorMsg : null}
           executionTxHash={forwardTxHash ?? burnTxHash ?? null}

@@ -180,7 +180,7 @@ export interface TreasuryLog {
   id: string;
   type: 'membership_payment' | 'credit_purchase' | 'ai_spend' | 'transfer' | 'refund'
       | 'swap_inflow' | 'swap_outflow' | 'swap_fee_revenue'
-      | 'bridge_inbound_activity' | 'agent_spend';
+      | 'bridge_activity' | 'bridge_inbound_activity' | 'agent_spend';
   amount: number;
   description: string;
   walletAddress?: string;

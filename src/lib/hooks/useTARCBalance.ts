@@ -1,7 +1,7 @@
 'use client';
 
 import { useReadContract, useAccount } from 'wagmi';
-import { TARC_CONTRACT, ERC20_ABI, DECIMALS } from '@/lib/contracts';
+import { TARC_CONTRACT, ERC20_ABI, CHAIN_ID, DECIMALS } from '@/lib/contracts';
 import { formatUnits } from 'viem';
 
 export function useTARCBalance(overrideAddress?: `0x${string}`) {
@@ -12,6 +12,7 @@ export function useTARCBalance(overrideAddress?: `0x${string}`) {
     address: TARC_CONTRACT,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
+    chainId: CHAIN_ID,
     args: target ? [target] : undefined,
     query: { enabled: !!target, refetchInterval: 15_000, staleTime: 10_000 },
   });

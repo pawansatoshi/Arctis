@@ -3,7 +3,7 @@
 // Reuses existing OpenRouter infrastructure and credit system
 // ============================================================
 import { routeAIRequest, routeAIStream } from '@/lib/ai/router';
-import { parseFinancialIntent, describeIntent } from '@/lib/ai/intent/parser';
+import { parseFinancialRequest, describeIntent } from '@/lib/ai/intent/parser';
 import { getCreditBalance } from '@/lib/credits/engine';
 import { OPERATION_COSTS } from '@/lib/memberships/plans';
 import { obs } from '@/lib/observability/logger';
@@ -326,8 +326,10 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     throw new Error('Unauthorized: you do not own this agent');
   }
 
-  const financialIntent = parseFinancialIntent(task);
-  const estimatedCredits = financialIntent ? 0 : OPERATION_COSTS.agentExecution;
+  const financialRequest = parseFinancialRequest(task);
+  const financialIntent = financialRequest && 'action' in financialRequest && !('question' in financialRequest) ? financialRequest : null;
+  const clarification = financialRequest && 'question' in financialRequest ? financialRequest : null;
+  const estimatedCredits = financialRequest ? 0 : OPERATION_COSTS.agentExecution;
 
   const globalBalance = await getCreditBalance(owner);
   if (globalBalance.remaining < estimatedCredits) {
@@ -357,6 +359,7 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     durationMs: null,
     relatedTxHashes: [],
     ...(financialIntent ? { outputSummary: describeIntent(financialIntent), actionProposal: financialIntent, requiresWalletAction: true } : {}),
+    ...(clarification ? { outputSummary: clarification.question, outputFull: clarification.question, requiresClarification: true, clarification } : {}),
   } as AgentExecution & { actionProposal?: PendingFinancialAction; requiresWalletAction?: boolean };
 
   await recordExecution(proposal);
@@ -377,6 +380,7 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
     status: 'proposed',
     createdAt: proposal.startedAt,
     ...(financialIntent ? { actionProposal: financialIntent, requiresWalletAction: true } : {}),
+    ...(clarification ? { requiresClarification: true, clarification } : {}),
   };
 }
 

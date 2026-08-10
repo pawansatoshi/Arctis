@@ -65,10 +65,11 @@ export default function BridgePage() {
   useEffect(() => {
     if (pendingAction?.action === 'bridge') {
       setAmount(pendingAction.amount);
+      if (pendingAction.sourceChainId) setSelectedRoute((prev) => routes.find((r) => r.sourceChainId === pendingAction.sourceChainId) ?? prev);
       toast.success('Pre-filled from ARCTIS AI — choose your source chain and review before bridging');
       setPendingAction(null);
     }
-  }, [pendingAction, setPendingAction]);
+  }, [pendingAction, setPendingAction, routes]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [history, setHistory] = useState<BridgeRecord[]>([]);
@@ -142,8 +143,17 @@ export default function BridgePage() {
 
   const handleSwitchToSource = async () => {
     if (!selectedRoute) return;
-    try { await switchChainAsync({ chainId: selectedRoute.sourceChainId }); }
-    catch { toast.error('Failed to switch network'); }
+    try {
+      if (chainId === selectedRoute.sourceChainId) { toast.success(`Already on ${selectedRoute.sourceChain}`); return; }
+      await switchChainAsync({ chainId: selectedRoute.sourceChainId });
+      toast.success(`Switched to ${selectedRoute.sourceChain}`);
+    } catch (err) {
+      const msg = (err as Error).message || 'Wallet switch failure';
+      if (/user rejected|rejected|denied/i.test(msg)) toast.error('Network switch rejected in wallet');
+      else if (/not configured|chain not configured/i.test(msg)) toast.error(`${selectedRoute.sourceChain} is not configured in wagmi`);
+      else if (/unsupported/i.test(msg)) toast.error(`${selectedRoute.sourceChain} is unsupported by this wallet`);
+      else toast.error(`Failed to switch network: ${msg}`);
+    }
   };
 
   const handleApprove = async () => {
@@ -295,7 +305,7 @@ export default function BridgePage() {
           <div className="glass-card p-5 space-y-2.5">
             <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">Amount (USDC)</label>
             <input type="number" value={amount} placeholder="0.00" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
-              disabled={step !== 'idle'} className="input-field" min="0" step="0.01" />
+              disabled={step !== 'idle'} className="input-field" min="0" step="0.000001" />
             {quote && (amountNum < quote.minAmount || amountNum > quote.maxAmount) && (
               <p className="text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
                 <AlertCircle className="w-3 h-3" /> Amount must be between {quote.minAmount} and {quote.maxAmount} USDC

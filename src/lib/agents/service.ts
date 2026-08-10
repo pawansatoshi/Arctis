@@ -15,6 +15,10 @@ const LEDGER_COL     = 'agent_ledger';
 const REPORTS_COL    = 'agent_reports';
 
 // ─── Helper ─────────────────────────────────────────────────
+export function stripUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 function toIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
     return (ts as { toDate: () => Date }).toDate().toISOString();
@@ -98,7 +102,7 @@ export async function getUserAgents(ownerWallet: string): Promise<Agent[]> {
 
 export async function updateAgent(agentId: string, updates: Partial<Pick<Agent, 'name' | 'description' | 'goals' | 'instructions' | 'model' | 'monthlyBudgetCredits' | 'maxCreditsPerExecution' | 'status' | 'tags'>>): Promise<void> {
   const db = getAdminDb();
-  await db.collection(AGENTS_COL).doc(agentId).update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
+  await db.collection(AGENTS_COL).doc(agentId).update(stripUndefined({ ...(updates as Record<string, unknown>), updatedAt: FieldValue.serverTimestamp() }));
 }
 
 export async function archiveAgent(agentId: string): Promise<void> {
@@ -134,7 +138,7 @@ export async function updateExecution(
   updates: Partial<Pick<AgentExecution, 'status' | 'outputSummary' | 'outputFull' | 'creditsConsumed' | 'completedAt' | 'durationMs' | 'errorMessage' | 'reportId' | 'evaluationVerdict' | 'evaluationReasons' | 'evaluationSuggestions' | 'revisionCount'>>
 ): Promise<void> {
   const db = getAdminDb();
-  await db.collection(EXECUTIONS_COL).doc(executionId).update(updates);
+  await db.collection(EXECUTIONS_COL).doc(executionId).update(stripUndefined(updates as Record<string, unknown>));
 }
 
 export async function getAgentExecutions(agentId: string, limitCount = 20): Promise<AgentExecution[]> {

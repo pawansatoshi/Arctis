@@ -22,6 +22,34 @@ export const arcTestnet = defineChain({
   testnet: true,
 });
 
+
+export const ethereumSepolia = defineChain({
+  id: 11155111,
+  name: 'Ethereum Sepolia',
+  nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
+  rpcUrls: { default: { http: ['https://ethereum-sepolia-rpc.publicnode.com'] }, public: { http: ['https://ethereum-sepolia-rpc.publicnode.com'] } },
+  blockExplorers: { default: { name: 'Etherscan', url: 'https://sepolia.etherscan.io' } },
+  testnet: true,
+});
+
+export const baseSepolia = defineChain({
+  id: 84532,
+  name: 'Base Sepolia',
+  nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
+  rpcUrls: { default: { http: ['https://sepolia.base.org'] }, public: { http: ['https://sepolia.base.org'] } },
+  blockExplorers: { default: { name: 'BaseScan', url: 'https://sepolia.basescan.org' } },
+  testnet: true,
+});
+
+export const arbitrumSepolia = defineChain({
+  id: 421614,
+  name: 'Arbitrum Sepolia',
+  nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
+  rpcUrls: { default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] }, public: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] } },
+  blockExplorers: { default: { name: 'Arbiscan', url: 'https://sepolia.arbiscan.io' } },
+  testnet: true,
+});
+
 // Fallback transport (Phase 18) — tries each RPC in order, moving to
 // the next only on failure. Used by server-side viem clients
 // (bridge attestation polling, swap executor, chain verification)
@@ -33,7 +61,7 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
 export const wagmiConfig = getDefaultConfig({
   appName: 'ARCTIS',
   projectId,
-  chains: [arcTestnet],
+  chains: [arcTestnet, ethereumSepolia, baseSepolia, arbitrumSepolia],
   wallets: [
     {
       groupName: 'Recommended',

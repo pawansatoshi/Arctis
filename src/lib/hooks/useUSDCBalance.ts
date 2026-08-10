@@ -1,7 +1,7 @@
 'use client';
 
 import { useReadContract, useAccount } from 'wagmi';
-import { PRIMARY_CONTRACT, ERC20_ABI } from '@/lib/contracts';
+import { PRIMARY_CONTRACT, ERC20_ABI, CHAIN_ID } from '@/lib/contracts';
 import { formatUSDC } from '@/lib/utils';
 
 export function useUSDCBalance(overrideAddress?: `0x${string}`) {
@@ -12,6 +12,7 @@ export function useUSDCBalance(overrideAddress?: `0x${string}`) {
     address: PRIMARY_CONTRACT,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
+    chainId: CHAIN_ID,
     args: targetAddress ? [targetAddress] : undefined,
     query: {
       enabled: !!targetAddress,

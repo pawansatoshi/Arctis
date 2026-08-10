@@ -71,7 +71,7 @@ export interface BridgeStatusResponse {
   failureReason?: string;
 }
 
-export const BRIDGE_MIN_AMOUNT           = 1;
+export const BRIDGE_MIN_AMOUNT           = 0.000001;
 export const BRIDGE_MAX_AMOUNT           = 1000;
 export const ATTESTATION_POLL_INTERVAL   = 5_000;
 export const ATTESTATION_MAX_WAIT        = 10 * 60 * 1000;

@@ -8,6 +8,7 @@ export interface PendingFinancialAction {
   fromToken?: string;
   toToken?: string;
   recipient?: string;
+  sourceChainId?: number;
   createdAt: number; // epoch ms — used to expire stale pending actions
 }
 

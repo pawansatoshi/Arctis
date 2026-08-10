@@ -109,7 +109,7 @@ export interface AIMessage {
   creditsUsed?: number;
   tokens?: { prompt: number; completion: number };
   attachments?: AIAttachment[];
-  actionProposal?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; createdAt: number };
+  actionProposal?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChainId?: number; createdAt: number };
 }
 
 export interface AIAttachment {

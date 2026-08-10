@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { ThemeProvider, useTheme } from '@/lib/theme/ThemeProvider';
+import { I18nProvider } from '@/lib/i18n';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 // ============================================================
 // Providers — All wallet providers dynamically imported (SSR-safe)
@@ -69,10 +71,13 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <WalletProviders>{children}</WalletProviders>
-        <ThemedToaster />
-      </QueryClientProvider>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <WalletProviders>{children}</WalletProviders>
+          <LanguageSwitcher />
+          <ThemedToaster />
+        </QueryClientProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }

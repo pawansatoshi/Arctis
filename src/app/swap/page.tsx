@@ -178,7 +178,7 @@ function SwapPageInner() {
         <EconomicAgentPanel
           action="swap"
           onExecute={executeAgentSwap}
-          executionStatus={agentExecuting ? 'executing' : outboundTxHash ? 'success' : step === 'error' ? 'failed' : 'idle'}
+          executionStatus={agentExecuting ? (step === 'error' ? 'failed' :  'executing') : 'idle'}
           executionError={step === 'error' ? errorMsg : null}
           executionTxHash={outboundTxHash ?? (inboundTxHash ?? null)}
         />

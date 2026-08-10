@@ -95,27 +95,48 @@ export const ERC20_ABI = [
   { anonymous: false, inputs: [{ indexed: true, name: 'from', type: 'address' }, { indexed: true, name: 'to', type: 'address' }, { indexed: false, name: 'value', type: 'uint256' }], name: 'Transfer', type: 'event' },
 ] as const;
 
-// ─── CCTP V2 — Arc Testnet (destination domain 26) ──────────
-// Source: ARC_VERIFIED_ADDRESSES.md / docs.arc.io
-export const ARC_CCTP = {
-  domain:                26,
-  tokenMessengerV2:      '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
-  messageTransmitterV2:  '0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275',
-  tokenMinterV2:         '0xb43db544E2c27092c107639Ad201b3dEfAbcF192',
-} as const;
-
-// CCTP V2 source chains (testnet, verified)
+// ─── Circle App Kit bridge route registry ───────────────────
+// Protocol execution is intentionally delegated to Circle App Kit.
+// Keep only the source-chain metadata needed by ARCTIS UI/API routing.
 export const CCTP_SOURCE_CHAINS = {
-  '11155111': { name: 'Ethereum Sepolia', domain: 0,  usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', tokenMessengerV2: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa', explorer: 'https://sepolia.etherscan.io' },
-  '84532':    { name: 'Base Sepolia',     domain: 6,  usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', tokenMessengerV2: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa', explorer: 'https://sepolia.basescan.org' },
-  '421614':   { name: 'Arbitrum Sepolia', domain: 3,  usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', tokenMessengerV2: '0x8fe6b999dc680ccfdd5bf7eb0974218be2542daa', explorer: 'https://sepolia.arbiscan.io' },
+  '11155111': { name: 'Ethereum Sepolia', domain: 0, usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', explorer: 'https://sepolia.etherscan.io' },
+  '84532':    { name: 'Base Sepolia',     domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', explorer: 'https://sepolia.basescan.org' },
+  '421614':   { name: 'Arbitrum Sepolia', domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', explorer: 'https://sepolia.arbiscan.io' },
 } as const;
 
-export const CCTP_IRIS_API = 'https://iris-api-sandbox.circle.com';
-export const CCTP_FEES_API = (srcDomain: number, dstDomain: number) =>
-  `${CCTP_IRIS_API}/v2/burn/USDC/fees/${srcDomain}/${dstDomain}?forward=true`;
-export const CCTP_STATUS_API = (srcDomain: number, txHash: string) =>
-  `${CCTP_IRIS_API}/v2/messages/${srcDomain}?transactionHash=${txHash}`;
+// Bidirectional CCTP V2/App Kit registry. Arc Testnet is a supported
+// CCTP destination as well as a source; keeping both directions in one
+// registry prevents the UI/API from accidentally becoming inbound-only.
+export const CCTP_BRIDGE_CHAINS = {
+  '5042002': {
+    name: 'Arc Testnet',
+    domain: 26,
+    usdc: CONTRACTS.USDC,
+    explorer: EXPLORER_URL,
+    appKitChain: 'Arc_Testnet',
+  },
+  '11155111': {
+    name: 'Ethereum Sepolia',
+    domain: 0,
+    usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238',
+    explorer: 'https://sepolia.etherscan.io',
+    appKitChain: 'Ethereum_Sepolia',
+  },
+  '84532': {
+    name: 'Base Sepolia',
+    domain: 6,
+    usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    explorer: 'https://sepolia.basescan.org',
+    appKitChain: 'Base_Sepolia',
+  },
+  '421614': {
+    name: 'Arbitrum Sepolia',
+    domain: 3,
+    usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+    explorer: 'https://sepolia.arbiscan.io',
+    appKitChain: 'Arbitrum_Sepolia',
+  },
+} as const;
 
 // Memo contract (ARC_VERIFIED_ADDRESSES.md)
 export const MEMO_CONTRACT          = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as const;

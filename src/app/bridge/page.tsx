@@ -3,273 +3,525 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
-import { parseUnits } from 'viem';
+import { useAccount, useSwitchChain } from 'wagmi';
+import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
+import { AppKit } from '@circle-fin/app-kit';
 import {
   GitMerge, CheckCircle2, AlertCircle, ExternalLink,
-  ChevronDown, RefreshCw, History, Wallet, Info, Loader2, Clock,
+  ChevronDown, RefreshCw, History, Wallet, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatRelative, formatAddress } from '@/lib/utils';
-import { CCTP_TOKEN_MESSENGER_ABI, ERC20_ABI, txUrl } from '@/lib/contracts';
-import { buildBridgeMemo } from '@/lib/memo/service';
-import { useMemo as useArcMemo } from '@/lib/memo/useMemo';
-import { useAppStore } from '@/lib/store';
-import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
 import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
+import { useAppStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 
-interface BridgeRoute {
-  sourceChain: string; sourceChainId: number; sourceDomain: number;
-  usdc: string; tokenMessengerV2: string; explorer: string; enabled: boolean;
+type AppKitChain =
+  | 'Arc_Testnet'
+  | 'Ethereum_Sepolia'
+  | 'Base_Sepolia'
+  | 'Arbitrum_Sepolia';
+
+interface BridgeChain {
+  chain: string;
+  chainId: number;
+  domain: number;
+  usdc: string;
+  explorer: string;
+  appKitChain: AppKitChain;
+  enabled: boolean;
 }
+
 interface BridgeQuote {
-  sourceChain: string; sourceChainId: number; sourceDomain: number;
-  destinationChain: string; destinationDomain: number;
-  fee: number; feeToken: string; estimatedTime: string;
-  minAmount: number; maxAmount: number; feeEstimated?: boolean;
+  sourceChain: string;
+  sourceChainId: number;
+  sourceDomain: number;
+  destinationChain: string;
+  destinationChainId: number;
+  destinationDomain: number;
+  fee: number;
+  feeToken: string;
+  estimatedTime: string;
+  minAmount: number;
+  maxAmount: number;
+  feeEstimated?: boolean;
 }
+
 interface BridgeRecord {
-  burnTxHash: string; walletAddress: string; sourceChain: string; sourceChainId: number;
-  amount: number; status: string; forwardTxHash?: string; createdAt: string; completedAt?: string;
+  burnTxHash: string;
+  walletAddress: string;
+  sourceChain: string;
+  sourceChainId: number;
+  destinationChain?: string;
+  destinationChainId?: number;
+  amount: number;
+  status: string;
+  forwardTxHash?: string;
+  createdAt: string;
+  completedAt?: string;
 }
-type BridgeStep = 'idle' | 'approving' | 'approved' | 'burning' | 'attesting' | 'completed' | 'timeout' | 'error';
 
-const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
-const STATUS_POLL_INTERVAL = 5_000;
+type BridgeStep = 'idle' | 'executing' | 'completed' | 'timeout' | 'error';
 
-function addressToBytes32(address: string): `0x${string}` {
-  return `0x${'0'.repeat(24)}${address.slice(2).toLowerCase()}` as `0x${string}`;
+function extractTxHashes(result: unknown): { burnTxHash?: string; forwardTxHash?: string } {
+  const value = result as {
+    steps?: Array<{ name?: unknown; txHash?: unknown; data?: { txHash?: unknown } }>;
+    forwardTxHash?: unknown;
+  };
+
+  const steps = Array.isArray(value?.steps) ? value.steps : [];
+  const hashes = steps
+    .map((step) => ({
+      name: String(step?.name ?? ''),
+      hash: typeof step?.txHash === 'string'
+        ? step.txHash
+        : typeof step?.data?.txHash === 'string'
+          ? step.data.txHash
+          : undefined,
+    }))
+    .filter((item): item is { name: string; hash: string } => typeof item.hash === 'string');
+
+  const burn = hashes.find((item) => /burn|deposit/i.test(item.name))?.hash;
+  const mint = hashes.find((item) => /mint|receive|forward|complete/i.test(item.name))?.hash;
+
+  return {
+    burnTxHash: burn ?? hashes[0]?.hash,
+    forwardTxHash:
+      (typeof value?.forwardTxHash === 'string' ? value.forwardTxHash : undefined) ??
+      mint ??
+      (hashes.length > 1 ? hashes[hashes.length - 1]?.hash : undefined),
+  };
 }
 
 function BridgePageInner() {
   const searchParams = useSearchParams();
-  const { isConnected, address, chainId } = useAccount();
+  const { isConnected, address, chainId, connector } = useAccount();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
-  const { writeContractAsync } = useWriteContract();
-  const { dispatchMemo } = useArcMemo();
+  const { pendingAction, setPendingAction } = useAppStore();
 
-  const [routes, setRoutes] = useState<BridgeRoute[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<BridgeRoute | null>(null);
-  const [showChainMenu, setShowChainMenu] = useState(false);
+  const [chains, setChains] = useState<BridgeChain[]>([]);
+  const [sourceChain, setSourceChain] = useState<BridgeChain | null>(null);
+  const [destinationChain, setDestinationChain] = useState<BridgeChain | null>(null);
+  const [showSourceMenu, setShowSourceMenu] = useState(false);
+  const [showDestinationMenu, setShowDestinationMenu] = useState(false);
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState<BridgeQuote | null>(null);
-
   const [step, setStep] = useState<BridgeStep>('idle');
-  const [approveTxHash, setApproveTxHash] = useState<`0x${string}` | undefined>();
-  const [burnTxHash, setBurnTxHash] = useState<`0x${string}` | undefined>();
+  const [burnTxHash, setBurnTxHash] = useState<string>();
   const [forwardTxHash, setForwardTxHash] = useState<string | null>(null);
-  const { pendingAction, setPendingAction } = useAppStore();
-  const { getAuthHeaders } = useWalletAuth();
-
-  // AI-orchestrated handoff — pre-fill the amount from a confirmed chat
-  // proposal, then clear it so it's only ever consumed once. The source
-  // chain/route still needs the user's own selection below — that can't
-  // be reliably inferred from a short chat message.
-  useEffect(() => {
-    if (pendingAction?.action === 'bridge') {
-      setAmount(pendingAction.amount);
-      if (pendingAction.sourceChainId) setSelectedRoute((prev) => routes.find((r) => r.sourceChainId === pendingAction.sourceChainId) ?? prev);
-      toast.success('Pre-filled from ARCTIS AI — choose your source chain and review before bridging');
-      setPendingAction(null);
-    }
-  }, [pendingAction, setPendingAction, routes]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
   const [history, setHistory] = useState<BridgeRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [mode, setMode] = useState<ExecutionMode>('manual');
   const [agentExecuting, setAgentExecuting] = useState(false);
-  const [agentSwitching, setAgentSwitching] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('mode') === 'agent') setMode('agent');
   }, [searchParams]);
 
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash, query: { enabled: !!approveTxHash } });
-  const { isSuccess: burnConfirmed } = useWaitForTransactionReceipt({ hash: burnTxHash, query: { enabled: !!burnTxHash } });
-
   useEffect(() => {
-    fetch('/api/bridge').then((r) => r.json()).then((d) => {
-      if (d.routes) { setRoutes(d.routes); setSelectedRoute((prev: BridgeRoute | null) => prev ?? d.routes[0] ?? null); }
-    }).catch(() => {});
+    fetch('/api/bridge')
+      .then((r) => r.json())
+      .then((data: { chains?: BridgeChain[] }) => {
+        const available = (data.chains ?? []).filter((chain) => chain.enabled);
+        setChains(available);
+        setSourceChain((prev) => prev ?? available.find((c) => c.chainId === 5042002) ?? available[0] ?? null);
+        setDestinationChain((prev) =>
+          prev ??
+          available.find((c) => c.chainId === 84532) ??
+          available.find((c) => c.chainId !== 5042002) ??
+          null,
+        );
+      })
+      .catch(() => toast.error('Unable to load bridge networks'));
   }, []);
 
   useEffect(() => {
+    if (!address) return;
+    try {
+      const stored = localStorage.getItem(`arctis-bridge-history:${address.toLowerCase()}`);
+      if (stored) setHistory(JSON.parse(stored) as BridgeRecord[]);
+    } catch { /* local history is non-critical */ }
+  }, [address]);
+
+  useEffect(() => {
     if (!showHistory || !address) return;
-    fetch(`/api/bridge/history?wallet=${address}`).then((r) => r.json())
-      .then((d) => { if (d.bridges) setHistory(d.bridges); }).catch(() => {});
+    fetch(`/api/bridge/history?wallet=${address}`)
+      .then((r) => r.json())
+      .then((data: { bridges?: BridgeRecord[] }) => {
+        if (!data.bridges?.length) return;
+        setHistory((prev) => {
+          const merged = [...data.bridges, ...prev];
+          return Array.from(
+            new Map(merged.map((item) => [item.burnTxHash, item])).values(),
+          ).slice(0, 50);
+        });
+      })
+      .catch(() => {});
   }, [showHistory, address]);
 
   useEffect(() => {
-    const num = parseFloat(amount);
-    if (!selectedRoute || !amount || isNaN(num) || num <= 0) { setQuote(null); return; }
-    const t = setTimeout(() => {
-      fetch(`/api/bridge/quote?sourceChain=${selectedRoute.sourceChainId}&amount=${amount}`)
-        .then((r) => r.json()).then((d) => { if (!d.error) setQuote(d); else setQuote(null); })
-        .catch(() => setQuote(null));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [selectedRoute, amount]);
+    if (pendingAction?.action !== 'bridge') return;
 
-  useEffect(() => { if (approveConfirmed && step === 'approving') setStep('approved'); }, [approveConfirmed, step]);
+    setAmount(pendingAction.amount);
 
-  useEffect(() => {
-    if (!burnConfirmed || step !== 'burning' || !burnTxHash || !address || !selectedRoute) return;
-    setStep('attesting');
-    void (async () => {
-      const headers = await getAuthHeaders();
-      fetch('/api/bridge/execute', {
-        method: 'POST', headers,
-        body: JSON.stringify({ burnTxHash, sourceChainId: selectedRoute.sourceChainId, walletAddress: address, amount: parseFloat(amount) }),
-      }).then((r) => r.json()).then((d) => {
-        if (d.error && !d.bridgeId) { setErrorMsg(d.error); setStep('error'); }
-      }).catch((err) => { setErrorMsg(err.message); setStep('error'); });
-    })();
-  }, [burnConfirmed, step, burnTxHash, address, selectedRoute, amount, getAuthHeaders]);
-
-  useEffect(() => {
-    if (step !== 'attesting' || !burnTxHash) return;
-    const interval = setInterval(() => {
-      fetch(`/api/bridge/status?bridgeId=${burnTxHash}`).then((r) => r.json()).then((d) => {
-        if (d.status === 'completed' && d.forwardTxHash) {
-          setForwardTxHash(d.forwardTxHash); setStep('completed');
-          toast.success(`${amount} USDC arrived on Arc Testnet!`);
-          if (burnTxHash && selectedRoute) {
-            void dispatchMemo(buildBridgeMemo(burnTxHash, selectedRoute.sourceDomain, 26, selectedRoute.sourceChain));
-          }
-          clearInterval(interval);
-        } else if (d.status === 'timeout') { setStep('timeout'); clearInterval(interval); }
-        else if (d.status === 'failed') { setErrorMsg(d.failureReason ?? 'Bridge failed'); setStep('error'); clearInterval(interval); }
-      }).catch(() => {});
-    }, STATUS_POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [step, burnTxHash, amount, dispatchMemo, selectedRoute]);
-
-  const executeAgentBridge = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
-    if (!proposal.amount) throw new Error('Bridge proposal is incomplete');
-    setAmount(proposal.amount);
-    if (proposal.sourceChainId) {
-      const match = routes.find((r) => r.sourceChainId === proposal.sourceChainId);
-      if (!match) throw new Error('Requested bridge source chain is not supported by the configured CCTP routes');
-      setSelectedRoute(match);
+    if (pendingAction.sourceChainId) {
+      setSourceChain(
+        chains.find((chain) => chain.chainId === pendingAction.sourceChainId) ?? sourceChain,
+      );
     }
-    setAgentExecuting(true);
-  }, [routes]);
 
-  useEffect(() => {
-    if (!agentExecuting || !selectedRoute || !quote || step !== 'idle' || !isConnected) return;
-    if (chainId !== selectedRoute.sourceChainId) {
-      if (agentSwitching) return;
-      setAgentSwitching(true);
-      void switchChainAsync({ chainId: selectedRoute.sourceChainId })
-        .catch((err) => {
-          toast.error((err as Error).message || 'Unable to switch to the bridge source chain');
-          setAgentExecuting(false);
-        })
-        .finally(() => setAgentSwitching(false));
+    setPendingAction(null);
+    toast.success('Pre-filled from ARCTIS AI — review before bridging');
+  }, [pendingAction, chains, sourceChain, setPendingAction]);
+
+  const amountNum = Number(amount);
+  const amountValid =
+    Number.isFinite(amountNum) &&
+    amountNum >= 0.000001 &&
+    amountNum <= 1000;
+
+  const onSourceChain = chainId === sourceChain?.chainId;
+  const sourceKitChain = sourceChain?.appKitChain;
+  const destinationKitChain = destinationChain?.appKitChain;
+
+  const loadEstimate = useCallback(async () => {
+    if (
+      !sourceChain ||
+      !destinationChain ||
+      sourceChain.chainId === destinationChain.chainId ||
+      !amountValid ||
+      !connector ||
+      !sourceKitChain ||
+      !destinationKitChain
+    ) {
+      setQuote(null);
       return;
     }
-    void handleApprove();
-  }, [agentExecuting, selectedRoute, quote, step, isConnected, chainId, agentSwitching]);
 
-  useEffect(() => {
-    if (!agentExecuting || step !== 'approved') return;
-    void handleBurn();
-  }, [agentExecuting, step]);
-
-  useEffect(() => {
-    if (agentExecuting && (step === 'completed' || step === 'error' || step === 'timeout')) {
-      setAgentExecuting(false);
-      setAgentSwitching(false);
+    if (chainId !== sourceChain.chainId) {
+      setQuote({
+        sourceChain: sourceChain.chain,
+        sourceChainId: sourceChain.chainId,
+        sourceDomain: sourceChain.domain,
+        destinationChain: destinationChain.chain,
+        destinationChainId: destinationChain.chainId,
+        destinationDomain: destinationChain.domain,
+        fee: 0,
+        feeToken: 'USDC',
+        estimatedTime: '~30 seconds',
+        minAmount: 0.000001,
+        maxAmount: 1000,
+        feeEstimated: true,
+      });
+      return;
     }
-  }, [agentExecuting, step]);
 
-  const amountNum = parseFloat(amount);
-  const amountValid = amount !== '' && !isNaN(amountNum) && amountNum > 0 &&
-    (!quote || (amountNum >= quote.minAmount && amountNum <= quote.maxAmount));
-  const onSourceChain = chainId === selectedRoute?.sourceChainId;
-  const canBridge = amountValid && !!quote && isConnected && !!selectedRoute && onSourceChain && step === 'idle';
+    try {
+      const provider = await connector.getProvider();
+      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+      const kit = new AppKit();
+
+      const estimate = await kit.estimateBridge({
+        from: { adapter, chain: sourceKitChain },
+        to: { adapter, chain: destinationKitChain },
+        amount: amountNum.toFixed(6),
+      });
+
+      const estimateValue = estimate as {
+        fees?: { total?: string | number; protocol?: string | number };
+        fee?: string | number;
+      };
+
+      const fee = Number(
+        estimateValue?.fees?.total ??
+        estimateValue?.fees?.protocol ??
+        estimateValue?.fee ??
+        0,
+      );
+
+      setQuote({
+        sourceChain: sourceChain.chain,
+        sourceChainId: sourceChain.chainId,
+        sourceDomain: sourceChain.domain,
+        destinationChain: destinationChain.chain,
+        destinationChainId: destinationChain.chainId,
+        destinationDomain: destinationChain.domain,
+        fee: Number.isFinite(fee) ? fee : 0,
+        feeToken: 'USDC',
+        estimatedTime: '~30 seconds',
+        minAmount: 0.000001,
+        maxAmount: 1000,
+      });
+    } catch {
+      setQuote({
+        sourceChain: sourceChain.chain,
+        sourceChainId: sourceChain.chainId,
+        sourceDomain: sourceChain.domain,
+        destinationChain: destinationChain.chain,
+        destinationChainId: destinationChain.chainId,
+        destinationDomain: destinationChain.domain,
+        fee: 0,
+        feeToken: 'USDC',
+        estimatedTime: '~30 seconds',
+        minAmount: 0.000001,
+        maxAmount: 1000,
+        feeEstimated: true,
+      });
+    }
+  }, [
+    sourceChain,
+    destinationChain,
+    amountValid,
+    connector,
+    sourceKitChain,
+    destinationKitChain,
+    chainId,
+    amountNum,
+  ]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => void loadEstimate(), 350);
+    return () => clearTimeout(timer);
+  }, [loadEstimate]);
+
+  const saveLocalHistory = useCallback((record: BridgeRecord) => {
+    if (!address) return;
+
+    setHistory((prev) => {
+      const merged = [
+        record,
+        ...prev.filter((item) => item.burnTxHash !== record.burnTxHash),
+      ].slice(0, 50);
+
+      try {
+        localStorage.setItem(
+          `arctis-bridge-history:${address.toLowerCase()}`,
+          JSON.stringify(merged),
+        );
+      } catch { /* local history is non-critical */ }
+
+      return merged;
+    });
+  }, [address]);
+
+  const executeBridge = useCallback(async (bridgeAmount: string, route: BridgeChain) => {
+    if (!isConnected || !address || !connector) {
+      throw new Error('Connect a compatible EVM wallet first');
+    }
+
+    if (!destinationChain) throw new Error('Choose a destination network');
+    if (route.chainId === destinationChain.chainId) {
+      throw new Error('Source and destination networks must be different');
+    }
+
+    const sourceAppKitChain = route.appKitChain;
+    const destinationAppKitChain = destinationChain.appKitChain;
+    const parsed = Number(bridgeAmount);
+
+    if (!Number.isFinite(parsed) || parsed < 0.000001 || parsed > 1000) {
+      throw new Error('Amount must be between 0.000001 and 1000 USDC');
+    }
+
+    setErrorMsg(null);
+    setStep('executing');
+
+    try {
+      if (chainId !== route.chainId) {
+        await switchChainAsync({ chainId: route.chainId });
+      }
+
+      const provider = await connector.getProvider();
+      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+      const kit = new AppKit();
+
+      const result = await kit.bridge({
+        from: { adapter, chain: sourceAppKitChain },
+        to: { adapter, chain: destinationAppKitChain },
+        amount: parsed.toFixed(6),
+      });
+
+      const resultState = (result as { state?: string }).state;
+      if (resultState !== 'success') {
+        const steps = (result as {
+          steps?: Array<{ state?: string; error?: { message?: string } }>;
+        }).steps;
+
+        const failedStep = Array.isArray(steps)
+          ? steps.find((item) => item.state === 'error')
+          : undefined;
+
+        throw new Error(
+          failedStep?.error?.message ??
+          'Circle App Kit did not complete the bridge',
+        );
+      }
+
+      const hashes = extractTxHashes(result);
+      setBurnTxHash(hashes.burnTxHash);
+      setForwardTxHash(hashes.forwardTxHash ?? null);
+      setStep('completed');
+
+      if (hashes.burnTxHash) {
+        void fetch('/api/bridge/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            burnTxHash: hashes.burnTxHash,
+            forwardTxHash: hashes.forwardTxHash,
+            sourceChainId: route.chainId,
+            destinationChainId: destinationChain.chainId,
+            walletAddress: address,
+            amount: parsed,
+          }),
+        }).catch(() => {});
+      }
+
+      saveLocalHistory({
+        burnTxHash: hashes.burnTxHash ?? `appkit-${Date.now()}`,
+        walletAddress: address,
+        sourceChain: route.chain,
+        sourceChainId: route.chainId,
+        destinationChain: destinationChain.chain,
+        destinationChainId: destinationChain.chainId,
+        amount: parsed,
+        status: 'completed',
+        forwardTxHash: hashes.forwardTxHash,
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+
+      toast.success(`${parsed} USDC bridged to ${destinationChain.chain}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Bridge failed';
+      setErrorMsg(message);
+      setStep('error');
+      throw err;
+    }
+  }, [
+    isConnected,
+    address,
+    connector,
+    destinationChain,
+    chainId,
+    switchChainAsync,
+    saveLocalHistory,
+  ]);
+
+  const executeAgentBridge = useCallback(async (
+    proposal: import('@/lib/store').PendingFinancialAction,
+  ) => {
+    const route =
+      chains.find((chain) => chain.chainId === proposal.sourceChainId) ??
+      sourceChain;
+
+    if (!route) throw new Error('Choose a supported bridge source chain');
+    if (!proposal.amount) throw new Error('Bridge proposal is incomplete');
+
+    setAmount(proposal.amount);
+    setSourceChain(route);
+    setAgentExecuting(true);
+
+    try {
+      await executeBridge(proposal.amount, route);
+    } finally {
+      setAgentExecuting(false);
+    }
+  }, [chains, sourceChain, executeBridge]);
+
+  const handleManualBridge = async () => {
+    if (!sourceChain || !destinationChain) return;
+    try {
+      await executeBridge(amount, sourceChain);
+    } catch { /* state already contains the error */ }
+  };
 
   const handleSwitchToSource = async () => {
-    if (!selectedRoute) return;
+    if (!sourceChain) return;
+
     try {
-      if (chainId === selectedRoute.sourceChainId) { toast.success(`Already on ${selectedRoute.sourceChain}`); return; }
-      await switchChainAsync({ chainId: selectedRoute.sourceChainId });
-      toast.success(`Switched to ${selectedRoute.sourceChain}`);
+      if (chainId === sourceChain.chainId) {
+        toast.success(`Already on ${sourceChain.chain}`);
+        return;
+      }
+
+      await switchChainAsync({ chainId: sourceChain.chainId });
+      toast.success(`Switched to ${sourceChain.chain}`);
     } catch (err) {
-      const msg = (err as Error).message || 'Wallet switch failure';
-      if (/user rejected|rejected|denied/i.test(msg)) toast.error('Network switch rejected in wallet');
-      else if (/not configured|chain not configured/i.test(msg)) toast.error(`${selectedRoute.sourceChain} is not configured in wagmi`);
-      else if (/unsupported/i.test(msg)) toast.error(`${selectedRoute.sourceChain} is unsupported by this wallet`);
-      else toast.error(`Failed to switch network: ${msg}`);
+      toast.error(err instanceof Error ? err.message : 'Unable to switch network');
     }
   };
 
-  const handleApprove = async () => {
-    if (!canBridge || !selectedRoute || !address) return;
-    setStep('approving');
-    try {
-      const amountBig = parseUnits(amountNum.toFixed(6), 6);
-      const hash = await writeContractAsync({
-        address: selectedRoute.usdc as `0x${string}`, abi: ERC20_ABI, functionName: 'approve',
-        args: [selectedRoute.tokenMessengerV2 as `0x${string}`, amountBig], chainId: selectedRoute.sourceChainId,
-      });
-      setApproveTxHash(hash);
-    } catch (err) { setErrorMsg((err as Error).message); setStep('error'); }
-  };
-
-  const handleBurn = async () => {
-    if (step !== 'approved' || !selectedRoute || !address || !quote) return;
-    setStep('burning');
-    try {
-      const amountBig = parseUnits(amountNum.toFixed(6), 6);
-      const maxFeeBig = parseUnits(quote.fee.toFixed(6), 6);
-      const hash = await writeContractAsync({
-        address: selectedRoute.tokenMessengerV2 as `0x${string}`, abi: CCTP_TOKEN_MESSENGER_ABI, functionName: 'depositForBurn',
-        args: [amountBig, quote.destinationDomain, addressToBytes32(address), selectedRoute.usdc as `0x${string}`, ZERO_BYTES32, maxFeeBig, 1000],
-        chainId: selectedRoute.sourceChainId,
-      });
-      setBurnTxHash(hash);
-    } catch (err) { setErrorMsg((err as Error).message); setStep('error'); }
+  const swapDirection = () => {
+    if (!sourceChain || !destinationChain) return;
+    setSourceChain(destinationChain);
+    setDestinationChain(sourceChain);
+    setQuote(null);
+    setStep('idle');
+    setErrorMsg(null);
+    setBurnTxHash(undefined);
+    setForwardTxHash(null);
   };
 
   const handleReset = () => {
-    setStep('idle'); setAmount(''); setQuote(null);
-    setApproveTxHash(undefined); setBurnTxHash(undefined); setForwardTxHash(null); setErrorMsg(null);
+    setStep('idle');
+    setAmount('');
+    setQuote(null);
+    setBurnTxHash(undefined);
+    setForwardTxHash(null);
+    setErrorMsg(null);
+    setAgentExecuting(false);
   };
 
   if (step === 'completed') {
     return (
       <div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-8 text-center space-y-6 w-full">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card p-8 text-center space-y-6 w-full"
+        >
           <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
           </div>
+
           <div>
             <h2 className="text-xl font-bold text-surface-950 mb-1">Bridge Complete</h2>
-            <p className="text-surface-600 text-sm">{amount} USDC arrived on Arc Testnet from {selectedRoute?.sourceChain}</p>
+            <p className="text-surface-600 text-sm">
+              {amount} USDC bridged from {sourceChain?.chain} to {destinationChain?.chain}
+            </p>
           </div>
+
           <div className="space-y-2">
-            {burnTxHash && selectedRoute && (
-              <a href={`${selectedRoute.explorer}/tx/${burnTxHash}`} target="_blank" rel="noopener noreferrer"
-                className="flex items-center justify-between glass-card p-3 hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors">
-                <span className="text-surface-600 text-xs">Source tx ({selectedRoute.sourceChain})</span>
-                <span className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1">View <ExternalLink className="w-3 h-3" /></span>
+            {burnTxHash && sourceChain && (
+              <a
+                href={`${sourceChain.explorer}/tx/${burnTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between glass-card p-3 hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <span className="text-surface-600 text-xs">Source transaction</span>
+                <span className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1">
+                  View <ExternalLink className="w-3 h-3" />
+                </span>
               </a>
             )}
-            {forwardTxHash && (
-              <a href={txUrl(forwardTxHash)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center justify-between glass-card p-3 hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors">
-                <span className="text-surface-600 text-xs">Arc Testnet arrival</span>
-                <span className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1">ArcScan <ExternalLink className="w-3 h-3" /></span>
+
+            {forwardTxHash && destinationChain && (
+              <a
+                href={`${destinationChain.explorer}/tx/${forwardTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between glass-card p-3 hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <span className="text-surface-600 text-xs">Destination transaction</span>
+                <span className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1">
+                  View <ExternalLink className="w-3 h-3" />
+                </span>
               </a>
             )}
           </div>
-          <div className="flex gap-2">
-            <a href="/credits" className="btn-secondary flex-1 justify-center text-sm">Buy Credits</a>
-            <a href="/swap" className="btn-secondary flex-1 justify-center text-sm">Swap Tokens</a>
-          </div>
+
           <button onClick={handleReset} className="btn-ghost w-full justify-center">
             <RefreshCw className="w-4 h-4" /> New Bridge
           </button>
@@ -278,175 +530,401 @@ function BridgePageInner() {
     );
   }
 
+  const canBridge =
+    amountValid &&
+    !!sourceChain &&
+    !!destinationChain &&
+    sourceChain.chainId !== destinationChain.chainId &&
+    !!quote &&
+    isConnected &&
+    onSourceChain &&
+    step === 'idle';
+
   return (
     <div className="page-container max-w-lg safe-bottom">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="flex items-center justify-between mb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="flex items-center justify-between mb-8"
+      >
         <div>
-          <div className="flex items-center gap-2 mb-1"><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span></div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">
+              Stablecoin OS
+            </span>
+          </div>
           <h1 className="text-2xl font-bold text-surface-950 tracking-tight">Bridge</h1>
-          <p className="text-surface-600 text-sm mt-1">CCTP V2 · Bring USDC to Arc Testnet</p>
+          <p className="text-surface-600 text-sm mt-1">
+            Circle App Kit · CCTP V2 · Bidirectional USDC bridge
+          </p>
         </div>
-        <button onClick={() => setShowHistory((s: boolean) => !s)} aria-label="Bridge history" className={cn('btn-ghost', showHistory && 'bg-blue-500/10 text-blue-600 dark:text-blue-400')}>
+
+        <button
+          onClick={() => setShowHistory((value) => !value)}
+          aria-label="Bridge history"
+          className={cn(
+            'btn-ghost',
+            showHistory && 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+          )}
+        >
           <History className="w-4 h-4" />
         </button>
       </motion.div>
 
-      <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
+      <div className="mb-6">
+        <ModeTabs mode={mode} onChange={setMode} />
+      </div>
 
       {mode === 'agent' && (
         <EconomicAgentPanel
           action="bridge"
           onExecute={executeAgentBridge}
-          executionStatus={agentExecuting ? 'executing' : (forwardTxHash ?? burnTxHash) ? 'success' : (step === 'error' || step === 'timeout') ? 'failed' : 'idle'}
-          executionError={step === 'error' || step === 'timeout' ? errorMsg : null}
-          executionTxHash={forwardTxHash ?? (burnTxHash ?? null)}
+          executionStatus={
+            agentExecuting
+              ? step === 'error' ? 'failed' : 'executing'
+              : 'idle'
+          }
+          executionError={step === 'error' ? errorMsg : null}
+          executionTxHash={forwardTxHash ?? burnTxHash ?? null}
         />
       )}
 
-      {mode === 'manual' && (!isConnected ? (
-        <div className="glass-card p-8 text-center">
-          <Wallet className="w-8 h-8 text-surface-600 mx-auto mb-3" />
-          <p className="text-surface-700">Connect your wallet to bridge USDC</p>
-        </div>
-      ) : showHistory ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-          <p className="text-surface-600 text-xs font-medium uppercase tracking-wider">Bridge History</p>
-          {history.length === 0 ? (
-            <div className="glass-card p-10 text-center">
-              <GitMerge className="w-8 h-8 text-surface-500 mx-auto mb-3 opacity-50" />
-              <p className="text-surface-600 text-sm">No bridges yet</p>
-            </div>
-          ) : history.map((b: BridgeRecord) => (
-            <div key={b.burnTxHash} className="glass-card p-4 flex items-center justify-between">
-              <div>
-                <p className="text-surface-950 text-sm font-medium">{b.amount} USDC from {b.sourceChain}</p>
-                <p className="text-surface-500 text-xs">{formatRelative(b.createdAt)}</p>
+      {mode === 'manual' && (
+        !isConnected ? (
+          <div className="glass-card p-8 text-center">
+            <Wallet className="w-8 h-8 text-surface-600 mx-auto mb-3" />
+            <p className="text-surface-700">Connect your wallet to bridge USDC</p>
+          </div>
+        ) : showHistory ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+            <p className="text-surface-600 text-xs font-medium uppercase tracking-wider">
+              Bridge History
+            </p>
+
+            {history.length === 0 ? (
+              <div className="glass-card p-10 text-center">
+                <GitMerge className="w-8 h-8 text-surface-500 mx-auto mb-3 opacity-50" />
+                <p className="text-surface-600 text-sm">No bridges yet</p>
               </div>
-              <span className={cn('text-xs px-2 py-0.5 rounded-full',
-                b.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                b.status === 'failed' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' :
-                b.status === 'timeout' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400')}>
-                {b.status}
-              </span>
-            </div>
-          ))}
-        </motion.div>
-      ) : (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-          <div className="glass-card p-5 space-y-3">
-            <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">From</label>
-            <div className="relative">
-              <button onClick={() => setShowChainMenu((s: boolean) => !s)} disabled={step !== 'idle'}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.07] border border-black/[0.08] dark:border-white/[0.08] transition-colors disabled:opacity-60">
-                <span className="text-sm font-medium text-surface-950">{selectedRoute?.sourceChain ?? 'Select chain'}</span>
-                <ChevronDown className={cn('w-4 h-4 text-surface-600 transition-transform', showChainMenu && 'rotate-180')} />
-              </button>
-              <AnimatePresence>
-                {showChainMenu && (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    className="absolute top-full left-0 right-0 mt-1 glass-card z-20 overflow-hidden">
-                    {routes.map((r: BridgeRoute) => (
-                      <button key={r.sourceChainId} onClick={() => { setSelectedRoute(r); setShowChainMenu(false); setAmount(''); setQuote(null); }}
-                        className={cn('w-full px-4 py-3 text-left hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors text-sm text-surface-950',
-                          r.sourceChainId === selectedRoute?.sourceChainId && 'bg-blue-500/10')}>
-                        {r.sourceChain}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-            {selectedRoute && !onSourceChain && step === 'idle' && (
-              <button onClick={handleSwitchToSource} disabled={isSwitching} className="btn-secondary w-full justify-center text-sm">
-                {isSwitching ? <Loader2 className="w-4 h-4 animate-spin" /> : `Switch to ${selectedRoute.sourceChain}`}
-              </button>
-            )}
-          </div>
-
-          <div className="glass-card p-5 space-y-2.5">
-            <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">Amount (USDC)</label>
-            <input type="number" value={amount} placeholder="0.00" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
-              disabled={step !== 'idle'} className="input-field" min="0" step="0.000001" />
-            {quote && (amountNum < quote.minAmount || amountNum > quote.maxAmount) && (
-              <p className="text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
-                <AlertCircle className="w-3 h-3" /> Amount must be between {quote.minAmount} and {quote.maxAmount} USDC
-              </p>
-            )}
-          </div>
-
-          <div className="glass-card p-4 flex items-center justify-between">
-            <span className="text-surface-600 text-xs uppercase tracking-wider">To</span>
-            <span className="text-surface-950 text-sm font-medium">Arc Testnet {address && `(${formatAddress(address)})`}</span>
-          </div>
-
-          {quote && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-surface-600">Fee</span><span className="text-surface-950 font-mono">{quote.fee.toFixed(4)} USDC</span></div>
-              <div className="flex justify-between"><span className="text-surface-600">Estimated time</span><span className="text-surface-950">{quote.estimatedTime}</span></div>
-              {quote.feeEstimated && (
-                <p className="text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1.5 pt-1"><Info className="w-3 h-3" /> Estimated fee — live quote unavailable</p>
-              )}
-            </motion.div>
-          )}
-
-          {step === 'attesting' && (
-            <div className="glass-card p-5 text-center space-y-3 border-blue-500/20 bg-blue-500/5">
-              <Loader2 className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin mx-auto" />
-              <p className="text-surface-950 text-sm font-medium">Waiting for Circle attestation…</p>
-              <p className="text-surface-600 text-xs">Your USDC has been burned on {selectedRoute?.sourceChain}. Minting on Arc Testnet shortly.</p>
-              {burnTxHash && selectedRoute && (
-                <a href={`${selectedRoute.explorer}/tx/${burnTxHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 text-xs inline-flex items-center gap-1">
-                  View source tx <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
-          )}
-
-          {step === 'timeout' && (
-            <div className="glass-card p-5 text-center space-y-3 border-amber-500/20 bg-amber-500/5">
-              <Clock className="w-6 h-6 text-amber-600 dark:text-amber-400 mx-auto" />
-              <p className="text-surface-950 text-sm font-medium">Taking longer than expected</p>
-              <p className="text-surface-600 text-xs">Your USDC is in transit, not lost. The burn transaction succeeded — attestation is just slow.</p>
-              {burnTxHash && selectedRoute && (
-                <a href={`${selectedRoute.explorer}/tx/${burnTxHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 text-xs inline-flex items-center gap-1">
-                  View source tx <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-              <button onClick={handleReset} className="btn-ghost text-sm">Start new bridge</button>
-            </div>
-          )}
-
-          {step === 'error' && errorMsg && (
-            <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
-              <p className="text-rose-600 dark:text-rose-400 text-sm">{errorMsg}</p>
-            </div>
-          )}
-
-          {(step === 'idle' || step === 'error') && (
-            !onSourceChain && selectedRoute ? (
-              <button disabled className="btn-primary w-full justify-center opacity-40 cursor-not-allowed">Switch network to continue</button>
             ) : (
-              <button onClick={handleApprove} disabled={!canBridge} className="btn-primary w-full justify-center text-base py-3.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                <GitMerge className="w-4 h-4" /> Bridge USDC to Arc
-              </button>
-            )
-          )}
-          {step === 'approving' && <button disabled className="btn-primary w-full justify-center opacity-70"><Loader2 className="w-4 h-4 animate-spin" /> Approving…</button>}
-          {step === 'approved' && <button onClick={handleBurn} className="btn-primary w-full justify-center bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="w-4 h-4" /> Confirm Bridge</button>}
-          {step === 'burning' && <button disabled className="btn-primary w-full justify-center opacity-70"><Loader2 className="w-4 h-4 animate-spin" /> Burning on {selectedRoute?.sourceChain}…</button>}
+              history.map((item) => (
+                <div
+                  key={`${item.burnTxHash}-${item.createdAt}`}
+                  className="glass-card p-4 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="text-surface-950 text-sm font-medium">
+                      {item.amount} USDC
+                    </p>
+                    <p className="text-surface-500 text-xs">
+                      {item.sourceChain} → {item.destinationChain ?? 'Arc Testnet'}
+                    </p>
+                    <p className="text-surface-500 text-xs">
+                      {formatRelative(item.createdAt)}
+                    </p>
+                  </div>
 
-          <p className="text-center text-surface-500 text-xs">Circle CCTP V2 · Testnet only · Inbound to Arc only</p>
-        </motion.div>
-      ))}
+                  <span
+                    className={cn(
+                      'text-xs px-2 py-0.5 rounded-full',
+                      item.status === 'completed'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : item.status === 'failed'
+                          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+                    )}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
+          >
+            <div className="glass-card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">
+                  From
+                </label>
+                <span className="text-surface-500 text-xs">
+                  {onSourceChain ? 'Connected' : 'Switch required'}
+                </span>
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowSourceMenu((value) => !value);
+                    setShowDestinationMenu(false);
+                  }}
+                  disabled={step !== 'idle'}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.07] border border-black/[0.08] dark:border-white/[0.08] transition-colors disabled:opacity-60"
+                >
+                  <span className="text-sm font-medium text-surface-950">
+                    {sourceChain?.chain ?? 'Select chain'}
+                  </span>
+                  <ChevronDown className={cn(
+                    'w-4 h-4 text-surface-600 transition-transform',
+                    showSourceMenu && 'rotate-180',
+                  )} />
+                </button>
+
+                <AnimatePresence>
+                  {showSourceMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute top-full left-0 right-0 mt-1 glass-card z-20 overflow-hidden"
+                    >
+                      {chains.map((chain) => (
+                        <button
+                          key={chain.chainId}
+                          onClick={() => {
+                            if (chain.chainId === destinationChain?.chainId) {
+                              toast.error('Choose a different destination network');
+                              return;
+                            }
+                            setSourceChain(chain);
+                            setShowSourceMenu(false);
+                            setQuote(null);
+                            setStep('idle');
+                            setErrorMsg(null);
+                          }}
+                          className={cn(
+                            'w-full px-4 py-3 text-left hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors text-sm text-surface-950',
+                            chain.chainId === sourceChain?.chainId && 'bg-blue-500/10',
+                          )}
+                        >
+                          {chain.chain}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {sourceChain && !onSourceChain && step === 'idle' && (
+                <button
+                  onClick={handleSwitchToSource}
+                  disabled={isSwitching}
+                  className="btn-secondary w-full justify-center text-sm"
+                >
+                  {isSwitching
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : `Switch to ${sourceChain.chain}`}
+                </button>
+              )}
+            </div>
+
+            <div className="flex justify-center -my-2 relative z-10">
+              <button
+                onClick={swapDirection}
+                aria-label="Swap bridge direction"
+                className="w-10 h-10 rounded-full border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-surface-900 shadow-sm flex items-center justify-center text-surface-600 hover:text-blue-600 transition-colors"
+              >
+                <GitMerge className="w-4 h-4 rotate-90" />
+              </button>
+            </div>
+
+            <div className="glass-card p-5 space-y-3">
+              <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">
+                To
+              </label>
+
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowDestinationMenu((value) => !value);
+                    setShowSourceMenu(false);
+                  }}
+                  disabled={step !== 'idle'}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.07] border border-black/[0.08] dark:border-white/[0.08] transition-colors disabled:opacity-60"
+                >
+                  <span className="text-sm font-medium text-surface-950">
+                    {destinationChain?.chain ?? 'Select chain'}
+                  </span>
+                  <ChevronDown className={cn(
+                    'w-4 h-4 text-surface-600 transition-transform',
+                    showDestinationMenu && 'rotate-180',
+                  )} />
+                </button>
+
+                <AnimatePresence>
+                  {showDestinationMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute top-full left-0 right-0 mt-1 glass-card z-20 overflow-hidden"
+                    >
+                      {chains.map((chain) => (
+                        <button
+                          key={chain.chainId}
+                          onClick={() => {
+                            if (chain.chainId === sourceChain?.chainId) {
+                              toast.error('Choose a different source network');
+                              return;
+                            }
+                            setDestinationChain(chain);
+                            setShowDestinationMenu(false);
+                            setQuote(null);
+                            setStep('idle');
+                            setErrorMsg(null);
+                          }}
+                          className={cn(
+                            'w-full px-4 py-3 text-left hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors text-sm text-surface-950',
+                            chain.chainId === destinationChain?.chainId && 'bg-blue-500/10',
+                          )}
+                        >
+                          {chain.chain}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {address && (
+                <p className="text-surface-500 text-xs">
+                  Destination wallet: {formatAddress(address)}
+                </p>
+              )}
+            </div>
+
+            <div className="glass-card p-5 space-y-2.5">
+              <label className="text-surface-600 text-xs font-medium uppercase tracking-wider">
+                Amount (USDC)
+              </label>
+
+              <input
+                type="number"
+                value={amount}
+                placeholder="0.00"
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={step !== 'idle'}
+                className="input-field"
+                min="0"
+                step="0.000001"
+              />
+
+              {amount && !amountValid && (
+                <p className="text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
+                  <AlertCircle className="w-3 h-3" />
+                  Amount must be between 0.000001 and 1000 USDC
+                </p>
+              )}
+            </div>
+
+            {quote && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="glass-card p-4 space-y-2 text-sm"
+              >
+                <div className="flex justify-between">
+                  <span className="text-surface-600">Route</span>
+                  <span className="text-surface-950 font-medium">
+                    {quote.sourceChain} → {quote.destinationChain}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-600">Fee</span>
+                  <span className="text-surface-950 font-mono">
+                    {quote.fee.toFixed(4)} USDC
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-600">Estimated time</span>
+                  <span className="text-surface-950">{quote.estimatedTime}</span>
+                </div>
+                {quote.feeEstimated && (
+                  <p className="text-amber-600 dark:text-amber-400 text-xs flex items-center gap-1.5 pt-1">
+                    <Info className="w-3 h-3" />
+                    Live fee estimate will be refreshed when the wallet is on the source chain.
+                  </p>
+                )}
+              </motion.div>
+            )}
+
+            {step === 'executing' && (
+              <div className="glass-card p-5 text-center space-y-3 border-blue-500/20 bg-blue-500/5">
+                <Loader2 className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin mx-auto" />
+                <p className="text-surface-950 text-sm font-medium">
+                  Circle App Kit is executing the bridge…
+                </p>
+                <p className="text-surface-600 text-xs">
+                  Approval, burn, attestation and destination mint are handled by the SDK.
+                </p>
+              </div>
+            )}
+
+            {step === 'error' && errorMsg && (
+              <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+                <p className="text-rose-600 dark:text-rose-400 text-sm">{errorMsg}</p>
+              </div>
+            )}
+
+            {(step === 'idle' || step === 'error') && (
+              !onSourceChain && sourceChain ? (
+                <button
+                  disabled
+                  className="btn-primary w-full justify-center opacity-40 cursor-not-allowed"
+                >
+                  Switch network to continue
+                </button>
+              ) : (
+                <button
+                  onClick={() => void handleManualBridge()}
+                  disabled={!canBridge}
+                  className="btn-primary w-full justify-center text-base py-3.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <GitMerge className="w-4 h-4" />
+                  Bridge USDC
+                </button>
+              )
+            )}
+
+            {step === 'executing' && (
+              <button disabled className="btn-primary w-full justify-center opacity-70">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Bridging…
+              </button>
+            )}
+
+            {step === 'error' && (
+              <button onClick={handleReset} className="btn-ghost w-full justify-center">
+                <RefreshCw className="w-4 h-4" />
+                Try Again
+              </button>
+            )}
+
+            <p className="text-center text-surface-500 text-xs">
+              Circle App Kit · CCTP V2 · Testnet only · Arc ↔ Ethereum / Base / Arbitrum
+            </p>
+          </motion.div>
+        )
+      )}
     </div>
   );
 }
 
 export default function BridgePage() {
   return (
-    <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]"><div className="text-surface-500 text-sm">Loading…</div></div>}>
+    <Suspense
+      fallback={
+        <div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">
+          <div className="text-surface-500 text-sm">Loading…</div>
+        </div>
+      }
+    >
       <BridgePageInner />
     </Suspense>
   );

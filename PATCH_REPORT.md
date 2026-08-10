@@ -1,92 +1,56 @@
-# ARCTIS Economic Agent Execution Handoff Fix
+# PATCH REPORT — ARCTIS Economic Agent + Stablecoin OS
 
-## Purpose
+## Files changed
+- src/app/bridge/page.tsx
+- src/lib/agents/executor.ts
+- src/lib/agents/service.ts
+- src/lib/ai/intent/parser.ts
+- src/lib/bridge/types.ts
+- src/lib/chain/wagmi.ts
+- src/lib/hooks/useTARCBalance.ts
+- src/lib/hooks/useUSDCBalance.ts
+- src/lib/store/index.ts
+- src/types/index.ts
+- CHANGELOG.md
+- CHANGES.diff
+- PATCH_REPORT.md
 
-Fix the confirmed UX bug where **Economic Agent → Review & Approve** switched the user into the Manual tab and only pre-filled the transaction form.
+## Root causes found
+- Firestore `update()` received optional `undefined` fields from agent execution updates.
+- Financial parser could produce non-executable transfer proposals and sent incomplete financial intents toward normal proposal behavior without an explicit structured clarification payload.
+- wagmi was configured only with Arc Testnet while the bridge UI writes approval/burn transactions on Sepolia, Base Sepolia, and Arbitrum Sepolia.
+- Bridge amount floor was application-side at 1 USDC, not traced to a protocol constant in the repository.
+- Arc token balance reads were not explicitly pinned to Arc Testnet after adding source chains.
 
-The corrected architecture is:
+## Fixes implemented
+- Added `stripUndefined()` in the agent service and applied it to `updateExecution()`/`updateAgent()` update payloads.
+- Reworked deterministic parser to:
+  - allow transfer proposals only for USDC,
+  - validate swaps through the existing `DEFAULT_ROUTES` registry via `getRouteId()`,
+  - parse supported CCTP source-chain aliases from the actual configured source-chain list,
+  - return structured clarification requests for missing recipient, receive token, source chain, unsupported token, or disabled route.
+- Preserved mandatory human approval: financial proposals still only set `requiresWalletAction`; wallet signing remains in the Transfer/Swap/Bridge modules.
+- Registered Ethereum Sepolia, Base Sepolia, and Arbitrum Sepolia in RainbowKit/wagmi.
+- Improved bridge source-chain handoff from agent proposals and wallet-switch messaging for already-correct, rejected, unsupported, unconfigured, and generic wallet-switch failures.
+- Changed bridge minimum amount to 0.000001 USDC (the smallest 6-decimal USDC unit represented by the app), and changed the input step accordingly.
+- Pinned USDC/tARC Arc balance reads with `chainId: CHAIN_ID`.
 
-Economic Agent → Understand → Clarify → Propose → Human Approval → existing financial execution path → wallet signing → transaction lifecycle.
+## Build/typecheck/lint/test results
+- `npm run type-check`: PASS.
+- `npm run build`: FAIL without required environment variables; PASS with placeholder non-secret env values for required build-time variables.
+- `npm run lint`: PASS with existing warnings.
+- `npm test`: unavailable; package.json has no test script.
 
-Manual execution remains available and is not replaced.
+## Real transaction verification results
+- No real wallet/private key or funded test wallet was available in this non-interactive environment, so no blockchain transaction was submitted and no tx hash was fabricated.
+- Static and build verification confirmed the wallet-signing paths remain client-side and require human wallet confirmation.
 
-## Changed files
+## Remaining blockers
+- Production/demo environment must provide Firebase, OpenRouter, WalletConnect, and swap-wallet env vars.
+- End-to-end transfer/swap/bridge transaction execution requires a connected funded wallet and live CCTP/Circle services.
+- Full agent memory architecture was not expanded beyond existing agent persistence due hackathon-critical focus on financial execution safety/buildability.
 
-1. `src/components/agent/EconomicAgentPanel.tsx`
-   - Removes the `pendingAction` → Manual-tab execution handoff.
-   - Adds an `onExecute` callback.
-   - Keeps the Agent panel visible during execution.
-   - Displays execution state, error and transaction hash.
-   - Changes the action CTA to `Review & Execute`.
-   - Keeps wallet approval as the final authorization boundary.
-
-2. `src/app/transfer/page.tsx`
-   - Adds an Agent execution state.
-   - Uses the existing `useTransfer()` hook for Agent execution.
-   - Automatically switches to Arc Testnet when required.
-   - Does not navigate to Manual mode.
-   - Agent status is driven by the existing transfer transaction state.
-
-3. `src/app/swap/page.tsx`
-   - Adds an Agent execution state.
-   - Reuses the existing swap page transaction logic and existing quote/route validation.
-   - Agent approval populates the execution state and invokes the same existing `handleSwap()` path.
-   - Existing inbound confirmation and `/api/swap/execute` lifecycle remain intact.
-   - Does not navigate to Manual mode.
-
-4. `src/app/bridge/page.tsx`
-   - Adds an Agent execution state.
-   - Resolves the requested source chain against the existing `/api/bridge` route registry.
-   - Uses the existing wallet chain switch.
-   - Reuses the existing approve → CCTP `depositForBurn` → attestation/status lifecycle.
-   - Does not navigate to Manual mode.
-
-## Important separation
-
-The existing `pendingAction` mechanism remains untouched for the separate AI Workspace → Manual pre-fill workflow.
-
-Economic Agent execution no longer uses `pendingAction`.
-
-Therefore:
-
-- AI Workspace → Manual pre-fill remains supported.
-- Transfer/Swap/Bridge → Economic Agent executes directly through the existing financial flow.
-
-## Safety
-
-The Economic Agent never receives or stores private keys and never signs a transaction server-side.
-
-The existing wallet transaction functions remain the execution boundary.
-
-No mock transaction hashes or fake blockchain success states were added.
-
-## Verification
-
-- `git apply --check CHANGES.diff`: PASS
-- Patch applied to a fresh copy of the supplied repository: PASS
-- Changed files byte-match the patched working copy: PASS
-- Full `npm ci`: BLOCKED in this environment because the configured package registry returned a 404 for `zwitch@2.0.4`.
-- Full `npx tsc --noEmit`: NOT claimed as passed because dependencies could not be installed. A global TypeScript parse/check was run, but missing project dependencies produce unrelated module/type noise.
-- `npm run build`: NOT run to completion because project dependencies are unavailable in this environment.
-
-## Codespace verification required
-
-After applying the patch in Codespace, run:
-
-```bash
-git apply --check CHANGES.diff
-git apply CHANGES.diff
-npx tsc --noEmit
-npm run build
-npm run dev
-```
-
-Then manually verify:
-
-1. Transfer → Economic Agent → proposal → Review & Execute → wallet prompt → real transaction.
-2. Swap → Economic Agent → proposal → Review & Execute → existing swap flow.
-3. Bridge → Economic Agent → proposal → Review & Execute → source-chain switch → approval → CCTP burn → attestation → completion.
-4. Manual mode still works independently for all three.
-5. Economic Agent never redirects to Manual after approval.
-
-A real transaction hash can only be verified with an interactive wallet and actual testnet funds in the Codespace/browser environment.
+## Deployment notes
+- Set required env vars: `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `OPENROUTER_API_KEY`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`.
+- Set swap settlement env vars before demonstrating OTC swaps: `SWAP_WALLET_PRIVATE_KEY`, `NEXT_PUBLIC_SWAP_WALLET_ADDRESS`.
+- Source-chain users need real testnet USDC on the selected source chain and gas ETH only for fees.

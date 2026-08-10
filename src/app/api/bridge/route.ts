@@ -1,28 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CCTP_SOURCE_CHAINS, ARC_CCTP, CHAIN_ID } from '@/lib/contracts';
+import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
 
 export async function GET(_req: NextRequest) {
-  const routes = Object.entries(CCTP_SOURCE_CHAINS).map(([chainId, chain]) => ({
-    sourceChain: chain.name,
-    sourceChainId: Number(chainId),
-    sourceDomain: chain.domain,
+  const chains = Object.entries(CCTP_BRIDGE_CHAINS).map(([chainId, chain]) => ({
+    chain: chain.name,
+    chainId: Number(chainId),
+    domain: chain.domain,
     usdc: chain.usdc,
-    tokenMessengerV2: chain.tokenMessengerV2,
     explorer: chain.explorer,
+    appKitChain: chain.appKitChain,
     enabled: true,
   }));
 
   return NextResponse.json({
     available: true,
-    mode: 'cctp_v2_forwarding_service',
-    direction: 'inbound_only',
-    destination: {
-      chain: 'Arc Testnet',
-      chainId: CHAIN_ID,
-      domain: ARC_CCTP.domain,
-      messageTransmitterV2: ARC_CCTP.messageTransmitterV2,
-      tokenMessengerV2: ARC_CCTP.tokenMessengerV2,
-    },
-    routes,
+    mode: 'circle_app_kit',
+    protocol: 'CCTP V2',
+    direction: 'bidirectional',
+    destination: null,
+    chains,
+    routes: chains.flatMap((source) =>
+      chains
+        .filter((destination) => destination.chainId !== source.chainId)
+        .map((destination) => ({
+          sourceChain: source.chain,
+          sourceChainId: source.chainId,
+          sourceDomain: source.domain,
+          destinationChain: destination.chain,
+          destinationChainId: destination.chainId,
+          destinationDomain: destination.domain,
+          enabled: true,
+        })),
+    ),
   });
 }

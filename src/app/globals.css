@@ -354,3 +354,8 @@ body {
 [data-rk] {
   --rk-fonts-body: var(--font-geist-sans);
 }
+
+/* Global RTL support for Arabic and other right-to-left locales. */
+html[dir='rtl'] body { direction: rtl; }
+html[dir='rtl'] input,
+html[dir='rtl'] textarea { text-align: right; }

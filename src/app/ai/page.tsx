@@ -20,6 +20,7 @@ import { useLanguagePreference } from '@/lib/hooks/useLanguagePreference';
 import { cn, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { AIMode, AIMessage, AISession } from '@/types';
+import type { PendingFinancialAction } from '@/lib/store';
 
 // ============================================================
 // AI Workspace — Full production chat with streaming
@@ -168,6 +169,7 @@ function MessageBubble({ msg, isLast, onRegenerate }: { msg: AIMessage; isLast: 
 }
 
 export default function AIWorkspacePage() {
+  const router = useRouter();
   const { address } = useAccount();
   const { languageInstruction } = useLanguagePreference();
   const { state: voiceState, supported: voiceSupported, toggle: toggleVoice } = useSpeechInput({
@@ -177,6 +179,11 @@ export default function AIWorkspacePage() {
   });
   const { aiMode, setAIMode, currentSession, setCurrentSession, updateCurrentSession, addAISession, aiSessions } = useAppStore();
   const [input, setInput] = useState('');
+  // A financial action still awaiting a missing field (recipient,
+  // destination token, or source chain). Sent back to /api/ai/chat on
+  // the next turn so the stateless API can resolve it. Cleared whenever
+  // the server returns a complete proposal, or gives up on the reply.
+  const [pendingClarification, setPendingClarification] = useState<PendingFinancialAction | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [showModeSelector, setShowModeSelector] = useState(false);
@@ -213,6 +220,7 @@ export default function AIWorkspacePage() {
   }, [messages, streamContent]);
 
   const startNewSession = useCallback(() => {
+    setPendingClarification(null);
     const session: AISession = {
       id: generateId(),
       walletAddress: address ?? 'anonymous',
@@ -265,8 +273,16 @@ export default function AIWorkspacePage() {
     return () => window.removeEventListener('keydown', handler);
   }, [isLoading]);
 
-  const runCompletion = useCallback(async (historyBefore: AIMessage[], userMsg: AIMessage) => {
+  const runCompletion = useCallback(async (
+    historyBefore: AIMessage[],
+    userMsg: AIMessage,
+    pendingOverride?: PendingFinancialAction | null,
+  ) => {
     abortRef.current = new AbortController();
+    // Explicit override (e.g. a quick-action button starting a brand new
+    // clarification) wins; otherwise fall back to whatever clarification
+    // is already in progress from a previous turn.
+    const pendingToSend = pendingOverride !== undefined ? pendingOverride : pendingClarification;
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -274,6 +290,7 @@ export default function AIWorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         signal: abortRef.current.signal,
         body: JSON.stringify({
+          pendingAction: pendingToSend ?? undefined,
           messages: [...historyBefore, userMsg].map((m) => ({
             role: m.role,
             content: m.attachments?.length
@@ -301,6 +318,7 @@ export default function AIWorkspacePage() {
       let fullContent = '';
       let creditsUsed = 0;
       let actionProposal: AIMessage['actionProposal'];
+      let clarification: AIMessage['clarification'];
       let streamError: string | null = null;
 
       if (reader) {
@@ -314,6 +332,7 @@ export default function AIWorkspacePage() {
               const data = JSON.parse(line.slice(6));
               if (data.chunk) { fullContent += data.chunk; setStreamContent(fullContent); }
               if (data.actionProposal) { actionProposal = data.actionProposal; }
+              if (data.clarification) { clarification = data.clarification; }
               if (data.done) { creditsUsed = data.creditsUsed ?? 0; }
               if (data.error) { streamError = data.error; }
             } catch { /* skip malformed SSE line */ }
@@ -323,6 +342,11 @@ export default function AIWorkspacePage() {
 
       if (streamError) throw new Error(streamError);
 
+      // A complete proposal or a resolved-away clarification both clear the
+      // pending state; an unresolved clarification carries forward to the
+      // next turn so the API can pick up where it left off.
+      setPendingClarification(clarification ?? null);
+
       const assistantMsg: AIMessage = {
         id: generateId(),
         role: 'assistant',
@@ -330,6 +354,7 @@ export default function AIWorkspacePage() {
         timestamp: new Date().toISOString(),
         creditsUsed,
         actionProposal,
+        clarification,
       };
 
       const updatedSession = {
@@ -362,7 +387,11 @@ export default function AIWorkspacePage() {
       setStreamContent('');
       abortRef.current = null;
     }
-  }, [currentSession, aiMode, address, updateCurrentSession, languageInstruction]);
+  }, [currentSession, aiMode, address, updateCurrentSession, languageInstruction, pendingClarification]);
+
+  // Financial quick actions (Transfer/Swap/Bridge) now live contextually on
+  // their own pages under the Economic Agent tab — see the "Move USDC"
+  // buttons below, which just navigate there instead of running inline.
 
   const handleSend = useCallback(async () => {
     const content = input.trim();
@@ -556,6 +585,23 @@ export default function AIWorkspacePage() {
             </div>
             <h2 className="text-surface-950 font-semibold text-2xl mb-2 tracking-tight">{currentMode.label}</h2>
             <p className="text-surface-600 text-sm max-w-xs leading-relaxed mb-9">{currentMode.description}</p>
+
+            <div className="mb-9 w-full max-w-lg">
+              <p className="text-surface-500 text-xs uppercase tracking-wide font-semibold mb-2.5">Move USDC</p>
+              <div className="grid grid-cols-3 gap-2.5">
+                {(['transfer', 'swap', 'bridge'] as const).map((action) => (
+                  <button
+                    key={action}
+                    onClick={() => router.push(`${ACTION_ROUTE[action]}?mode=agent`)}
+                    className="px-3 py-3 rounded-xl glass-card-hover text-surface-800 text-sm font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200"
+                  >
+                    {ACTION_LABEL[action]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-surface-500 text-[11px] mt-2">Opens the ARCTIS Economic Agent right on that page.</p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-lg w-full">
               {[
                 'Explain how USDC transfers work on Arc',

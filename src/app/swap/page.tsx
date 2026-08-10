@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -13,6 +14,8 @@ import { CONTRACTS, ERC20_ABI, txUrl } from '@/lib/contracts';
 import { useMemo as useArcMemo } from '@/lib/memo/useMemo';
 import { useAppStore } from '@/lib/store';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
+import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
+import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
 import toast from 'react-hot-toast';
 
 type SwapToken = 'USDC' | 'tUSDC' | 'tARC';
@@ -25,7 +28,8 @@ const TOKEN_CONTRACT: Record<SwapToken, `0x${string}`> = {
 interface SwapQuote { routeId: string; fromToken: string; toToken: string; inputAmount: number; outputAmount: number; fee: number; feeBps: number; rate: number; routeAvailable: boolean; }
 interface SwapRecord { id: string; fromToken: string; toToken: string; inputAmount: number; outputAmount: number; status: string; inboundTxHash: string; outboundTxHash?: string; createdAt: string; }
 
-export default function SwapPage() {
+function SwapPageInner() {
+  const searchParams = useSearchParams();
   const { isConnected, address } = useAccount();
   const { dispatchMemo } = useArcMemo();
   const { writeContractAsync } = useWriteContract();
@@ -45,8 +49,13 @@ export default function SwapPage() {
 
   const [history, setHistory] = useState<SwapRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [mode, setMode] = useState<ExecutionMode>('manual');
   const { pendingAction, setPendingAction } = useAppStore();
   const { getAuthHeaders } = useWalletAuth();
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'agent') setMode('agent');
+  }, [searchParams]);
 
   // AI-orchestrated handoff — pre-fill from a confirmed chat proposal,
   // then clear it so it's only ever consumed once.
@@ -145,7 +154,13 @@ export default function SwapPage() {
         <button onClick={() => setShowHistory((s: boolean) => !s)} aria-label="Swap history" className={cn('btn-ghost', showHistory && 'bg-blue-500/10 text-blue-600 dark:text-blue-400')}><History className="w-4 h-4" /></button>
       </motion.div>
 
-      {!isConnected ? (
+      <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
+
+      {mode === 'agent' && (
+        <EconomicAgentPanel action="swap" onApproved={() => setMode('manual')} />
+      )}
+
+      {mode === 'manual' && (!isConnected ? (
         <div className="glass-card p-10 text-center"><Wallet className="w-10 h-10 text-surface-600 mx-auto mb-3" /><p className="text-surface-700 text-sm">Connect your wallet to swap tokens</p></div>
       ) : showHistory ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
@@ -227,7 +242,15 @@ export default function SwapPage() {
           )}
           <p className="text-center text-surface-500 text-xs">OTC settlement · Arc Testnet only</p>
         </motion.div>
-      )}
+      ))}
     </div>
+  );
+}
+
+export default function SwapPage() {
+  return (
+    <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]"><div className="text-surface-500 text-sm">Loading…</div></div>}>
+      <SwapPageInner />
+    </Suspense>
   );
 }

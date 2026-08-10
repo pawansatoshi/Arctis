@@ -109,7 +109,12 @@ export interface AIMessage {
   creditsUsed?: number;
   tokens?: { prompt: number; completion: number };
   attachments?: AIAttachment[];
-  actionProposal?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChainId?: number; createdAt: number };
+  actionProposal?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChain?: string; sourceChainId?: number; createdAt: number };
+  // A financial action still missing a required field — the message content
+  // already contains the question; this carries the state to resolve on
+  // the user's next reply. Distinct from actionProposal, which is only
+  // ever set once every required field is present and validated.
+  clarification?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChain?: string; sourceChainId?: number; missing: 'recipient' | 'toToken' | 'sourceChain' | 'full'; error?: string; createdAt: number };
 }
 
 export interface AIAttachment {

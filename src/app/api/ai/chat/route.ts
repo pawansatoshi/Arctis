@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { routeAIStream, routeAIRequest, MODE_PROMPTS } from '@/lib/ai/router';
 import { deductCredits, getCreditBalance } from '@/lib/credits/engine';
 import { obs } from '@/lib/observability/logger';
-import { parseFinancialIntent, describeIntent } from '@/lib/ai/intent/parser';
+import { parseFinancialIntent, describeIntent, resolveClarification, clarificationQuestion } from '@/lib/ai/intent/parser';
+import type { PendingFinancialAction } from '@/lib/store';
 import type { AIMode } from '@/types';
 
 // ============================================================
@@ -35,12 +36,23 @@ export async function POST(req: NextRequest) {
     const {
       messages, mode = 'build' as AIMode,
       walletAddress, sessionId, stream = false,
-      _systemOverride,
+      _systemOverride, pendingAction, lockedAction,
     } = body as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       mode?: AIMode; walletAddress?: string;
       sessionId?: string; stream?: boolean;
       _systemOverride?: string;
+      // A financial action still awaiting clarification from a previous
+      // turn (see PendingFinancialAction.missing) — the client resends
+      // this each turn since the API itself is stateless.
+      pendingAction?: PendingFinancialAction;
+      // Set when the request comes from the embedded Economic Agent panel
+      // on the Transfer/Swap/Bridge pages (as opposed to the general /ai
+      // workspace). Every reply in that context is about this one action —
+      // this call is NEVER allowed to fall through to the generic LLM,
+      // which would otherwise "explain" bank/school/file transfers etc.
+      // instead of proposing a USDC transaction.
+      lockedAction?: 'transfer' | 'swap' | 'bridge';
     };
 
     if (!messages?.length) {
@@ -54,9 +66,75 @@ export async function POST(req: NextRequest) {
     // wallet signing happens entirely client-side on the existing
     // Transfer/Swap/Bridge pages once the user confirms.
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-    const intent = parseFinancialIntent(lastUserMessage);
+
+    // If a prior turn is still waiting on a clarification (missing recipient,
+    // destination token, or source chain), try to resolve it from this reply
+    // before attempting a fresh parse. A pending action with `missing` set
+    // is never itself a proposal — only the resolved, complete result is.
+    let intent: PendingFinancialAction | null = null;
+    if (pendingAction?.missing) {
+      const resolved = resolveClarification(pendingAction, lastUserMessage);
+      const extractedSomething =
+        resolved.recipient !== pendingAction.recipient ||
+        resolved.toToken !== pendingAction.toToken ||
+        resolved.sourceChain !== pendingAction.sourceChain ||
+        !resolved.missing;
+      if (extractedSomething) {
+        intent = resolved;
+      } else if (lockedAction) {
+        // Locked context (embedded agent panel): don't restart or fall
+        // through to generic chat — just re-ask the same question so the
+        // amount/token already gathered isn't lost.
+        intent = pendingAction;
+      } else {
+        // Unrestricted /ai workspace: the reply didn't resolve anything,
+        // so don't loop on the stale clarification forever — fall back to
+        // a fresh parse (the user may have started an unrelated request).
+        intent = parseFinancialIntent(lastUserMessage);
+      }
+    } else {
+      intent = parseFinancialIntent(lastUserMessage);
+    }
+
+    // Inside a locked financial context, every message is about that one
+    // action. If the deterministic parser didn't recognize it as-is (e.g.
+    // the user typed "5 USDC to 0x..." without the verb, or mentioned a
+    // different action by mistake), retry once with the locked verb
+    // implied, then fall back to a full clarification for the locked
+    // action — never to the unrestricted generic LLM.
+    if (lockedAction && (!intent || intent.action !== lockedAction)) {
+      const reparsed = parseFinancialIntent(`${lockedAction} ${lastUserMessage}`);
+      intent = reparsed && reparsed.action === lockedAction
+        ? reparsed
+        : { action: lockedAction, amount: '', missing: 'full', createdAt: Date.now() };
+    }
 
     if (intent) {
+      if (intent.missing) {
+        // Still incomplete — ask the next question and keep the
+        // clarification state alive for the following turn.
+        void obs.info('ai', 'Financial intent awaiting clarification', { action: intent.action, missing: intent.missing }, walletAddress);
+        const question = clarificationQuestion(intent);
+        const clarificationPayload = { ...intent, missing: intent.missing };
+
+        if (stream) {
+          const encoder = new TextEncoder();
+          const readable = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ clarification: clarificationPayload, chunk: question })}\n\n`));
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, creditsUsed: 0 })}\n\n`));
+              controller.close();
+            },
+          });
+          return new Response(readable, {
+            headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+          });
+        }
+
+        return NextResponse.json({ content: question, clarification: clarificationPayload, creditsUsed: 0 });
+      }
+
+      // Complete and validated — safe to propose.
       void obs.info('ai', 'Financial intent detected', { action: intent.action }, walletAddress);
       const summary = describeIntent(intent);
 

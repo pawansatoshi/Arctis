@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -14,6 +15,8 @@ import { buildBridgeMemo } from '@/lib/memo/service';
 import { useMemo as useArcMemo } from '@/lib/memo/useMemo';
 import { useAppStore } from '@/lib/store';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
+import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
+import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
 import toast from 'react-hot-toast';
 
 interface BridgeRoute {
@@ -39,7 +42,8 @@ function addressToBytes32(address: string): `0x${string}` {
   return `0x${'0'.repeat(24)}${address.slice(2).toLowerCase()}` as `0x${string}`;
 }
 
-export default function BridgePage() {
+function BridgePageInner() {
+  const searchParams = useSearchParams();
   const { isConnected, address, chainId } = useAccount();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
@@ -74,6 +78,11 @@ export default function BridgePage() {
 
   const [history, setHistory] = useState<BridgeRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [mode, setMode] = useState<ExecutionMode>('manual');
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'agent') setMode('agent');
+  }, [searchParams]);
 
   const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash, query: { enabled: !!approveTxHash } });
   const { isSuccess: burnConfirmed } = useWaitForTransactionReceipt({ hash: burnTxHash, query: { enabled: !!burnTxHash } });
@@ -242,7 +251,13 @@ export default function BridgePage() {
         </button>
       </motion.div>
 
-      {!isConnected ? (
+      <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
+
+      {mode === 'agent' && (
+        <EconomicAgentPanel action="bridge" onApproved={() => setMode('manual')} />
+      )}
+
+      {mode === 'manual' && (!isConnected ? (
         <div className="glass-card p-8 text-center">
           <Wallet className="w-8 h-8 text-surface-600 mx-auto mb-3" />
           <p className="text-surface-700">Connect your wallet to bridge USDC</p>
@@ -377,7 +392,15 @@ export default function BridgePage() {
 
           <p className="text-center text-surface-500 text-xs">Circle CCTP V2 · Testnet only · Inbound to Arc only</p>
         </motion.div>
-      )}
+      ))}
     </div>
+  );
+}
+
+export default function BridgePage() {
+  return (
+    <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]"><div className="text-surface-500 text-sm">Loading…</div></div>}>
+      <BridgePageInner />
+    </Suspense>
   );
 }

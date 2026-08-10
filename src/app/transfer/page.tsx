@@ -22,6 +22,8 @@ import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
 import { isValidAddress, copyToClipboard, getTxExplorerUrl, formatAddress } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
+import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
+import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
 import toast from 'react-hot-toast';
 
 // ============================================================
@@ -38,11 +40,13 @@ function TransferPageInner() {
 
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
+  const [mode, setMode] = useState<ExecutionMode>('manual');
   const { pendingAction, setPendingAction } = useAppStore();
 
   useEffect(() => {
     const to = searchParams.get('to');
     if (to) setToAddress(to);
+    if (searchParams.get('mode') === 'agent') setMode('agent');
   }, [searchParams]);
 
   // AI-orchestrated handoff — pre-fill from a confirmed chat proposal,
@@ -101,6 +105,17 @@ function TransferPageInner() {
         <p className="text-surface-600 text-sm mt-1">Transfer USDC on Arc Testnet · Verified on-chain</p>
       </motion.div>
 
+      {/* Manual / Economic Agent switcher */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <ModeTabs mode={mode} onChange={setMode} />
+      </motion.div>
+
+      {mode === 'agent' && (
+        <EconomicAgentPanel action="transfer" onApproved={() => setMode('manual')} />
+      )}
+
+      {mode === 'manual' && (
+      <>
       {/* Main transfer card */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -325,6 +340,8 @@ function TransferPageInner() {
           </div>
         </div>
       </motion.div>
+      </>
+      )}
     </div>
   );
 }

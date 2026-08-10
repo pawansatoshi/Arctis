@@ -1,0 +1,320 @@
+diff --git a/src/app/bridge/page.tsx b/src/app/bridge/page.tsx
+index f03e1bd..5ab3429 100644
+--- a/src/app/bridge/page.tsx
++++ b/src/app/bridge/page.tsx
+@@ -1,6 +1,6 @@
+ 'use client';
+ 
+-import { useState, useEffect, Suspense } from 'react';
++import { useState, useEffect, useCallback, Suspense } from 'react';
+ import { useSearchParams } from 'next/navigation';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
+@@ -79,6 +79,8 @@ function BridgePageInner() {
+   const [history, setHistory] = useState<BridgeRecord[]>([]);
+   const [showHistory, setShowHistory] = useState(false);
+   const [mode, setMode] = useState<ExecutionMode>('manual');
++  const [agentExecuting, setAgentExecuting] = useState(false);
++  const [agentSwitching, setAgentSwitching] = useState(false);
+ 
+   useEffect(() => {
+     if (searchParams.get('mode') === 'agent') setMode('agent');
+@@ -144,6 +146,45 @@ function BridgePageInner() {
+     return () => clearInterval(interval);
+   }, [step, burnTxHash, amount, dispatchMemo, selectedRoute]);
+ 
++  const executeAgentBridge = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
++    if (!proposal.amount) throw new Error('Bridge proposal is incomplete');
++    setAmount(proposal.amount);
++    if (proposal.sourceChainId) {
++      const match = routes.find((r) => r.sourceChainId === proposal.sourceChainId);
++      if (!match) throw new Error('Requested bridge source chain is not supported by the configured CCTP routes');
++      setSelectedRoute(match);
++    }
++    setAgentExecuting(true);
++  }, [routes]);
++
++  useEffect(() => {
++    if (!agentExecuting || !selectedRoute || !quote || step !== 'idle' || !isConnected) return;
++    if (chainId !== selectedRoute.sourceChainId) {
++      if (agentSwitching) return;
++      setAgentSwitching(true);
++      void switchChainAsync({ chainId: selectedRoute.sourceChainId })
++        .catch((err) => {
++          toast.error((err as Error).message || 'Unable to switch to the bridge source chain');
++          setAgentExecuting(false);
++        })
++        .finally(() => setAgentSwitching(false));
++      return;
++    }
++    void handleApprove();
++  }, [agentExecuting, selectedRoute, quote, step, isConnected, chainId, agentSwitching]);
++
++  useEffect(() => {
++    if (!agentExecuting || step !== 'approved') return;
++    void handleBurn();
++  }, [agentExecuting, step]);
++
++  useEffect(() => {
++    if (agentExecuting && (step === 'completed' || step === 'error' || step === 'timeout')) {
++      setAgentExecuting(false);
++      setAgentSwitching(false);
++    }
++  }, [agentExecuting, step]);
++
+   const amountNum = parseFloat(amount);
+   const amountValid = amount !== '' && !isNaN(amountNum) && amountNum > 0 &&
+     (!quote || (amountNum >= quote.minAmount && amountNum <= quote.maxAmount));
+@@ -254,7 +295,13 @@ function BridgePageInner() {
+       <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
+ 
+       {mode === 'agent' && (
+-        <EconomicAgentPanel action="bridge" onApproved={() => setMode('manual')} />
++        <EconomicAgentPanel
++          action="bridge"
++          onExecute={executeAgentBridge}
++          executionStatus={agentExecuting ? (step === 'error' || step === 'timeout' ? 'failed' : step === 'completed' ? 'success' : 'executing') : 'idle'}
++          executionError={step === 'error' || step === 'timeout' ? errorMsg : null}
++          executionTxHash={forwardTxHash ?? (burnTxHash ?? null)}
++        />
+       )}
+ 
+       {mode === 'manual' && (!isConnected ? (
+diff --git a/src/app/swap/page.tsx b/src/app/swap/page.tsx
+index 60c68b3..b61c1f2 100644
+--- a/src/app/swap/page.tsx
++++ b/src/app/swap/page.tsx
+@@ -1,6 +1,6 @@
+ 'use client';
+ 
+-import { useState, useEffect, Suspense } from 'react';
++import { useState, useEffect, useCallback, Suspense } from 'react';
+ import { useSearchParams } from 'next/navigation';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+@@ -50,6 +50,7 @@ function SwapPageInner() {
+   const [history, setHistory] = useState<SwapRecord[]>([]);
+   const [showHistory, setShowHistory] = useState(false);
+   const [mode, setMode] = useState<ExecutionMode>('manual');
++  const [agentExecuting, setAgentExecuting] = useState(false);
+   const { pendingAction, setPendingAction } = useAppStore();
+   const { getAuthHeaders } = useWalletAuth();
+ 
+@@ -124,6 +125,23 @@ function SwapPageInner() {
+     } catch (err) { setErrorMsg((err as Error).message); setStep('error'); }
+   };
+ 
++  const executeAgentSwap = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
++    if (!proposal.amount || !proposal.fromToken || !proposal.toToken) throw new Error('Swap proposal is incomplete');
++    setFromToken(proposal.fromToken as SwapToken);
++    setToToken(proposal.toToken as SwapToken);
++    setAmount(proposal.amount);
++    setAgentExecuting(true);
++  }, []);
++
++  useEffect(() => {
++    if (!agentExecuting || !isConnected || step !== 'idle' || !quote || quote.routeAvailable === false) return;
++    void handleSwap();
++  }, [agentExecuting, isConnected, step, quote]);
++
++  useEffect(() => {
++    if (agentExecuting && (step === 'completed' || step === 'error')) setAgentExecuting(false);
++  }, [agentExecuting, step]);
++
+   const handleReset = () => { setStep('idle'); setAmount(''); setQuote(null); setInboundTxHash(undefined); setOutboundTxHash(null); setErrorMsg(null); };
+ 
+   if (step === 'completed') {
+@@ -157,7 +175,13 @@ function SwapPageInner() {
+       <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
+ 
+       {mode === 'agent' && (
+-        <EconomicAgentPanel action="swap" onApproved={() => setMode('manual')} />
++        <EconomicAgentPanel
++          action="swap"
++          onExecute={executeAgentSwap}
++          executionStatus={agentExecuting ? (step === 'error' ? 'failed' : step === 'completed' ? 'success' : 'executing') : 'idle'}
++          executionError={step === 'error' ? errorMsg : null}
++          executionTxHash={outboundTxHash ?? (inboundTxHash ?? null)}
++        />
+       )}
+ 
+       {mode === 'manual' && (!isConnected ? (
+diff --git a/src/app/transfer/page.tsx b/src/app/transfer/page.tsx
+index 5537892..e178d18 100644
+--- a/src/app/transfer/page.tsx
++++ b/src/app/transfer/page.tsx
+@@ -41,6 +41,7 @@ function TransferPageInner() {
+   const [toAddress, setToAddress] = useState('');
+   const [amount, setAmount] = useState('');
+   const [mode, setMode] = useState<ExecutionMode>('manual');
++  const [agentExecuting, setAgentExecuting] = useState(false);
+   const { pendingAction, setPendingAction } = useAppStore();
+ 
+   useEffect(() => {
+@@ -80,6 +81,30 @@ function TransferPageInner() {
+     await refetch();
+   }, [canSubmit, transfer, toAddress, amount, note, refetch]);
+ 
++  const executeAgentTransfer = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
++    if (!proposal.recipient || !proposal.amount) throw new Error('Transfer proposal is incomplete');
++    setToAddress(proposal.recipient);
++    setAmount(proposal.amount);
++    setAgentExecuting(true);
++  }, []);
++
++  useEffect(() => {
++    if (!agentExecuting || !isConnected) return;
++    if (!isCorrectChain) {
++      void switchToArc().catch((err) => {
++        toast.error((err as Error).message || 'Unable to switch to Arc Testnet');
++        setAgentExecuting(false);
++      });
++      return;
++    }
++    if (!isPending && !isConfirming && !isSuccess && !isError) {
++      void transfer({ to: toAddress, amount, note: undefined }).catch((err) => {
++        toast.error((err as Error).message || 'Transfer failed');
++        setAgentExecuting(false);
++      });
++    }
++  }, [agentExecuting, isConnected, isCorrectChain, switchToArc, isPending, isConfirming, isSuccess, isError, transfer, toAddress, amount]);
++
+   const handleReset = useCallback(() => {
+     reset();
+     setToAddress('');
+@@ -91,6 +116,7 @@ function TransferPageInner() {
+   // Fire Transaction Memo once, after transfer confirms — non-blocking, never surfaced to user on failure
+   useEffect(() => {
+     if (isSuccess && txHash) {
++      if (agentExecuting) setAgentExecuting(false);
+       void dispatchMemo(buildTransferMemo(txHash, toAddress.endsWith('.arc') ? toAddress : undefined, note || undefined));
+     }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -111,7 +137,13 @@ function TransferPageInner() {
+       </motion.div>
+ 
+       {mode === 'agent' && (
+-        <EconomicAgentPanel action="transfer" onApproved={() => setMode('manual')} />
++        <EconomicAgentPanel
++          action="transfer"
++          onExecute={executeAgentTransfer}
++          executionStatus={agentExecuting ? (isError ? 'failed' : isSuccess ? 'success' : 'executing') : 'idle'}
++          executionError={isError ? (error as Error)?.message : null}
++          executionTxHash={txHash}
++        />
+       )}
+ 
+       {mode === 'manual' && (
+diff --git a/src/components/agent/EconomicAgentPanel.tsx b/src/components/agent/EconomicAgentPanel.tsx
+index 2059d1d..ca5bdf2 100644
+--- a/src/components/agent/EconomicAgentPanel.tsx
++++ b/src/components/agent/EconomicAgentPanel.tsx
+@@ -4,28 +4,15 @@ import { useState, useRef, useEffect, useCallback } from 'react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import { useAccount } from 'wagmi';
+ import { Bot, User, Send, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
+-import { useAppStore } from '@/lib/store';
+ import type { PendingFinancialAction } from '@/lib/store';
+ import { cn, generateId } from '@/lib/utils';
+ import toast from 'react-hot-toast';
+ 
+ // ============================================================
+-// ARCTIS Economic Agent — embedded, contextual chat panel
+-// ============================================================
+-// This is the "Economic Agent" mode for Transfer / Swap / Bridge.
+-// It is an orchestration layer only:
+-//   Understand → Propose → Approve → Execute
+-// It never signs a transaction and never talks to the blockchain
+-// directly. "Approve" just hands the parsed, validated plan to the
+-// SAME existing manual Transfer/Swap/Bridge form via the existing
+-// `pendingAction` store hand-off — from there it's the same real
+-// wallet flow the Manual tab already uses.
+-//
+-// `action` locks this panel to a single financial action so a
+-// message like "transfer" is never routed to the generic LLM (which
+-// would otherwise answer with bank/school/file-transfer explanations
+-// unrelated to USDC). See lockedAction handling in
+-// /api/ai/chat/route.ts.
++// ARCTIS Economic Agent — embedded, contextual financial execution panel.
++// Understand → Clarify → Propose → Human Approve → Execute.
++// The panel never signs or holds keys. After approval it invokes the
++// existing Transfer/Swap/Bridge execution path supplied by the page.
+ // ============================================================
+ 
+ type LockedAction = 'transfer' | 'swap' | 'bridge';
+@@ -116,29 +103,36 @@ function ProposalCard({
+         )}
+       </div>
+       <p className="text-surface-600 text-xs leading-relaxed">
+-        Nothing is signed yet. Approving switches to the Manual tab, pre-filled — you still review and sign with your own wallet there.
++        Nothing is signed yet. Approval starts the existing wallet execution flow for this action. Your wallet remains the final authorization boundary.
+       </p>
+       <div className="flex gap-2 pt-0.5">
+         <button onClick={onCancel} className="btn-ghost text-xs px-3 py-2 flex-1">
+           Cancel
+         </button>
+         <button onClick={onApprove} className="btn-primary text-xs px-3 py-2 flex-1">
+-          Review &amp; Approve
++          Review &amp; Execute
+         </button>
+       </div>
+     </div>
+   );
+ }
+ 
++export type AgentExecutionStatus = 'idle' | 'executing' | 'success' | 'failed';
++
+ export function EconomicAgentPanel({
+   action,
+-  onApproved,
++  onExecute,
++  executionStatus = 'idle',
++  executionError,
++  executionTxHash,
+ }: {
+   action: LockedAction;
+-  onApproved: () => void;
++  onExecute: (proposal: PendingFinancialAction) => void | Promise<void>;
++  executionStatus?: AgentExecutionStatus;
++  executionError?: string | null;
++  executionTxHash?: string | null;
+ }) {
+   const { address } = useAccount();
+-  const setPendingAction = useAppStore((s) => s.setPendingAction);
+ 
+   const [messages, setMessages] = useState<AgentPanelMessage[]>([]);
+   const [input, setInput] = useState('');
+@@ -151,10 +145,11 @@ export function EconomicAgentPanel({
+   }, [messages, isLoading]);
+ 
+   const handleApprove = useCallback((proposal: PendingFinancialAction) => {
+-    setPendingAction(proposal);
+-    toast.success('Proposal approved — review and sign in Manual mode');
+-    onApproved();
+-  }, [setPendingAction, onApproved]);
++    void Promise.resolve(onExecute(proposal)).catch(() => {
++      // The page owns the actual error state; this catch prevents an
++      // unhandled promise rejection from the presentation layer.
++    });
++  }, [onExecute]);
+ 
+   const handleCancel = useCallback((msgId: string) => {
+     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, proposal: undefined } : m)));
+@@ -223,6 +218,17 @@ export function EconomicAgentPanel({
+         </div>
+       </div>
+ 
++      {executionStatus !== 'idle' && (
++        <div className="mb-3 rounded-xl border border-black/[0.06] dark:border-white/[0.07] bg-surface-0/60 dark:bg-surface-200/50 p-3">
++          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-surface-500">
++            <span className={cn('w-2 h-2 rounded-full', executionStatus === 'success' ? 'bg-emerald-500' : executionStatus === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse')} />
++            {executionStatus === 'executing' ? 'Executing with your wallet' : executionStatus === 'success' ? 'Confirmed' : 'Execution failed'}
++          </div>
++          {executionTxHash && <p className="mt-1 text-[11px] font-mono text-surface-600 break-all">TX: {executionTxHash}</p>}
++          {executionError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{executionError}</p>}
++        </div>
++      )}
++
+       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 space-y-4 min-h-[220px]">
+         {messages.length === 0 && (
+           <div className="text-center py-8 px-2">

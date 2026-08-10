@@ -1,0 +1,204 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { routeAIStream, routeAIRequest, MODE_PROMPTS } from '@/lib/ai/router';
+import { deductCredits, getCreditBalance } from '@/lib/credits/engine';
+import { obs } from '@/lib/observability/logger';
+import { parseFinancialIntent, describeIntent, resolveClarification, clarificationQuestion } from '@/lib/ai/intent/parser';
+import type { PendingFinancialAction } from '@/lib/store';
+import type { AIMode } from '@/types';
+
+// ============================================================
+// POST /api/ai/chat — ARCTIS AI Workspace
+//
+// Model selection is fully automatic and never trusted from the
+// client — only `mode` (which selects a persona/system prompt) is
+// accepted. Backend routing (registry, health, provider) is never
+// exposed in responses, logs the user can see, or ledger text.
+// ============================================================
+
+const ESTIMATED_MIN_CREDITS = 2;
+const GENERIC_ERROR = 'ARCTIS AI is temporarily busy — please try again in a moment.';
+
+function publicAiError(error: Error): string {
+  if (/api key|OPENROUTER|provider|model|fetch|network|credits|Firebase|configured/i.test(error.message)) {
+    return `AI provider/configuration error: ${error.message}`;
+  }
+  return GENERIC_ERROR;
+}
+
+function modeLabel(mode: AIMode): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+export async function POST(req: NextRequest) {
+  const start = Date.now();
+  try {
+    const body = await req.json();
+    const {
+      messages, mode = 'build' as AIMode,
+      walletAddress, sessionId, stream = false,
+      _systemOverride, pendingAction,
+    } = body as {
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      mode?: AIMode; walletAddress?: string;
+      sessionId?: string; stream?: boolean;
+      _systemOverride?: string;
+      // A financial action still awaiting clarification from a previous
+      // turn (see PendingFinancialAction.missing) — the client resends
+      // this each turn since the API itself is stateless.
+      pendingAction?: PendingFinancialAction;
+    };
+
+    if (!messages?.length) {
+      return NextResponse.json({ error: 'messages required' }, { status: 400 });
+    }
+
+    // ── Financial intent detection (orchestration only) ─────
+    // Deterministic parse, never an LLM call — if the user's message
+    // matches a Transfer/Swap/Bridge pattern, we hand back a *proposed
+    // plan* for the user to confirm. We never execute anything here;
+    // wallet signing happens entirely client-side on the existing
+    // Transfer/Swap/Bridge pages once the user confirms.
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+
+    // If a prior turn is still waiting on a clarification (missing recipient,
+    // destination token, or source chain), try to resolve it from this reply
+    // before attempting a fresh parse. A pending action with `missing` set
+    // is never itself a proposal — only the resolved, complete result is.
+    let intent: PendingFinancialAction | null = null;
+    if (pendingAction?.missing) {
+      const resolved = resolveClarification(pendingAction, lastUserMessage);
+      const extractedSomething =
+        resolved.recipient !== pendingAction.recipient ||
+        resolved.toToken !== pendingAction.toToken ||
+        resolved.sourceChain !== pendingAction.sourceChain ||
+        !resolved.missing;
+      // If the reply didn't resolve anything, don't loop on the stale
+      // clarification forever — fall back to a fresh parse (the user may
+      // have started an unrelated request or a different action).
+      intent = extractedSomething ? resolved : parseFinancialIntent(lastUserMessage);
+    } else {
+      intent = parseFinancialIntent(lastUserMessage);
+    }
+
+    if (intent) {
+      if (intent.missing) {
+        // Still incomplete — ask the next question and keep the
+        // clarification state alive for the following turn.
+        void obs.info('ai', 'Financial intent awaiting clarification', { action: intent.action, missing: intent.missing }, walletAddress);
+        const question = clarificationQuestion(intent);
+        const clarificationPayload = { ...intent, missing: intent.missing };
+
+        if (stream) {
+          const encoder = new TextEncoder();
+          const readable = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ clarification: clarificationPayload, chunk: question })}\n\n`));
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, creditsUsed: 0 })}\n\n`));
+              controller.close();
+            },
+          });
+          return new Response(readable, {
+            headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+          });
+        }
+
+        return NextResponse.json({ content: question, clarification: clarificationPayload, creditsUsed: 0 });
+      }
+
+      // Complete and validated — safe to propose.
+      void obs.info('ai', 'Financial intent detected', { action: intent.action }, walletAddress);
+      const summary = describeIntent(intent);
+
+      if (stream) {
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ actionProposal: intent, chunk: `Here's what I understood: **${summary}**. Review the details and confirm to continue — nothing happens until you approve it in your wallet.` })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, creditsUsed: 0 })}\n\n`));
+            controller.close();
+          },
+        });
+        return new Response(readable, {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+        });
+      }
+
+      return NextResponse.json({
+        content: `Here's what I understood: ${summary}. Review the details and confirm to continue.`,
+        actionProposal: intent,
+        creditsUsed: 0,
+      });
+    }
+
+    const systemPrompt = _systemOverride ?? MODE_PROMPTS[mode as AIMode] ?? MODE_PROMPTS.build;
+
+    // ── Credit pre-check ────────────────────────────────────
+    if (walletAddress) {
+      const balance = await getCreditBalance(walletAddress);
+      if (balance.remaining < ESTIMATED_MIN_CREDITS) {
+        return NextResponse.json({
+          error: 'Insufficient credits. Please purchase more credits to continue.',
+          creditsRemaining: balance.remaining,
+          creditsNeeded: ESTIMATED_MIN_CREDITS,
+        }, { status: 402 });
+      }
+    }
+
+    void obs.info('ai', 'Chat request', { mode, stream }, walletAddress);
+
+    const ledgerDescription = `ARCTIS AI — ${modeLabel(mode)} mode`;
+
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            const result = await routeAIStream(
+              { messages, systemPrompt },
+              (chunk) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`));
+              },
+              req.signal
+            );
+
+            if (walletAddress && result.creditsUsed > 0) {
+              const ok = await deductCredits(walletAddress, result.creditsUsed, ledgerDescription, result.model, sessionId);
+              if (!ok) {
+                void obs.warn('credits', 'Credit deduction failed post-stream', { walletAddress, needed: result.creditsUsed });
+              }
+            }
+
+            controller.enqueue(encoder.encode(
+              `data: ${JSON.stringify({ done: true, creditsUsed: result.creditsUsed })}\n\n`
+            ));
+            void obs.info('ai', 'Stream complete', { ms: Date.now() - start, credits: result.creditsUsed, model: result.model }, walletAddress);
+          } catch (err) {
+            const e = err as Error;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: publicAiError(e) })}\n\n`));
+            void obs.error('ai', 'Stream error', { error: e.message }, walletAddress);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      });
+    }
+
+    // Non-streaming
+    const result = await routeAIRequest({ messages, systemPrompt });
+
+    if (walletAddress && result.creditsUsed > 0) {
+      await deductCredits(walletAddress, result.creditsUsed, ledgerDescription, result.model, sessionId);
+    }
+
+    void obs.info('ai', 'Chat complete', { ms: Date.now() - start, credits: result.creditsUsed, model: result.model }, walletAddress);
+    return NextResponse.json({ content: result.content, creditsUsed: result.creditsUsed, usage: result.usage });
+  } catch (err) {
+    const e = err as Error;
+    void obs.error('ai', 'Chat route error', { error: e.message });
+    return NextResponse.json({ error: publicAiError(e) }, { status: 500 });
+  }
+}

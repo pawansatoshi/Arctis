@@ -4,28 +4,15 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { Bot, User, Send, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
-import { useAppStore } from '@/lib/store';
 import type { PendingFinancialAction } from '@/lib/store';
 import { cn, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 // ============================================================
-// ARCTIS Economic Agent — embedded, contextual chat panel
-// ============================================================
-// This is the "Economic Agent" mode for Transfer / Swap / Bridge.
-// It is an orchestration layer only:
-//   Understand → Propose → Approve → Execute
-// It never signs a transaction and never talks to the blockchain
-// directly. "Approve" just hands the parsed, validated plan to the
-// SAME existing manual Transfer/Swap/Bridge form via the existing
-// `pendingAction` store hand-off — from there it's the same real
-// wallet flow the Manual tab already uses.
-//
-// `action` locks this panel to a single financial action so a
-// message like "transfer" is never routed to the generic LLM (which
-// would otherwise answer with bank/school/file-transfer explanations
-// unrelated to USDC). See lockedAction handling in
-// /api/ai/chat/route.ts.
+// ARCTIS Economic Agent — embedded, contextual financial execution panel.
+// Understand → Clarify → Propose → Human Approve → Execute.
+// The panel never signs or holds keys. After approval it invokes the
+// existing Transfer/Swap/Bridge execution path supplied by the page.
 // ============================================================
 
 type LockedAction = 'transfer' | 'swap' | 'bridge';
@@ -116,29 +103,36 @@ function ProposalCard({
         )}
       </div>
       <p className="text-surface-600 text-xs leading-relaxed">
-        Nothing is signed yet. Approving switches to the Manual tab, pre-filled — you still review and sign with your own wallet there.
+        Nothing is signed yet. Approval starts the existing wallet execution flow for this action. Your wallet remains the final authorization boundary.
       </p>
       <div className="flex gap-2 pt-0.5">
         <button onClick={onCancel} className="btn-ghost text-xs px-3 py-2 flex-1">
           Cancel
         </button>
         <button onClick={onApprove} className="btn-primary text-xs px-3 py-2 flex-1">
-          Review &amp; Approve
+          Review &amp; Execute
         </button>
       </div>
     </div>
   );
 }
 
+export type AgentExecutionStatus = 'idle' | 'executing' | 'success' | 'failed';
+
 export function EconomicAgentPanel({
   action,
-  onApproved,
+  onExecute,
+  executionStatus = 'idle',
+  executionError,
+  executionTxHash,
 }: {
   action: LockedAction;
-  onApproved: () => void;
+  onExecute: (proposal: PendingFinancialAction) => void | Promise<void>;
+  executionStatus?: AgentExecutionStatus;
+  executionError?: string | null;
+  executionTxHash?: string | null;
 }) {
   const { address } = useAccount();
-  const setPendingAction = useAppStore((s) => s.setPendingAction);
 
   const [messages, setMessages] = useState<AgentPanelMessage[]>([]);
   const [input, setInput] = useState('');
@@ -151,10 +145,11 @@ export function EconomicAgentPanel({
   }, [messages, isLoading]);
 
   const handleApprove = useCallback((proposal: PendingFinancialAction) => {
-    setPendingAction(proposal);
-    toast.success('Proposal approved — review and sign in Manual mode');
-    onApproved();
-  }, [setPendingAction, onApproved]);
+    void Promise.resolve(onExecute(proposal)).catch(() => {
+      // The page owns the actual error state; this catch prevents an
+      // unhandled promise rejection from the presentation layer.
+    });
+  }, [onExecute]);
 
   const handleCancel = useCallback((msgId: string) => {
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, proposal: undefined } : m)));
@@ -222,6 +217,17 @@ export function EconomicAgentPanel({
           <div className="text-surface-500 text-[11px]">Understand → Propose → Approve → Execute</div>
         </div>
       </div>
+
+      {executionStatus !== 'idle' && (
+        <div className="mb-3 rounded-xl border border-black/[0.06] dark:border-white/[0.07] bg-surface-0/60 dark:bg-surface-200/50 p-3">
+          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-surface-500">
+            <span className={cn('w-2 h-2 rounded-full', executionStatus === 'success' ? 'bg-emerald-500' : executionStatus === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse')} />
+            {executionStatus === 'executing' ? 'Executing with your wallet' : executionStatus === 'success' ? 'Confirmed' : 'Execution failed'}
+          </div>
+          {executionTxHash && <p className="mt-1 text-[11px] font-mono text-surface-600 break-all">TX: {executionTxHash}</p>}
+          {executionError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{executionError}</p>}
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 space-y-4 min-h-[220px]">
         {messages.length === 0 && (

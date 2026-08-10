@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
@@ -79,6 +79,8 @@ function BridgePageInner() {
   const [history, setHistory] = useState<BridgeRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [mode, setMode] = useState<ExecutionMode>('manual');
+  const [agentExecuting, setAgentExecuting] = useState(false);
+  const [agentSwitching, setAgentSwitching] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('mode') === 'agent') setMode('agent');
@@ -143,6 +145,45 @@ function BridgePageInner() {
     }, STATUS_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [step, burnTxHash, amount, dispatchMemo, selectedRoute]);
+
+  const executeAgentBridge = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
+    if (!proposal.amount) throw new Error('Bridge proposal is incomplete');
+    setAmount(proposal.amount);
+    if (proposal.sourceChainId) {
+      const match = routes.find((r) => r.sourceChainId === proposal.sourceChainId);
+      if (!match) throw new Error('Requested bridge source chain is not supported by the configured CCTP routes');
+      setSelectedRoute(match);
+    }
+    setAgentExecuting(true);
+  }, [routes]);
+
+  useEffect(() => {
+    if (!agentExecuting || !selectedRoute || !quote || step !== 'idle' || !isConnected) return;
+    if (chainId !== selectedRoute.sourceChainId) {
+      if (agentSwitching) return;
+      setAgentSwitching(true);
+      void switchChainAsync({ chainId: selectedRoute.sourceChainId })
+        .catch((err) => {
+          toast.error((err as Error).message || 'Unable to switch to the bridge source chain');
+          setAgentExecuting(false);
+        })
+        .finally(() => setAgentSwitching(false));
+      return;
+    }
+    void handleApprove();
+  }, [agentExecuting, selectedRoute, quote, step, isConnected, chainId, agentSwitching]);
+
+  useEffect(() => {
+    if (!agentExecuting || step !== 'approved') return;
+    void handleBurn();
+  }, [agentExecuting, step]);
+
+  useEffect(() => {
+    if (agentExecuting && (step === 'completed' || step === 'error' || step === 'timeout')) {
+      setAgentExecuting(false);
+      setAgentSwitching(false);
+    }
+  }, [agentExecuting, step]);
 
   const amountNum = parseFloat(amount);
   const amountValid = amount !== '' && !isNaN(amountNum) && amountNum > 0 &&
@@ -254,7 +295,13 @@ function BridgePageInner() {
       <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
 
       {mode === 'agent' && (
-        <EconomicAgentPanel action="bridge" onApproved={() => setMode('manual')} />
+        <EconomicAgentPanel
+          action="bridge"
+          onExecute={executeAgentBridge}
+          executionStatus={agentExecuting ? 'executing' : (forwardTxHash ?? burnTxHash) ? 'success' : (step === 'error' || step === 'timeout') ? 'failed' : 'idle'}
+          executionError={step === 'error' || step === 'timeout' ? errorMsg : null}
+          executionTxHash={forwardTxHash ?? (burnTxHash ?? null)}
+        />
       )}
 
       {mode === 'manual' && (!isConnected ? (

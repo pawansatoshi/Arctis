@@ -41,6 +41,7 @@ function TransferPageInner() {
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<ExecutionMode>('manual');
+  const [agentExecuting, setAgentExecuting] = useState(false);
   const { pendingAction, setPendingAction } = useAppStore();
 
   useEffect(() => {
@@ -80,6 +81,30 @@ function TransferPageInner() {
     await refetch();
   }, [canSubmit, transfer, toAddress, amount, note, refetch]);
 
+  const executeAgentTransfer = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
+    if (!proposal.recipient || !proposal.amount) throw new Error('Transfer proposal is incomplete');
+    setToAddress(proposal.recipient);
+    setAmount(proposal.amount);
+    setAgentExecuting(true);
+  }, []);
+
+  useEffect(() => {
+    if (!agentExecuting || !isConnected) return;
+    if (!isCorrectChain) {
+      void switchToArc().catch((err) => {
+        toast.error((err as Error).message || 'Unable to switch to Arc Testnet');
+        setAgentExecuting(false);
+      });
+      return;
+    }
+    if (!isPending && !isConfirming && !isSuccess && !isError) {
+      void transfer({ to: toAddress, amount, note: undefined }).catch((err) => {
+        toast.error((err as Error).message || 'Transfer failed');
+        setAgentExecuting(false);
+      });
+    }
+  }, [agentExecuting, isConnected, isCorrectChain, switchToArc, isPending, isConfirming, isSuccess, isError, transfer, toAddress, amount]);
+
   const handleReset = useCallback(() => {
     reset();
     setToAddress('');
@@ -91,6 +116,7 @@ function TransferPageInner() {
   // Fire Transaction Memo once, after transfer confirms — non-blocking, never surfaced to user on failure
   useEffect(() => {
     if (isSuccess && txHash) {
+      if (agentExecuting) setAgentExecuting(false);
       void dispatchMemo(buildTransferMemo(txHash, toAddress.endsWith('.arc') ? toAddress : undefined, note || undefined));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,7 +137,13 @@ function TransferPageInner() {
       </motion.div>
 
       {mode === 'agent' && (
-        <EconomicAgentPanel action="transfer" onApproved={() => setMode('manual')} />
+        <EconomicAgentPanel
+          action="transfer"
+          onExecute={executeAgentTransfer}
+          executionStatus={agentExecuting ? (isError ? 'failed' : isSuccess ? 'success' : 'executing') : 'idle'}
+          executionError={isError ? error : null}
+          executionTxHash={txHash}
+        />
       )}
 
       {mode === 'manual' && (

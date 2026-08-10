@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
@@ -50,6 +50,7 @@ function SwapPageInner() {
   const [history, setHistory] = useState<SwapRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [mode, setMode] = useState<ExecutionMode>('manual');
+  const [agentExecuting, setAgentExecuting] = useState(false);
   const { pendingAction, setPendingAction } = useAppStore();
   const { getAuthHeaders } = useWalletAuth();
 
@@ -124,6 +125,23 @@ function SwapPageInner() {
     } catch (err) { setErrorMsg((err as Error).message); setStep('error'); }
   };
 
+  const executeAgentSwap = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
+    if (!proposal.amount || !proposal.fromToken || !proposal.toToken) throw new Error('Swap proposal is incomplete');
+    setFromToken(proposal.fromToken as SwapToken);
+    setToToken(proposal.toToken as SwapToken);
+    setAmount(proposal.amount);
+    setAgentExecuting(true);
+  }, []);
+
+  useEffect(() => {
+    if (!agentExecuting || !isConnected || step !== 'idle' || !quote || quote.routeAvailable === false) return;
+    void handleSwap();
+  }, [agentExecuting, isConnected, step, quote]);
+
+  useEffect(() => {
+    if (agentExecuting && (step === 'completed' || step === 'error')) setAgentExecuting(false);
+  }, [agentExecuting, step]);
+
   const handleReset = () => { setStep('idle'); setAmount(''); setQuote(null); setInboundTxHash(undefined); setOutboundTxHash(null); setErrorMsg(null); };
 
   if (step === 'completed') {
@@ -157,7 +175,13 @@ function SwapPageInner() {
       <div className="mb-6"><ModeTabs mode={mode} onChange={setMode} /></div>
 
       {mode === 'agent' && (
-        <EconomicAgentPanel action="swap" onApproved={() => setMode('manual')} />
+        <EconomicAgentPanel
+          action="swap"
+          onExecute={executeAgentSwap}
+          executionStatus={agentExecuting ? 'executing' : outboundTxHash ? 'success' : step === 'error' ? 'failed' : 'idle'}
+          executionError={step === 'error' ? errorMsg : null}
+          executionTxHash={outboundTxHash ?? (inboundTxHash ?? null)}
+        />
       )}
 
       {mode === 'manual' && (!isConnected ? (

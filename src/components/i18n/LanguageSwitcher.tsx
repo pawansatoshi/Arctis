@@ -6,19 +6,22 @@ import { usePathname } from 'next/navigation';
 import { LANGUAGES, useI18n, type Locale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
-export default function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+  inline?: boolean;
+}
+
+export default function LanguageSwitcher({ inline = false }: LanguageSwitcherProps) {
   const pathname = usePathname();
   const { locale, setLocale } = useI18n();
   const [open, setOpen] = useState(false);
   const current = LANGUAGES.find((l) => l.code === locale) ?? LANGUAGES[0];
 
-  // The landing page places the selector inside its real navigation flow.
-  // Keep the global fallback for the rest of the app, but never float it
-  // over the landing-page wallet/actions.
-  if (pathname === '/') return null;
+  // The landing page supplies an inline header instance. The global provider
+  // instance stays hidden there so it cannot float over wallet/actions.
+  if (pathname === '/' && !inline) return null;
 
   return (
-    <div className="fixed top-16 right-3 sm:top-4 sm:right-4 z-[100]">
+    <div className={cn(inline ? 'relative shrink-0' : 'fixed top-16 right-3 sm:top-4 sm:right-4 z-[100]')}>
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={`Change language. Current language: ${current.native}`}
@@ -37,7 +40,10 @@ export default function LanguageSwitcher() {
         <div
           role="menu"
           aria-label="Choose language"
-          className="absolute right-0 mt-2 w-56 max-h-[70vh] overflow-auto rounded-2xl border border-black/[0.08] dark:border-white/[0.10] bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl shadow-2xl shadow-black/10 p-1.5"
+          className={cn(
+            'absolute right-0 mt-2 w-56 max-h-[70vh] overflow-auto rounded-2xl border border-black/[0.08] dark:border-white/[0.10] bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl shadow-2xl shadow-black/10 p-1.5',
+            inline && 'z-[110]'
+          )}
         >
           <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-surface-400">
             Language

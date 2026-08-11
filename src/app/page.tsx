@@ -5,13 +5,16 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import {
   ArrowRight, Bot, ArrowLeftRight, GitMerge,
-  Sparkles, Shield, ChevronRight, Zap,
+  Sparkles, Shield, ChevronRight, Zap, Youtube,
 } from 'lucide-react';
 
 const ConnectButton = dynamic(
   () => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })),
   { ssr: false }
 );
+
+const DEMO_VIDEO_URL = 'https://www.youtube.com/watch?v=EaXlv4ajv8g';
+const DEMO_VIDEO_EMBED = 'https://www.youtube.com/embed/EaXlv4ajv8g?rel=0&modestbranding=1';
 
 const OS_PILLARS = [
   {
@@ -83,7 +86,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="relative z-10 pt-20 pb-28 px-6 text-center max-w-5xl mx-auto">
+      <section className="relative z-10 pt-20 pb-20 px-6 text-center max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -115,12 +118,52 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
+        {/* Demo video — responsive on desktop and mobile */}
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-16 max-w-4xl mx-auto"
+        >
+          <div className="text-center mb-5">
+            <p className="text-surface-950 font-semibold text-lg tracking-tight">See ARCTIS in action</p>
+            <p className="text-surface-600 text-sm mt-1">A quick demo of the platform on desktop and mobile.</p>
+          </div>
+
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-black/[0.08] dark:border-white/[0.10] bg-black shadow-2xl shadow-blue-500/10 ring-1 ring-black/[0.04] dark:ring-white/[0.05]">
+            <div className="aspect-video w-full">
+              <iframe
+                className="h-full w-full"
+                src={DEMO_VIDEO_EMBED}
+                title="ARCTIS Demo — Web3 Operating System for Humans and Agents"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href={DEMO_VIDEO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-surface-950 bg-surface-100 border border-black/[0.08] dark:border-white/[0.08] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+            >
+              <Youtube className="w-4 h-4 text-red-500" />
+              Watch on YouTube
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+            <span className="text-xs text-surface-500">Open the video on YouTube to visit the channel and explore more demos.</span>
+          </div>
+        </motion.div>
+
         {/* OS Pillar preview */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto"
+          transition={{ duration: 0.8, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto"
         >
           {OS_PILLARS.map((p) => (
             <div key={p.label} className={`glass-card p-4 text-left border ${p.border}`}>

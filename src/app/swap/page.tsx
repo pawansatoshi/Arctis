@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { useAccount, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
-import { Arc_Testnet } from '@circle-fin/app-kit/chains';
+import { ArcTestnet } from '@circle-fin/app-kit/chains';
 import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
 import { ArrowLeftRight, CheckCircle2, AlertCircle, Loader2, ExternalLink, ChevronDown, RefreshCw, History, Wallet, Info, ShieldCheck } from 'lucide-react';
 import { cn, formatRelative } from '@/lib/utils';
@@ -117,7 +117,7 @@ function SwapPageInner() {
     try {
       if (circlePair) {
         const provider = await connector.getProvider();
-        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [Arc_Testnet] } });
+        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
         const kit = new AppKit();
         const estimate = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: fromToken, tokenOut: toToken, amountIn: amountNum.toString(), config: { slippageBps: 100 } });
         const estimatedOutput = Number(estimate.estimatedOutput.amount);
@@ -185,7 +185,7 @@ function SwapPageInner() {
     try {
       if (chainId !== 5042002) await switchChainAsync({ chainId: 5042002 });
       const provider = await connector.getProvider();
-      const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [Arc_Testnet] } });
+      const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
       const kit = new AppKit();
       if (quote.rail === 'circle') {
         const estimate = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: fromToken, tokenOut: toToken, amountIn: amountNum.toString(), config: { slippageBps: 100 } });

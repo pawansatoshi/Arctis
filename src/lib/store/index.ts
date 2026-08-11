@@ -105,7 +105,7 @@ export const useAppStore = create<AppState>()(
 
       aiMode: 'build',
       setAIMode: (m) => set({ aiMode: m }),
-      aiModel: 'moonshot/kimi-k1-5-32k',
+      aiModel: '',
       setAIModel: (m) => set({ aiModel: m }),
 
       agents: [],

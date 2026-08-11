@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
-import { parseUnits } from 'viem';
-import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID } from '@/lib/contracts';
+import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
+import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_URL } from '@/lib/contracts';
 import { useAppStore } from '@/lib/store';
 import { parseTransactionError, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -19,10 +19,7 @@ function isPassportRecipient(value: string): boolean {
 async function resolveTransferRecipient(value: string): Promise<string> {
   const recipient = value.trim();
 
-  // Normal wallet address: no Passport lookup required.
-  if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) {
-    return recipient;
-  }
+  if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
 
   if (!isPassportRecipient(recipient)) {
     throw new Error('Enter a valid wallet address or Passport ID');
@@ -54,14 +51,38 @@ async function resolveTransferRecipient(value: string): Promise<string> {
   return data.walletAddress;
 }
 
-// ── Server boundary helpers ─────────────────────────────────
-// Replaces direct imports of '@/lib/firebase/transactions' and
-// '@/lib/observability/logger' (both 'server-only' / firebase-admin
-// modules) with calls to /api/transfer/record — the same
-// client → API route → Firebase Admin shape already used by
-// useTransfer's Swap/Bridge counterparts. Wallet signing below is
-// untouched; only record-keeping/logging moved behind the API.
+async function preflightTransfer(address: `0x${string}`, amount: string) {
+  const client = createPublicClient({ transport: http(RPC_URL) });
+  const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
 
+  const [nativeBalance, gasPrice, usdcBalance] = await Promise.all([
+    client.getBalance({ address }),
+    client.getGasPrice(),
+    client.readContract({
+      address: PRIMARY_CONTRACT,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [address],
+    }),
+  ]);
+
+  if (usdcBalance < requiredUsdc) {
+    throw new Error(
+      `Insufficient USDC. You have ${formatUnits(usdcBalance, PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`,
+    );
+  }
+
+  // Conservative source-side gas envelope. This is only a preflight guard;
+  // the wallet remains responsible for the final transaction gas estimate.
+  const requiredNativeGas = gasPrice * 100_000n * 2n;
+  if (nativeBalance < requiredNativeGas) {
+    throw new Error(
+      `Insufficient ARC for network fees. You need approximately ${formatEther(requiredNativeGas)} ARC to submit this transfer. No USDC was sent.`,
+    );
+  }
+}
+
+// ── Server boundary helpers ─────────────────────────────────
 async function createTransferRecord(payload: {
   walletAddress: string;
   toAddress: string;
@@ -113,14 +134,12 @@ export function useTransfer() {
 
   const { writeContractAsync, isPending } = useWriteContract();
 
-  // Real receipt monitoring
   const { isLoading: isConfirming, isSuccess: receiptSuccess, isError: receiptError } =
     useWaitForTransactionReceipt({
       hash: txHash,
       query: { enabled: !!txHash },
     });
 
-  // Handle confirmed
   if (receiptSuccess && txHash && localIdRef.current && !isSuccess) {
     setIsSuccess(true);
     updateTransaction(localIdRef.current, { status: 'confirmed', txHash });
@@ -134,7 +153,6 @@ export function useTransfer() {
     toast.success('Transfer confirmed on Arc!');
   }
 
-  // Handle on-chain failure
   if (receiptError && txHash && localIdRef.current && !isSuccess) {
     updateTransaction(localIdRef.current, { status: 'failed', txHash });
     if (firestoreIdRef.current) {
@@ -156,11 +174,9 @@ export function useTransfer() {
     let resolvedTo: string;
     try {
       resolvedTo = await resolveTransferRecipient(to);
+      await preflightTransfer(address, amount);
     } catch (err) {
-      const msg = err instanceof Error
-        ? err.message
-        : 'Unable to resolve recipient';
-
+      const msg = err instanceof Error ? err.message : 'Unable to verify transfer';
       setError(msg);
       toast.error(msg);
       return;

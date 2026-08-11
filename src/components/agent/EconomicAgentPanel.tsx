@@ -105,6 +105,12 @@ function ProposalCard({
             </span>
           </div>
         )}
+        {action === 'bridge' && (
+          <div className="flex justify-between">
+            <span className="text-surface-600">USDC to burn</span>
+            <span className="text-surface-950 font-mono font-semibold">{Number(proposal.amount).toFixed(6)} USDC</span>
+          </div>
+        )}
         {proposal.sourceChain && (
           <div className="flex justify-between">
             <span className="text-surface-600">From Chain</span>
@@ -131,7 +137,7 @@ function ProposalCard({
         )}
       </div>
       <p className="text-surface-600 text-xs leading-relaxed">
-        Nothing is signed yet. Approval starts the existing wallet execution flow for this action. Your wallet remains the final authorization boundary.
+        Nothing is signed yet. For bridge actions, the exact USDC burn amount is shown above and a native-gas preflight runs before the CCTP burn. Your wallet remains the final authorization boundary.
       </p>
       <div className="flex gap-2 pt-0.5">
         <button onClick={onCancel} className="btn-ghost text-xs px-3 py-2 flex-1">

@@ -5,12 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
+import { createPublicClient, formatEther, http } from 'viem';
 import { AppKit } from '@circle-fin/app-kit';
 import {
   GitMerge, CheckCircle2, AlertCircle, ExternalLink,
   ChevronDown, RefreshCw, History, Wallet, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatRelative, formatAddress } from '@/lib/utils';
+import { RPC_FALLBACK_URLS } from '@/lib/contracts';
 import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
 import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
 import { useAppStore } from '@/lib/store';
@@ -45,6 +47,7 @@ interface BridgeQuote {
   minAmount: number;
   maxAmount: number;
   feeEstimated?: boolean;
+  amount: number;
 }
 
 interface BridgeRecord {
@@ -62,6 +65,47 @@ interface BridgeRecord {
 }
 
 type BridgeStep = 'idle' | 'executing' | 'completed' | 'timeout' | 'error';
+
+const BRIDGE_NATIVE_RPC: Record<number, string> = {
+  5042002: RPC_FALLBACK_URLS[0] ?? 'https://rpc.testnet.arc.network',
+  11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
+  84532: 'https://sepolia.base.org',
+  421614: 'https://sepolia-rollup.arbitrum.io/rpc',
+};
+
+const BRIDGE_NATIVE_SYMBOL: Record<number, string> = {
+  5042002: 'ARC',
+  11155111: 'ETH',
+  84532: 'ETH',
+  421614: 'ETH',
+};
+
+async function preflightNativeGas(chain: BridgeChain, address: string) {
+  const rpc = BRIDGE_NATIVE_RPC[chain.chainId];
+  if (!rpc) throw new Error(`No gas preflight RPC configured for ${chain.chain}`);
+
+  const client = createPublicClient({ transport: http(rpc) });
+  const [balance, gasPrice] = await Promise.all([
+    client.getBalance({ address: address as `0x${string}` }),
+    client.getGasPrice(),
+  ]);
+
+  // Destination CCTP receiveMessage can be materially more expensive than a
+  // simple transfer. Use a conservative 400k-gas envelope with 2x headroom.
+  const required = gasPrice * 400_000n * 2n;
+  if (balance < required) {
+    const symbol = BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas';
+    throw new Error(
+      `Insufficient ${symbol} on ${chain.chain}. You need approximately ${formatEther(required)} ${symbol} for bridge execution. No USDC will be burned.`,
+    );
+  }
+
+  return {
+    balance,
+    required,
+    symbol: BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas',
+  };
+}
 
 function extractTxHashes(result: unknown): { burnTxHash?: string; forwardTxHash?: string } {
   const value = result as {
@@ -114,6 +158,7 @@ function BridgePageInner() {
   const [showHistory, setShowHistory] = useState(false);
   const [mode, setMode] = useState<ExecutionMode>('manual');
   const [agentExecuting, setAgentExecuting] = useState(false);
+  const [bridgeConfirmation, setBridgeConfirmation] = useState<{ amount: string; route: BridgeChain; target: BridgeChain } | null>(null);
 
   useEffect(() => {
     if (searchParams.get('mode') === 'agent') setMode('agent');
@@ -215,6 +260,7 @@ function BridgePageInner() {
         destinationDomain: destinationChain.domain,
         fee: 0,
         feeToken: 'USDC',
+        amount: amountNum,
         estimatedTime: '~30 seconds',
         minAmount: 0.000001,
         maxAmount: 1000,
@@ -255,6 +301,7 @@ function BridgePageInner() {
         destinationDomain: destinationChain.domain,
         fee: Number.isFinite(fee) ? fee : 0,
         feeToken: 'USDC',
+        amount: amountNum,
         estimatedTime: '~30 seconds',
         minAmount: 0.000001,
         maxAmount: 1000,
@@ -269,6 +316,7 @@ function BridgePageInner() {
         destinationDomain: destinationChain.domain,
         fee: 0,
         feeToken: 'USDC',
+        amount: amountNum,
         estimatedTime: '~30 seconds',
         minAmount: 0.000001,
         maxAmount: 1000,
@@ -340,6 +388,11 @@ function BridgePageInner() {
       if (chainId !== route.chainId) {
         await switchChainAsync({ chainId: route.chainId });
       }
+
+      // CCTP is a multi-chain lifecycle. Preflight both sides before the
+      // source burn so a missing destination gas balance cannot strand USDC.
+      await preflightNativeGas(route, address);
+      await preflightNativeGas(target, address);
 
       const provider = await connector.getProvider();
       const adapter = await createViemAdapterFromProvider({ provider: provider as never });
@@ -462,18 +515,25 @@ function BridgePageInner() {
     setDestinationChain(target);
     setAgentExecuting(true);
 
-    try {
-      await executeBridge(proposal.amount, route, target);
-    } finally {
-      setAgentExecuting(false);
-    }
+    setBridgeConfirmation({ amount: proposal.amount, route, target });
   }, [chains, sourceChain, destinationChain, executeBridge]);
 
   const handleManualBridge = async () => {
     if (!sourceChain || !destinationChain) return;
+    setBridgeConfirmation({ amount, route: sourceChain, target: destinationChain });
+  };
+
+  const confirmBridge = async () => {
+    if (!bridgeConfirmation) return;
+    const pending = bridgeConfirmation;
+    setBridgeConfirmation(null);
     try {
-      await executeBridge(amount, sourceChain);
-    } catch { /* state already contains the error */ }
+      await executeBridge(pending.amount, pending.route, pending.target);
+    } catch {
+      // executeBridge owns the visible error state.
+    } finally {
+      setAgentExecuting(false);
+    }
   };
 
   const handleSwitchToSource = async () => {
@@ -876,11 +936,19 @@ function BridgePageInner() {
                     {quote.sourceChain} → {quote.destinationChain}
                   </span>
                 </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-surface-700">USDC to burn</span>
+                  <span className="text-surface-950 font-mono">{quote.amount.toFixed(6)} USDC</span>
+                </div>
                 <div className="flex justify-between">
-                  <span className="text-surface-600">Fee</span>
+                  <span className="text-surface-600">Estimated CCTP fee</span>
                   <span className="text-surface-950 font-mono">
-                    {quote.fee.toFixed(4)} USDC
+                    {quote.fee.toFixed(6)} USDC
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-600">Estimated receive</span>
+                  <span className="text-surface-950 font-mono">{Math.max(0, quote.amount - quote.fee).toFixed(6)} USDC</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-surface-600">Estimated time</span>
@@ -929,7 +997,7 @@ function BridgePageInner() {
                   className="btn-primary w-full justify-center text-base py-3.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <GitMerge className="w-4 h-4" />
-                  Bridge USDC
+                  Review Bridge
                 </button>
               )
             )}
@@ -947,6 +1015,50 @@ function BridgePageInner() {
                 Try Again
               </button>
             )}
+
+            <AnimatePresence>
+              {bridgeConfirmation && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="bridge-confirm-title"
+                >
+                  <motion.div
+                    initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="w-full max-w-md glass-card p-6 space-y-5 shadow-2xl"
+                  >
+                    <div>
+                      <h2 id="bridge-confirm-title" className="text-lg font-bold text-surface-950">Confirm bridge</h2>
+                      <p className="text-surface-600 text-xs mt-1">Review the exact USDC amount before your wallet opens.</p>
+                    </div>
+                    <div className="rounded-xl bg-black/[0.04] dark:bg-white/[0.04] p-4 space-y-2.5">
+                      <div className="flex justify-between">
+                        <span className="text-surface-600">USDC to burn</span>
+                        <span className="font-mono font-semibold text-surface-950">{Number(bridgeConfirmation.amount).toFixed(6)} USDC</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-600">From</span>
+                        <span className="text-surface-950">{bridgeConfirmation.route.chain}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-600">To</span>
+                        <span className="text-surface-950">{bridgeConfirmation.target.chain}</span>
+                      </div>
+                      <p className="pt-2 text-[11px] text-surface-500">Native gas is separate from the USDC amount. You can reject the wallet request after this review if anything looks different.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setBridgeConfirmation(null); setAgentExecuting(false); }} className="btn-ghost flex-1 justify-center">Reject</button>
+                      <button onClick={() => void confirmBridge()} className="btn-primary flex-1 justify-center">Confirm {Number(bridgeConfirmation.amount).toFixed(6)} USDC</button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <p className="text-center text-surface-500 text-xs">
               Circle App Kit · CCTP V2 · Testnet only · Arc ↔ Ethereum / Base / Arbitrum

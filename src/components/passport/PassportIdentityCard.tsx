@@ -43,7 +43,7 @@ export default function PassportIdentityCard() {
       return;
     }
     let cancelled = false;
-    fetch(`/api/passport/by-wallet?walletAddress=${address}`)
+    fetch(`/api/passport/profile?walletAddress=${address}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: PassportIdentity | null) => {
         if (!cancelled) setPassport(data);

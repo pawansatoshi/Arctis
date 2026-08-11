@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import {
@@ -15,7 +15,7 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
-import PassportIdentityCard from "@/components/passport/PassportIdentityCard";
+import PassportIdentityCard, { type PassportData } from "@/components/passport/PassportIdentityCard";
 
 /* ── Motion variants ───────────────────────────────────────── */
 const page = {
@@ -81,42 +81,74 @@ export default function DashboardPage() {
     proposalId: string; agentName: string; task: string;
   }>>([]);
   const [hasPassport, setHasPassport] = useState<boolean | null>(null);
-  const [passportProfile, setPassportProfile] = useState<Record<string, unknown> | null>(null);
+  const [passportProfile, setPassportProfile] = useState<PassportData | null>(null);
+  const [passportRefreshKey, setPassportRefreshKey] = useState(0);
+  const [passportLoading, setPassportLoading] = useState(false);
+
+  const loadPassport = useCallback(async (wallet: string) => {
+    setPassportLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/passport/by-wallet?walletAddress=${encodeURIComponent(wallet)}`,
+        {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        },
+      );
+
+      if (response.status === 404) {
+        setHasPassport(false);
+        setPassportProfile(null);
+        return;
+      }
+
+      if (!response.ok) throw new Error('Passport lookup failed');
+
+      const data = (await response.json()) as PassportData;
+      setHasPassport(true);
+      setPassportProfile(data);
+    } catch {
+      setHasPassport(null);
+      setPassportProfile(null);
+    } finally {
+      setPassportLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!address) return;
-    fetch(`/api/agents/proposals?wallet=${address}`)
-      .then((r) => r.json()).then((d) => setProposals(d.proposals ?? [])).catch(() => {});
+    if (!address) {
+      setProposals([]);
+      setHasPassport(null);
+      setPassportProfile(null);
+      return;
+    }
+
     let cancelled = false;
 
-    fetch(`/api/passport/by-wallet?walletAddress=${encodeURIComponent(address)}`)
-      .then(async (r) => {
-        if (cancelled) return;
-
-        if (!r.ok) {
-          setHasPassport(false);
-          setPassportProfile(null);
-          return;
-        }
-
-        const data = await r.json();
-
-        if (!cancelled) {
-          setHasPassport(true);
-          setPassportProfile(data);
-        }
+    fetch(`/api/agents/proposals?wallet=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setProposals(d.proposals ?? []);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setHasPassport(null);
-          setPassportProfile(null);
-        }
-      });
+      .catch(() => {});
+
+    void loadPassport(address);
 
     return () => {
       cancelled = true;
     };
-  }, [address]);
+  }, [address, loadPassport]);
+
+  const handleRefreshAll = async () => {
+    setPassportRefreshKey((key) => key + 1);
+    await Promise.allSettled([
+      refetch(),
+      address ? loadPassport(address) : Promise.resolve(),
+    ]);
+  };
 
   const recentTxs = transactions.slice(0, 8);
   const failedTxs = transactions.filter((t: TransactionRecord) => t.status === 'failed').slice(0, 3);
@@ -220,8 +252,8 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={() => refetch()}
-            aria-label="Refresh balance"
+            onClick={() => void handleRefreshAll()}
+            aria-label="Refresh dashboard"
             className="p-2.5 rounded-xl text-surface-600 hover:text-surface-950 hover:bg-black/[0.07] dark:hover:bg-white/[0.07] transition-all duration-200 active:scale-95"
           >
             <RefreshCw className="w-4 h-4" />
@@ -235,10 +267,17 @@ export default function DashboardPage() {
       </motion.div>
 
       <motion.div variants={row}>
-              {passportProfile && (
-                <PassportIdentityCard />
-              )}
-            </motion.div>
+        {passportLoading && !passportProfile ? (
+          <div className="glass-card p-5 text-sm text-surface-500">
+            Loading Passport identity…
+          </div>
+        ) : passportProfile ? (
+          <PassportIdentityCard
+            passport={passportProfile}
+            refreshKey={passportRefreshKey}
+          />
+        ) : null}
+      </motion.div>
 
       {/* ── BALANCE ROW ────────────────────────────────────── */}
       <motion.div variants={row} className="grid grid-cols-1 sm:grid-cols-3 gap-3">

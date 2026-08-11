@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useAccount } from 'wagmi';
-import { CheckCircle2, Copy, Wallet, CalendarDays, Clock3, ExternalLink, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Copy, Wallet, CalendarDays, Clock3, ExternalLink, RefreshCw, Droplets, Pencil } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, formatAddress } from '@/lib/utils';
 import { useExternalBalances } from '@/lib/hooks/useExternalBalances';
 
-interface PassportData {
+export interface PassportData {
   username: string;
   walletAddress: string;
   displayName?: string | null;
@@ -35,28 +36,34 @@ function InitialAvatar({ username, avatarUrl }: { username: string; avatarUrl?: 
   );
 }
 
-export default function PassportIdentityCard() {
+interface PassportIdentityCardProps {
+  passport: PassportData | null;
+  refreshKey?: number;
+}
+
+export default function PassportIdentityCard({
+  passport,
+  refreshKey = 0,
+}: PassportIdentityCardProps) {
   const { address } = useAccount();
   const balances = useExternalBalances(address);
-  const [passport, setPassport] = useState<PassportData | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'wallet' | 'handle' | null>(null);
 
   useEffect(() => {
-    if (!address) return;
-    fetch(`/api/passport/by-wallet?walletAddress=${address}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => setPassport(data))
-      .catch(() => setPassport(null));
-  }, [address]);
+    if (refreshKey > 0) void balances.refresh();
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const age = useMemo(() => daysSince(passport?.createdAt), [passport?.createdAt]);
   const minted = passport?.createdAt ? new Date(passport.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-  const copyWallet = async () => {
-    if (!address) return;
-    await navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+  const copyText = async (value: string, type: 'wallet' | 'handle') => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(type);
+      window.setTimeout(() => setCopied(null), 1600);
+    } catch {
+      // Clipboard permission can be unavailable in some browsers.
+    }
   };
 
   if (!passport) return null;
@@ -72,20 +79,43 @@ export default function PassportIdentityCard() {
               <h2 className="text-lg sm:text-xl font-bold text-surface-950 truncate">{passport.displayName || passport.username}</h2>
               {passport.verified && <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />}
             </div>
-            <div className="text-blue-600 dark:text-blue-400 font-mono text-sm">{passport.username}.arc</div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <span className="text-blue-600 dark:text-blue-400 font-mono text-sm">{passport.username}.arc</span>
+              <button
+                onClick={() => void copyText(`${passport.username}.arc`, 'handle')}
+                aria-label="Copy Passport ID"
+                className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                {copied === 'handle' ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
             <div className="mt-1 flex items-center gap-2 text-surface-500 text-[11px] font-mono">
               <Wallet className="w-3 h-3" />
               <span className="truncate">{formatAddress(passport.walletAddress, 6)}</span>
-              <button onClick={copyWallet} aria-label="Copy wallet address" className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5">
-                {copied ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+              <button onClick={() => void copyText(passport.walletAddress, 'wallet')} aria-label="Copy wallet address" className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5">
+                {copied === 'wallet' ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
           </div>
           <div className="hidden sm:flex flex-col items-end text-right">
             <span className="text-[9px] uppercase tracking-[0.18em] text-surface-500">Passport</span>
             <span className="text-xs font-semibold text-surface-800">Active Identity</span>
+            <Link
+              href="/passport"
+              className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit Profile
+            </Link>
           </div>
         </div>
+        <Link
+          href="/passport"
+          className="sm:hidden mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400"
+        >
+          <Pencil className="w-3 h-3" />
+          Edit Profile
+        </Link>
       </div>
 
       <div className="p-4 sm:p-5">
@@ -98,7 +128,11 @@ export default function PassportIdentityCard() {
             <div className="flex items-center gap-1.5 text-surface-500 text-[10px] uppercase tracking-wider"><Clock3 className="w-3 h-3" /> Passport Age</div>
             <div className="mt-1 text-xs font-semibold text-surface-950">{age} day{age === 1 ? '' : 's'}</div>
           </div>
-          <div className="metric-card col-span-2 sm:col-span-2">
+          <div className="metric-card min-w-0">
+            <div className="text-surface-500 text-[10px] uppercase tracking-wider">Passport ID</div>
+            <div className="mt-1 text-xs font-mono text-surface-800 truncate">{passport.username}.arc</div>
+          </div>
+          <div className="metric-card col-span-2 sm:col-span-1 min-w-0">
             <div className="flex items-center gap-1.5 text-surface-500 text-[10px] uppercase tracking-wider"><Wallet className="w-3 h-3" /> Wallet</div>
             <div className="mt-1 text-xs font-mono text-surface-800 truncate">{passport.walletAddress}</div>
           </div>
@@ -118,6 +152,23 @@ export default function PassportIdentityCard() {
           <NetworkBalance name="Base Sepolia" chain="84532" eth={balances.baseSepolia.eth} usdc={balances.baseSepolia.usdc} loading={balances.baseSepolia.loading} explorer="https://sepolia.basescan.org" />
           <NetworkBalance name="Arbitrum Sepolia" chain="421614" eth={balances.arbitrumSepolia.eth} usdc={balances.arbitrumSepolia.usdc} loading={balances.arbitrumSepolia.loading} explorer="https://sepolia.arbiscan.io" />
         </div>
+        <a
+          href="https://faucet.circle.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/[0.07] px-4 py-3 hover:bg-blue-500/[0.11] transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+              <Droplets className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-surface-900 dark:text-surface-100">Need testnet USDC?</div>
+              <div className="text-[10px] text-surface-500 truncate">Get supported testnet USDC from Circle Faucet</div>
+            </div>
+          </div>
+          <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+        </a>
       </div>
     </motion.section>
   );

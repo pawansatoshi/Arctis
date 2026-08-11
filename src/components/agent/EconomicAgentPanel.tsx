@@ -17,14 +17,29 @@ const INTRO_COPY: Record<LockedAction, { prompt: string; examples: string[] }> =
 const PROPOSAL_TITLE: Record<LockedAction, string> = { transfer: 'Transfer Proposal', swap: 'Swap Proposal', bridge: 'Bridge Proposal' };
 interface AgentPanelMessage { id: string; role: 'user' | 'assistant'; content: string; proposal?: PendingFinancialAction; }
 
+function isWalletAddress(value: string): boolean { return /^0x[a-fA-F0-9]{40}$/.test(value.trim()); }
+
+async function verifyPassportRecipient(value: string): Promise<string> {
+  const username = value.trim().toLowerCase().replace(/^@/, '').replace(/\.arc$/, '');
+  const response = await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);
+  let data: { username?: string; walletAddress?: string; error?: string } = {};
+  try { data = await response.json(); } catch { /* explicit error below */ }
+  if (!response.ok || !data.walletAddress || !isWalletAddress(data.walletAddress)) {
+    throw new Error(data.error || `Passport not found: ${username}.arc`);
+  }
+  return `${(data.username || username).toLowerCase()}.arc`;
+}
+
 function ProposalCard({ action, proposal, onApprove, onCancel }: { action: LockedAction; proposal: PendingFinancialAction; onApprove: () => void; onCancel: () => void }) {
   const circleRail = action === 'swap' && isCircleSwapToken(proposal.fromToken) && isCircleSwapToken(proposal.toToken);
+  const recipient = proposal.recipient ?? '';
+  const recipientLabel = isWalletAddress(recipient) ? `${recipient.slice(0, 8)}…${recipient.slice(-6)}` : recipient;
   return <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] dark:bg-amber-500/[0.08] p-4 space-y-3">
     <div className="flex items-center gap-2"><div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" /></div><div><span className="text-amber-700 dark:text-amber-400 text-xs font-semibold uppercase tracking-wide">{PROPOSAL_TITLE[action]}</span><p className="text-[10px] text-surface-500">Nothing has been signed</p></div></div>
     <div className="space-y-1.5 text-sm bg-surface-0/60 dark:bg-black/10 rounded-xl p-3">
       <div className="flex justify-between"><span className="text-surface-600">Amount</span><span className="text-surface-950 font-mono font-semibold">{proposal.amount} {proposal.fromToken}</span></div>
       {proposal.toToken && <div className="flex justify-between"><span className="text-surface-600">Receive</span><span className="text-surface-950 font-mono">{proposal.toToken}</span></div>}
-      {proposal.recipient && <div className="flex justify-between gap-4"><span className="text-surface-600">Recipient</span><span className="text-surface-950 font-mono text-xs truncate">{proposal.recipient.slice(0, 8)}…{proposal.recipient.slice(-6)}</span></div>}
+      {proposal.recipient && <div className="flex justify-between gap-4"><span className="text-surface-600">Recipient</span><span className={cn('font-mono text-xs truncate', !isWalletAddress(recipient) && 'text-emerald-700 dark:text-emerald-400')}>{recipientLabel}{!isWalletAddress(recipient) && ' ✓'}</span></div>}
       {proposal.sourceChain && <div className="flex justify-between"><span className="text-surface-600">From</span><span className="text-surface-950">{proposal.sourceChain}</span></div>}
       {proposal.destinationChain && <div className="flex justify-between"><span className="text-surface-600">To</span><span className="text-surface-950">{proposal.destinationChain}</span></div>}
       {action === 'bridge' && <div className="flex justify-between"><span className="text-surface-600">Execution</span><span className="text-emerald-600 font-medium">CCTP + Forwarding</span></div>}
@@ -55,10 +70,21 @@ export function EconomicAgentPanel({ action, onExecute, executionStatus = 'idle'
     setMessages(history); setInput(''); setIsLoading(true);
     try {
       const res = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history.map((m) => ({ role: m.role, content: m.content })), mode: 'build', walletAddress: address, stream: false, lockedAction: action, pendingAction: pendingClarification ?? undefined }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`); const data = await res.json(); if (data.error) throw new Error(data.error);
-      setPendingClarification(data.clarification ?? null); setMessages((prev) => [...prev, { id: generateId(), role: 'assistant', content: data.content ?? '', proposal: data.actionProposal ?? undefined }]);
-    } catch (err) { setMessages((prev) => [...prev, { id: generateId(), role: 'assistant', content: `I couldn't prepare that action: ${(err as Error).message}` }]); }
-    finally { setIsLoading(false); }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      let proposal = data.actionProposal as PendingFinancialAction | undefined;
+      if (proposal?.action === 'transfer' && proposal.recipient && !isWalletAddress(proposal.recipient)) {
+        const verifiedRecipient = await verifyPassportRecipient(proposal.recipient);
+        proposal = { ...proposal, recipient: verifiedRecipient };
+      }
+
+      setPendingClarification(data.clarification ?? null);
+      setMessages((prev) => [...prev, { id: generateId(), role: 'assistant', content: data.content ?? '', proposal }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { id: generateId(), role: 'assistant', content: `I couldn't prepare that action: ${(err as Error).message}` }]);
+    } finally { setIsLoading(false); }
   }, [messages, isLoading, address, action, pendingClarification]);
 
   const submitTransferFields = () => {
@@ -80,7 +106,7 @@ export function EconomicAgentPanel({ action, onExecute, executionStatus = 'idle'
   return <div className="glass-card p-5 flex flex-col" style={{ minHeight: '460px' }}>
     <div className="flex items-center gap-2.5 mb-2"><div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/15 to-blue-500/10 border border-violet-500/20 flex items-center justify-center"><Sparkles className="w-4 h-4 text-violet-600 dark:text-violet-400" /></div><div><div className="text-surface-950 text-sm font-semibold tracking-tight">ARCTIS Economic Agent</div><div className="text-surface-500 text-[11px]">Understand → Clarify → Quote → Approve → Execute</div></div></div>
     <div className="mb-3 px-3 py-2 rounded-xl bg-surface-100/70 dark:bg-white/[.03] text-[11px] text-surface-600">{action === 'bridge' ? 'Circle CCTP V2 + Forwarding' : action === 'swap' ? 'Circle Swap or ARCTIS OTC' : 'Circle App Kit Send'} · human approval required</div>
-    {executionStatus !== 'idle' && <div className={cn('mb-3 rounded-xl border p-3', executionStatus === 'success' ? 'border-emerald-500/20 bg-emerald-500/[.06]' : executionStatus === 'failed' ? 'border-red-500/20 bg-red-500/[.05]' : 'border-black/[.06] dark:border-white/[.07] bg-surface-0/60 dark:bg-surface-200/50')}><div className={cn('flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider', executionStatus === 'success' ? 'text-emerald-700 dark:text-emerald-400' : executionStatus === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-surface-500')}><span className={cn('w-2 h-2 rounded-full', executionStatus === 'success' ? 'bg-emerald-500' : executionStatus === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse')} />{executionStatus === 'executing' ? 'Running live checks / wallet approval' : executionStatus === 'success' ? 'Swap confirmed in Agent' : 'Execution failed'}</div>{executionTxHash && <p className="mt-1 text-[11px] font-mono text-surface-600 break-all">TX: {executionTxHash}</p>}{executionStatus === 'success' && executionTxHash && <a href={`https://testnet.arcscan.app/tx/${executionTxHash}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">View transaction <ExternalLink className="w-3 h-3" /></a>}{executionError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{executionError}</p>}</div>}
+    {executionStatus !== 'idle' && <div className={cn('mb-3 rounded-xl border p-3', executionStatus === 'success' ? 'border-emerald-500/20 bg-emerald-500/[.06]' : executionStatus === 'failed' ? 'border-red-500/20 bg-red-500/[.05]' : 'border-black/[.06] dark:border-white/[.07] bg-surface-0/60 dark:bg-surface-200/50')}><div className={cn('flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider', executionStatus === 'success' ? 'text-emerald-700 dark:text-emerald-400' : executionStatus === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-surface-500')}><span className={cn('w-2 h-2 rounded-full', executionStatus === 'success' ? 'bg-emerald-500' : executionStatus === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse')} />{executionStatus === 'executing' ? 'Running live checks / wallet approval' : executionStatus === 'success' ? 'Transfer confirmed in Agent' : 'Execution failed'}</div>{executionTxHash && <p className="mt-1 text-[11px] font-mono text-surface-600 break-all">TX: {executionTxHash}</p>}{executionStatus === 'success' && executionTxHash && <a href={`https://testnet.arcscan.app/tx/${executionTxHash}`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">View transaction <ExternalLink className="w-3 h-3" /></a>}{executionError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{executionError}</p>}</div>}
     <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 space-y-4 min-h-[220px]">
       {messages.length === 0 && <div className="text-center py-6 px-2"><p className="text-surface-700 text-sm font-medium mb-3">{prompt}</p>
         {action === 'transfer' && <div className="mb-3 p-3 rounded-xl border border-blue-500/15 bg-blue-500/[.04] text-left"><label className="block text-[11px] font-semibold uppercase tracking-wider text-surface-500 mb-1.5">Transfer details</label><input value={transferRecipient} onChange={(e) => setTransferRecipient(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitTransferFields(); } }} type="text" placeholder="0x... or Passport ID" className="input-base w-full text-sm mb-2" aria-label="Transfer recipient" /><div className="flex gap-2"><input value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitTransferFields(); } }} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base flex-1 text-sm" aria-label="Transfer amount in USDC" /><span className="self-center text-xs font-semibold text-surface-500">USDC</span><button onClick={submitTransferFields} disabled={!transferRecipient.trim() || !transferAmount || Number(transferAmount) <= 0 || isLoading} className="btn-primary px-3 py-2 disabled:opacity-50">Use</button></div><p className="mt-1.5 text-[10px] text-surface-500">Enter a wallet address or Passport ID and the amount. The agent will validate and prepare the proposal before wallet approval.</p></div>}

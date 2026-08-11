@@ -26,10 +26,9 @@ const OTC_TOKENS: readonly SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 interface Quote { rail: 'circle' | 'otc'; inputAmount: number; outputAmount: number; rate: number; fee: number; feeLabel: string; routeAvailable: boolean; stopLimit?: string; }
 interface SwapRecord { id: string; fromToken: string; toToken: string; inputAmount: number; outputAmount: number; status: string; inboundTxHash: string; outboundTxHash?: string; createdAt: string; rail?: string; }
+type ExecutionOrigin = 'manual' | 'agent' | null;
 
-function isOtcPair(fromToken: SwapToken, toToken: SwapToken) {
-  return OTC_TOKENS.includes(fromToken) && OTC_TOKENS.includes(toToken);
-}
+function isOtcPair(fromToken: SwapToken, toToken: SwapToken) { return OTC_TOKENS.includes(fromToken) && OTC_TOKENS.includes(toToken); }
 
 async function preflightOtc(token: SwapToken, amount: string, address: `0x${string}`) {
   const tokenAddress = OTC_CONTRACT[token];
@@ -37,9 +36,7 @@ async function preflightOtc(token: SwapToken, amount: string, address: `0x${stri
   const client = createPublicClient({ transport: http(RPC_URL) });
   const amountBig = parseUnits(amount, TOKEN_DECIMALS[token]);
   const [nativeBalance, gasPrice, tokenBalance] = await Promise.all([
-    client.getBalance({ address }),
-    client.getGasPrice(),
-    client.readContract({ address: tokenAddress, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
+    client.getBalance({ address }), client.getGasPrice(), client.readContract({ address: tokenAddress, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
   ]);
   if (tokenBalance < amountBig) throw new Error(`Insufficient ${token}. Required ${amount}, available ${formatUnits(tokenBalance, TOKEN_DECIMALS[token])}. No transfer was submitted.`);
   const requiredGas = gasPrice * 100_000n * 2n;
@@ -48,10 +45,7 @@ async function preflightOtc(token: SwapToken, amount: string, address: `0x${stri
 
 function feeFromSwapEstimate(fees: unknown): number {
   if (!Array.isArray(fees)) return 0;
-  return fees.reduce((sum, item) => {
-    const value = Number((item as { amount?: string | number })?.amount ?? 0);
-    return sum + (Number.isFinite(value) ? value : 0);
-  }, 0);
+  return fees.reduce((sum, item) => { const value = Number((item as { amount?: string | number })?.amount ?? 0); return sum + (Number.isFinite(value) ? value : 0); }, 0);
 }
 
 function SwapPageInner() {
@@ -77,6 +71,7 @@ function SwapPageInner() {
   const [showHistory, setShowHistory] = useState(false);
   const [mode, setMode] = useState<ExecutionMode>('manual');
   const [agentExecuting, setAgentExecuting] = useState(false);
+  const [executionOrigin, setExecutionOrigin] = useState<ExecutionOrigin>(null);
 
   const { isSuccess: inboundConfirmed } = useWaitForTransactionReceipt({ hash: inboundTxHash, query: { enabled: !!inboundTxHash } });
 
@@ -85,8 +80,7 @@ function SwapPageInner() {
     if (pendingAction?.action !== 'swap') return;
     if (pendingAction.fromToken) setFromToken(pendingAction.fromToken as SwapToken);
     if (pendingAction.toToken) setToToken(pendingAction.toToken as SwapToken);
-    setAmount(pendingAction.amount);
-    setPendingAction(null);
+    setAmount(pendingAction.amount); setPendingAction(null);
     toast.success('Pre-filled from ARCTIS AI — review before swapping');
   }, [pendingAction, setPendingAction]);
 
@@ -125,15 +119,12 @@ function SwapPageInner() {
         if (data.routeAvailable === false) {
           setQuote({ rail: 'otc', inputAmount: Number(data.inputAmount ?? amountNum), outputAmount: Number(data.outputAmount ?? 0), rate: Number(data.rate ?? 0), fee: Number(data.fee ?? 0), feeLabel: 'ARCTIS OTC fee', routeAvailable: false });
           setQuoteError(data.error ?? 'ARCTIS OTC liquidity is unavailable.');
-        } else {
-          setQuote({ rail: 'otc', inputAmount: data.inputAmount, outputAmount: data.outputAmount, rate: data.rate, fee: data.fee, feeLabel: 'ARCTIS OTC fee (0.3%)', routeAvailable: true });
-        }
+        } else setQuote({ rail: 'otc', inputAmount: data.inputAmount, outputAmount: data.outputAmount, rate: data.rate, fee: data.fee, feeLabel: 'ARCTIS OTC fee (0.3%)', routeAvailable: true });
       }
       setStep('idle');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to get a live swap quote.';
-      setQuote(null); setQuoteError(message); setStep('idle');
-      if (agentExecuting) setAgentExecuting(false);
+      setQuote(null); setQuoteError(message); setStep('idle'); if (agentExecuting) setAgentExecuting(false);
     }
   }, [isConnected, address, connector, amountValid, pairValid, chainId, circlePair, otcPair, fromToken, toToken, amountNum, amount, agentExecuting]);
 
@@ -163,7 +154,7 @@ function SwapPageInner() {
 
   const executeSwap = useCallback(async () => {
     if (!isConnected || !address || !connector || !quote || !quote.routeAvailable || !amountValid) return;
-    setErrorMsg(null); setStep('sending');
+    setExecutionOrigin((current) => current ?? 'manual'); setErrorMsg(null); setStep('sending');
     try {
       if (chainId !== 5042002) await switchChainAsync({ chainId: 5042002 });
       const provider = await connector.getProvider();
@@ -172,12 +163,10 @@ function SwapPageInner() {
       if (quote.rail === 'circle') {
         const estimate = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: fromToken, tokenOut: toToken, amountIn: amountNum.toString(), config: { slippageBps: 100 } });
         const result = await kit.swap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: fromToken, tokenOut: toToken, amountIn: amountNum.toString(), config: { slippageBps: 100, stopLimit: estimate.stopLimit.amount } });
-        const txHash = result.txHash as `0x${string}`;
-        const output = Number(result.amountOut ?? estimate.estimatedOutput.amount);
+        const txHash = result.txHash as `0x${string}`; const output = Number(result.amountOut ?? estimate.estimatedOutput.amount);
         setInboundTxHash(txHash); setOutboundTxHash(txHash); setStep('completed');
         saveLocal({ id: txHash, fromToken, toToken, inputAmount: amountNum, outputAmount: output, status: 'completed', inboundTxHash: txHash, outboundTxHash: txHash, createdAt: new Date().toISOString(), rail: 'Circle Swap' });
-        toast.success(`Circle Swap complete: ${amount} ${fromToken} → ${output.toFixed(6)} ${toToken}`);
-        return;
+        toast.success(`Circle Swap complete: ${amount} ${fromToken} → ${output.toFixed(6)} ${toToken}`); return;
       }
       const swapWallet = process.env.NEXT_PUBLIC_SWAP_WALLET_ADDRESS as `0x${string}` | undefined;
       if (!swapWallet || /^0x0{40}$/i.test(swapWallet)) throw new Error('ARCTIS swap wallet is not configured.');
@@ -192,13 +181,13 @@ function SwapPageInner() {
     if (!proposal.amount || !proposal.fromToken || !proposal.toToken) throw new Error('Swap proposal is incomplete.');
     const from = proposal.fromToken as SwapToken; const to = proposal.toToken as SwapToken;
     if (from === to || (!isCircleSwapPair(from, to) && !isOtcPair(from, to))) throw new Error('This swap pair is not supported.');
-    setErrorMsg(null); setQuoteError(null); setFromToken(from); setToToken(to); setAmount(proposal.amount); setMode('agent'); setAgentExecuting(true);
+    setExecutionOrigin('agent'); setErrorMsg(null); setQuoteError(null); setFromToken(from); setToToken(to); setAmount(proposal.amount); setMode('agent'); setAgentExecuting(true);
   }, []);
 
   useEffect(() => { if (!agentExecuting || !quote || !quote.routeAvailable || step !== 'idle') return; void executeSwap(); }, [agentExecuting, quote, step, executeSwap]);
   useEffect(() => { if (agentExecuting && (step === 'completed' || step === 'error')) setAgentExecuting(false); }, [agentExecuting, step]);
 
-  const reset = () => { setStep('idle'); setAmount(''); setQuote(null); setQuoteError(null); setErrorMsg(null); setInboundTxHash(undefined); setOutboundTxHash(null); setAgentExecuting(false); };
+  const reset = () => { setStep('idle'); setAmount(''); setQuote(null); setQuoteError(null); setErrorMsg(null); setInboundTxHash(undefined); setOutboundTxHash(null); setAgentExecuting(false); setExecutionOrigin(null); };
 
   return (
     <div className="page-container max-w-lg safe-bottom">
@@ -206,12 +195,12 @@ function SwapPageInner() {
       <div className="mb-5"><ModeTabs mode={mode} onChange={setMode} /></div>
       {mode === 'agent' ? (
         <>
-          <EconomicAgentPanel action="swap" onExecute={executeAgentSwap} executionStatus={agentExecuting ? (step === 'error' ? 'failed' : step === 'completed' ? 'success' : 'executing') : 'idle'} executionError={step === 'error' ? (errorMsg ?? quoteError) : quoteError} executionTxHash={outboundTxHash ?? inboundTxHash ?? null} />
+          <EconomicAgentPanel action="swap" onExecute={executeAgentSwap} executionStatus={executionOrigin === 'agent' ? (agentExecuting ? (step === 'error' ? 'failed' : step === 'completed' ? 'success' : 'executing') : step === 'completed' ? 'success' : step === 'error' ? 'failed' : 'idle') : 'idle'} executionError={executionOrigin === 'agent' && step === 'error' ? (errorMsg ?? quoteError) : null} executionTxHash={executionOrigin === 'agent' ? (outboundTxHash ?? inboundTxHash ?? null) : null} />
           {quoteError && !agentExecuting && <div className="mt-3 glass-card p-3 border-amber-500/20 bg-amber-500/5 flex gap-2"><Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" /><p className="text-sm text-amber-700 dark:text-amber-400">Circle quote failed: {quoteError}</p></div>}
         </>
       ) : showHistory ? (
         <div className="space-y-3">{history.length === 0 ? <div className="glass-card p-10 text-center"><History className="w-8 h-8 mx-auto mb-3 text-surface-500" /><p className="text-surface-600 text-sm">No swaps yet.</p></div> : history.map((s) => <div key={s.id} className="glass-card p-4 flex items-center justify-between gap-3"><div><p className="text-sm font-medium text-surface-950">{s.inputAmount} {s.fromToken} → {s.outputAmount.toFixed(6)} {s.toToken}</p><p className="text-xs text-surface-500 mt-1">{s.rail ?? 'Swap'} · {formatRelative(s.createdAt)}</p></div><span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600">{s.status}</span></div>)}</div>
-      ) : step === 'completed' ? (
+      ) : step === 'completed' && executionOrigin === 'manual' ? (
         <motion.div initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-7 text-center space-y-5"><div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto"><CheckCircle2 className="w-8 h-8 text-emerald-600" /></div><div><h2 className="text-xl font-bold text-surface-950">Swap Complete</h2><p className="text-surface-600 text-sm mt-1">{amount} {fromToken} → {quote?.outputAmount.toFixed(6)} {toToken}</p></div><div className="rounded-xl bg-surface-100/70 dark:bg-white/[.04] p-4 text-left space-y-2 text-sm"><div className="flex justify-between"><span className="text-surface-600">Execution rail</span><span className="font-medium text-surface-950">{quote?.rail === 'circle' ? 'Circle App Kit Swap' : 'ARCTIS OTC'}</span></div><div className="flex justify-between"><span className="text-surface-600">Transaction</span><span className="font-mono text-surface-950">{inboundTxHash ? `${inboundTxHash.slice(0, 8)}…${inboundTxHash.slice(-6)}` : 'confirmed'}</span></div></div>{inboundTxHash && <a href={txUrl(inboundTxHash)} target="_blank" rel="noopener noreferrer" className="btn-ghost w-full justify-center">View transaction <ExternalLink className="w-4 h-4" /></a>}<button onClick={reset} className="btn-primary w-full justify-center"><RefreshCw className="w-4 h-4" /> New swap</button></motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
@@ -236,6 +225,4 @@ function SwapPageInner() {
   );
 }
 
-export default function SwapPage() {
-  return <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]"><div className="text-surface-500 text-sm">Loading…</div></Suspense>}><SwapPageInner /></Suspense>;
-}
+export default function SwapPage() { return <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]"><div className="text-surface-500 text-sm">Loading…</div></div>}><SwapPageInner /></Suspense>; }

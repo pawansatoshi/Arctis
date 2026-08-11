@@ -15,7 +15,7 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
-import PassportIdentityCard from '@/components/passport/PassportIdentityCard';
+import { PassportCard as PassportIdentityCard } from "@/components/passport/PassportCard";
 
 /* ── Motion variants ───────────────────────────────────────── */
 const page = {
@@ -81,6 +81,7 @@ export default function DashboardPage() {
     proposalId: string; agentName: string; task: string;
   }>>([]);
   const [hasPassport, setHasPassport] = useState<boolean | null>(null);
+  const [passportProfile, setPassportProfile] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!address) return;
@@ -206,7 +207,20 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      <motion.div variants={row}><PassportIdentityCard /></motion.div>
+      <motion.div variants={row}>
+              {passportProfile && (
+                <PassportIdentityCard
+                  username={String(passportProfile.username ?? "")}
+                  walletAddress={String(passportProfile.walletAddress ?? address ?? "")}
+                  displayName={String(passportProfile.displayName ?? passportProfile.username ?? "")}
+                  bio={String(passportProfile.bio ?? "")}
+                  verified={Boolean(passportProfile.verified)}
+                  isOwner={true}
+                  onSend={() => {}}
+                  onEdit={() => { window.location.href = "/passport"; }}
+                />
+              )}
+            </motion.div>
 
       {/* ── BALANCE ROW ────────────────────────────────────── */}
       <motion.div variants={row} className="grid grid-cols-1 sm:grid-cols-3 gap-3">

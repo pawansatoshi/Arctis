@@ -15,7 +15,7 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
-import { PassportCard as PassportIdentityCard } from "@/components/passport/PassportCard";
+import PassportIdentityCard from "@/components/passport/PassportIdentityCard";
 
 /* ── Motion variants ───────────────────────────────────────── */
 const page = {
@@ -87,8 +87,35 @@ export default function DashboardPage() {
     if (!address) return;
     fetch(`/api/agents/proposals?wallet=${address}`)
       .then((r) => r.json()).then((d) => setProposals(d.proposals ?? [])).catch(() => {});
-    fetch(`/api/passport/by-wallet?walletAddress=${address}`)
-      .then((r) => setHasPassport(r.ok)).catch(() => setHasPassport(null));
+    let cancelled = false;
+
+    fetch(`/api/passport/by-wallet?walletAddress=${encodeURIComponent(address)}`)
+      .then(async (r) => {
+        if (cancelled) return;
+
+        if (!r.ok) {
+          setHasPassport(false);
+          setPassportProfile(null);
+          return;
+        }
+
+        const data = await r.json();
+
+        if (!cancelled) {
+          setHasPassport(true);
+          setPassportProfile(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasPassport(null);
+          setPassportProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [address]);
 
   const recentTxs = transactions.slice(0, 8);
@@ -209,16 +236,7 @@ export default function DashboardPage() {
 
       <motion.div variants={row}>
               {passportProfile && (
-                <PassportIdentityCard
-                  username={String(passportProfile.username ?? "")}
-                  walletAddress={String(passportProfile.walletAddress ?? address ?? "")}
-                  displayName={String(passportProfile.displayName ?? passportProfile.username ?? "")}
-                  bio={String(passportProfile.bio ?? "")}
-                  verified={Boolean(passportProfile.verified)}
-                  isOwner={true}
-                  onSend={() => {}}
-                  onEdit={() => { window.location.href = "/passport"; }}
-                />
+                <PassportIdentityCard />
               )}
             </motion.div>
 

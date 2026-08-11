@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import {
@@ -15,7 +16,19 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
-import PassportIdentityCard, { type PassportData } from "@/components/passport/PassportIdentityCard";
+import type { PassportData } from "@/components/passport/PassportIdentityCard";
+
+const PassportIdentityCard = dynamic(
+  () => import('@/components/passport/PassportIdentityCard'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card p-5 text-sm text-surface-500">
+        Loading Passport identity…
+      </div>
+    ),
+  },
+);
 
 /* ── Motion variants ───────────────────────────────────────── */
 const page = {

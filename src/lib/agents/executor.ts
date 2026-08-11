@@ -347,7 +347,7 @@ export async function proposeAgent(params: ProposeAgentParams): Promise<AgentPro
       .trim()
       .toLowerCase()
       .replace(/^@/, '')
-      .replace(/\\.arc$/, '');
+      .replace(/\.arc$/, '');
 
     const passport = await getPassportByUsername(username);
 

@@ -35,7 +35,7 @@ const AMOUNT_RE = '\\d+(?:\\.\\d+)?';
 const TOKEN_RE = '(usdc|tusdc|tarc)';
 
 function normalizePassportRecipient(value: string): string {
-  return value.trim().toLowerCase().replace(/^@/, '').replace(/\\.arc$/, '');
+  return value.trim().toLowerCase().replace(/^@/, '').replace(/\.arc$/, '');
 }
 
 function isPassportRecipient(value: string): boolean {
@@ -114,6 +114,24 @@ export function parseFinancialIntent(message: string): PendingFinancialAction | 
       action: 'transfer',
       amount: '',
       fromToken: normalizeToken(transferSelectionMatch[1]) ?? 'USDC',
+      missing: 'amount',
+      createdAt: Date.now(),
+    };
+  }
+
+  // Transfer selection: "Send USDC to a wallet address"
+  // The destination type is selected, but the actual wallet is not known yet.
+  // Ask for the amount first, then ask for the recipient.
+  const walletSelectionRe = new RegExp(
+    `\\b(?:send|transfer)\\s+${TOKEN_RE}\\s+to\\s+(?:a\\s+)?wallet\\s+address\\b`,
+    'i'
+  );
+  const walletSelectionMatch = text.match(walletSelectionRe);
+  if (walletSelectionMatch) {
+    return {
+      action: 'transfer',
+      amount: '',
+      fromToken: normalizeToken(walletSelectionMatch[1]) ?? 'USDC',
       missing: 'amount',
       createdAt: Date.now(),
     };

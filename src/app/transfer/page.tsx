@@ -40,20 +40,20 @@ function TransferPageInner() {
 
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
-  const [mode, setMode] = useState<ExecutionMode>('manual');
+  // Initialize from sessionStorage synchronously so a wallet/receipt
+  // remount cannot briefly restore the default Manual mode.
+  const [mode, setMode] = useState<ExecutionMode>(() => {
+    if (typeof window === 'undefined') return 'manual';
+
+    const storedMode = window.sessionStorage.getItem('arctis-transfer-mode');
+    return storedMode === 'agent' ? 'agent' : 'manual';
+  });
+
   const [agentExecuting, setAgentExecuting] = useState(false);
 
-  // Keep the execution surface stable across wallet/receipt-driven
-  // remounts. An Economic Agent transaction must never fall back
-  // into the Manual success screen.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const storedMode = window.sessionStorage.getItem('arctis-transfer-mode');
-    if (storedMode === 'agent' || storedMode === 'manual') {
-      setMode(storedMode as ExecutionMode);
-    }
-  }, []);
-
+  // Persist the currently selected execution surface.
+  // Economic Agent must remain Economic Agent through wallet approval,
+  // receipt confirmation and any component remount.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.sessionStorage.setItem('arctis-transfer-mode', mode);
@@ -91,7 +91,7 @@ function TransferPageInner() {
 
   const addressValid = isValidAddress(toAddress);
 
-  const passportName = toAddress.trim().toLowerCase().replace(/\\.arc$/, '');
+  const passportName = toAddress.trim().toLowerCase().replace(/\.arc$/, '');
   const passportFormatValid =
     !addressValid &&
     /^[a-z0-9_-]{3,20}$/.test(passportName);
@@ -498,7 +498,7 @@ function TransferPageInner() {
                         <span className="text-surface-950 font-mono">
                           {addressValid
                             ? formatAddress(toAddress, 6)
-                            : `${toAddress.replace(/\\.arc$/i, '')} → ${formatAddress(passportResolvedAddress || '', 6)}`}
+                            : `${toAddress.replace(/\.arc$/i, '')} → ${formatAddress(passportResolvedAddress || '', 6)}`}
                         </span>
                       </div>
                       <div className="flex justify-between">

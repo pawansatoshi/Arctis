@@ -1,6 +1,5 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { Toaster } from 'react-hot-toast';
@@ -9,14 +8,12 @@ import { I18nProvider } from '@/lib/i18n';
 import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 // ============================================================
-// Providers — All wallet providers dynamically imported (SSR-safe)
+// Providers — wallet providers render normally.
+// wagmiConfig already uses ssr:true, so keep the provider tree
+// available during the initial dashboard render.
 // ============================================================
 
-// Dynamic import prevents SSR crashes from window/ethereum access
-const WalletProviders = dynamic(() => import('./WalletProviders'), {
-  ssr: false,
-  loading: () => null,
-});
+import WalletProviders from './WalletProviders';
 
 interface ProvidersProps {
   children: ReactNode;

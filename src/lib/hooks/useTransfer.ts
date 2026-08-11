@@ -13,7 +13,7 @@ interface TransferParams { to: string; amount: string; note?: string; }
 
 function isPassportRecipient(value: string): boolean {
   const v = value.trim().toLowerCase();
-  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\\.arc)?$/.test(v);
+  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\.arc)?$/.test(v);
 }
 
 async function resolveTransferRecipient(value: string): Promise<string> {

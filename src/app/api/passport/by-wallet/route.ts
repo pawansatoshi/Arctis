@@ -7,7 +7,17 @@ export async function GET(req: NextRequest) {
   if (!walletAddress || !isValidEthAddress(walletAddress)) {
     return NextResponse.json({ error: 'Valid walletAddress required' }, { status: 400 });
   }
+
   const passport = await getPassportByWallet(walletAddress);
   if (!passport) return NextResponse.json({ error: 'No Passport found for this wallet' }, { status: 404 });
-  return NextResponse.json({ username: passport.username, walletAddress: passport.walletAddress, displayName: passport.displayName, bio: passport.bio });
+
+  return NextResponse.json({
+    username: passport.username,
+    walletAddress: passport.walletAddress,
+    displayName: passport.displayName ?? null,
+    bio: passport.bio ?? null,
+    avatarUrl: passport.avatarUrl ?? null,
+    verified: passport.verified ?? false,
+    createdAt: passport.createdAt,
+  });
 }

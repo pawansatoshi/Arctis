@@ -28,7 +28,12 @@ function isSupportedSwapPair(fromToken?: string, toToken?: string): boolean {
   return false;
 }
 
-function normalizePassportRecipient(value: string): string { return value.trim().toLowerCase().replace(/^@/, '').replace(/\.arc$/, ''); }
+// Canonical display form for Passport identities. Keep the .arc suffix in
+// proposals so the UI never turns a verified identity into ambiguous text.
+function normalizePassportRecipient(value: string): string {
+  const username = value.trim().toLowerCase().replace(/^@/, '').replace(/\\.arc$/, '');
+  return `${username}.arc`;
+}
 function isPassportRecipient(value: string): boolean { return new RegExp(`^${PASSPORT_RE}$`, 'i').test(value.trim()); }
 
 interface BridgeChainMatch { name: string; chainId: number; domain: number }

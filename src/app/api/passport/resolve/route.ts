@@ -14,5 +14,5 @@ export async function GET(req: NextRequest) {
   const passport = await getPassportByUsername(username);
   if (!passport) return NextResponse.json({ error: 'Passport not found' }, { status: 404 });
 
-  return NextResponse.json({ walletAddress: passport.walletAddress, displayName: passport.displayName, bio: passport.bio });
+  return NextResponse.json({ username: passport.username, walletAddress: passport.walletAddress, displayName: passport.displayName, bio: passport.bio, avatarUrl: passport.avatarUrl, verified: passport.verified });
 }

@@ -81,6 +81,13 @@ function TransferPageInner() {
   const [passportResolving, setPassportResolving] = useState(false);
   const [passportResolvedAddress, setPassportResolvedAddress] = useState<string | null>(null);
   const [passportError, setPassportError] = useState<string | null>(null);
+  const [passportProfile, setPassportProfile] = useState<{
+    username: string;
+    displayName?: string;
+    bio?: string;
+    avatarUrl?: string;
+    verified?: boolean;
+  } | null>(null);
 
   const addressValid = isValidAddress(toAddress);
 
@@ -94,6 +101,7 @@ function TransferPageInner() {
 
     setPassportResolvedAddress(null);
     setPassportError(null);
+    setPassportProfile(null);
 
     if (!passportFormatValid) {
       setPassportResolving(false);
@@ -111,6 +119,11 @@ function TransferPageInner() {
         const data = await response.json() as {
           walletAddress?: string;
           error?: string;
+          username?: string;
+          displayName?: string;
+          bio?: string;
+          avatarUrl?: string;
+          verified?: boolean;
         };
 
         if (cancelled) return;
@@ -122,6 +135,13 @@ function TransferPageInner() {
         }
 
         setPassportResolvedAddress(data.walletAddress);
+        setPassportProfile({
+          username: data.username || passportName,
+          displayName: data.displayName,
+          bio: data.bio,
+          avatarUrl: data.avatarUrl,
+          verified: data.verified,
+        });
         setPassportError(null);
       } catch {
         if (!cancelled) {
@@ -366,13 +386,31 @@ function TransferPageInner() {
                     )}
 
                     {passportResolvedAddress && (
-                      <div className="flex items-start gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-emerald-700 dark:text-emerald-400 text-xs font-medium">
-                            Passport verified
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                        {passportProfile?.avatarUrl ? (
+                          <img
+                            src={passportProfile.avatarUrl}
+                            alt=""
+                            className="w-10 h-10 rounded-full object-cover border border-white/20"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
+                            {(passportProfile?.displayName || passportName).charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-surface-950 text-sm font-semibold truncate">
+                              {passportProfile?.displayName || passportName}
+                            </p>
+                            {passportProfile?.verified && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-blue-600 dark:text-blue-400 text-xs font-mono">
+                            {passportProfile?.username || passportName}.arc
                           </p>
-                          <p className="text-surface-500 text-[11px] font-mono truncate mt-0.5">
+                          <p className="text-surface-500 text-[10px] font-mono truncate mt-0.5">
                             {passportResolvedAddress}
                           </p>
                         </div>

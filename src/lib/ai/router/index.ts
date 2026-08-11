@@ -5,25 +5,22 @@ import { rankByHealth } from '@/lib/ai/registry/health';
 import { AI_MODE_DEFINITIONS } from '@/config/ai';
 import type { AIMode } from '@/types';
 
-// Model selection and persona behavior are intentionally separate.
+// Model identity is an implementation detail. The optional model field is
+// retained only for compatibility with persisted agent records; it is never
+// trusted for runtime selection, so stale model IDs cannot bypass the registry.
 export type RouterRequest = Omit<AIRequest, 'model'> & { model?: string };
 
-/** Backwards-compatible export consumed by API routes. */
 export const MODE_PROMPTS: Record<AIMode, string> = Object.fromEntries(
   Object.entries(AI_MODE_DEFINITIONS).map(([id, definition]) => [id, definition.systemPrompt])
 ) as Record<AIMode, string>;
 
-async function buildAttemptOrder(hint?: string): Promise<string[]> {
+async function buildAttemptOrder(): Promise<string[]> {
   const pool = await getFreeModelPool();
-  const ranked = rankByHealth(pool.map((model) => model.id));
-  const validHint = hint && hint.includes('/') ? hint : undefined;
-  if (validHint && !ranked.includes(validHint)) return [validHint, ...ranked];
-  if (validHint) return [validHint, ...ranked.filter((id) => id !== validHint)];
-  return ranked;
+  return rankByHealth(pool.map((model) => model.id));
 }
 
 export async function routeAIRequest(req: RouterRequest): Promise<AIResponse> {
-  const attemptOrder = await buildAttemptOrder(req.model);
+  const attemptOrder = await buildAttemptOrder();
   let lastError: Error | null = null;
   for (const model of attemptOrder) {
     try { return await callOpenRouter({ ...req, model }); }
@@ -33,7 +30,7 @@ export async function routeAIRequest(req: RouterRequest): Promise<AIResponse> {
 }
 
 export async function routeAIStream(req: RouterRequest, onChunk: (chunk: string) => void, signal?: AbortSignal): Promise<AIResponse> {
-  const attemptOrder = await buildAttemptOrder(req.model);
+  const attemptOrder = await buildAttemptOrder();
   let lastError: Error | null = null;
   for (const model of attemptOrder) {
     let emittedAnything = false;

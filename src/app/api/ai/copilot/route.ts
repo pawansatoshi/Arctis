@@ -2,62 +2,53 @@ import { NextRequest, NextResponse } from 'next/server';
 import { routeAIStream, routeAIRequest } from '@/lib/ai/router';
 import { obs } from '@/lib/observability/logger';
 import { buildCopilotContext, serializeCopilotContext } from '@/lib/ai/copilot/context';
+import { buildCanonicalProductContext } from '@/lib/ai/copilot/product-context';
 
 // ============================================================
 // POST /api/ai/copilot — ARCTIS Copilot
-//
-// Always free — never deducts credits, never enforces membership
-// tier. Its only job is to help users understand and navigate the
-// platform. Model selection is fully automatic (see @/lib/ai/router)
-// — Copilot never chooses or exposes a specific backend model.
+// Always free. Backend model selection is automatic.
+// Product facts are generated from canonical runtime config.
 // ============================================================
 
 const BASE_PROMPT = `You are the ARCTIS Copilot — an expert assistant embedded in the ARCTIS platform.
 
-## Your Role
-Help users get the most from all four ARCTIS pillars:
-1. Knowledge OS — sessions, prompt library, document management
-2. AI OS — 12 AI modes, streaming chat, vision
-3. Stablecoin OS — Transfer (wallet-to-wallet), Swap (USDC↔tUSDC↔tARC), Bridge (CCTP V2 to Arc Testnet)
-4. Economic Agent OS — 7 agent types with memory, budgets, reports, human-approval gate
+## Your role
+Help users understand and navigate the actual ARCTIS product. Be precise about what is implemented versus planned.
 
-## Key Facts
-- Arc Testnet: Chain ID 5042002 · Explorer testnet.arcscan.app
-- Arc Native USDC: 0x3600000000000000000000000000000000000000
-- Treasury: 0xb467F683764593316fAEbB0709127E90791Fe47F
-- All agent tasks require: Propose → Review → Approve → Execute (no autonomous spending)
+## Knowledge OS
+Current capabilities include workspace domains, saved prompts, AI sessions, and contextual access to the user's agents/reports. Do not claim full document ingestion, vector retrieval, or persistent cross-session user memory unless the supplied product context explicitly says it is available.
 
-## Memberships
-Free: 100 cr/mo · Student: 1,000 cr/mo, 9 USDC · Pro: 5,000 cr/mo, 29 USDC · Enterprise: 25,000 cr/mo, 99 USDC
+## AI OS
+ARCTIS exposes user-facing personas/modes. Backend model/provider selection is automatic and is an implementation detail. Never invent a model name, provider guarantee, or model-specific entitlement.
 
-## Behaviour
-- Use the Your Context section when available to give personalised, specific answers
-- Reference the user's own agents, prompts, and sessions by name when helpful
-- Never reveal another user's data
-- Never execute transactions — explain how to do them
-- Be concise, direct, and practical
-- Never mention which AI model or provider is answering — you are simply "ARCTIS Copilot"`;
+## Stablecoin OS
+Explain Transfer, configured ARCTIS OTC swaps, and configured CCTP V2/Forwarding bridge flows accurately. Never invent unsupported assets, routes, contract addresses, or execution capabilities.
+
+## Economic Agent OS
+Agents follow Propose → Review → Approve → Execute. Never tell a user that an agent can independently sign their wallet transaction.
+
+## Safety and accuracy
+- Use the canonical product context below as the source of truth for product facts.
+- Use the user's context when available, but never reveal another user's data.
+- Never execute transactions; explain the existing user-controlled signing flow.
+- Distinguish implemented features from roadmap items.
+- If a product fact is not in the canonical context, say that it needs verification rather than guessing.
+- Never mention the backend model/provider unless the user is explicitly asking about architecture.`;
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
   try {
-    const { messages, walletAddress, sessionId, stream = true, languageInstruction } = await req.json() as {
+    const { messages, walletAddress, stream = true, languageInstruction } = await req.json() as {
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       walletAddress?: string;
-      sessionId?: string;
       stream?: boolean;
       languageInstruction?: string;
     };
 
-    if (!messages?.length) {
-      return NextResponse.json({ error: 'messages required' }, { status: 400 });
-    }
+    if (!messages?.length) return NextResponse.json({ error: 'messages required' }, { status: 400 });
 
-    // ── Build dynamic context ─────────────────────────────────
-    // Prepend language instruction so it takes effect before the knowledge base
-    let systemPrompt = languageInstruction
-      ? `${languageInstruction}\n\n${BASE_PROMPT}`
-      : BASE_PROMPT;
+    let systemPrompt = `${languageInstruction ? `${languageInstruction}\n\n` : ''}${BASE_PROMPT}\n${buildCanonicalProductContext()}`;
+
     if (walletAddress) {
       try {
         const ctx = await buildCopilotContext(walletAddress);
@@ -68,7 +59,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Streaming ─────────────────────────────────────────────
     if (stream) {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -76,16 +66,11 @@ export async function POST(req: NextRequest) {
           try {
             const result = await routeAIStream(
               { messages, systemPrompt },
-              (chunk) => {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`));
-              },
-              req.signal
+              (chunk) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)),
+              req.signal,
             );
-            controller.enqueue(encoder.encode(
-              `data: ${JSON.stringify({ done: true })}\n\n`
-            ));
-            void obs.info('ai', 'Copilot stream done',
-              { ms: Date.now() - start, tokens: result.usage.totalTokens }, walletAddress);
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+            void obs.info('ai', 'Copilot stream done', { ms: Date.now() - start, tokens: result.usage.totalTokens }, walletAddress);
           } catch (err) {
             const e = err as Error;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'ARCTIS Copilot is temporarily busy — please try again.' })}\n\n`));
@@ -95,17 +80,9 @@ export async function POST(req: NextRequest) {
           }
         },
       });
-
-      return new Response(readable, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      });
+      return new Response(readable, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } });
     }
 
-    // ── Non-streaming ─────────────────────────────────────────
     const result = await routeAIRequest({ messages, systemPrompt });
     return NextResponse.json({ content: result.content });
   } catch (err) {

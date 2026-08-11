@@ -21,7 +21,13 @@ export default function LanguageSwitcher({ inline = false }: LanguageSwitcherPro
   if (pathname === '/' && !inline) return null;
 
   return (
-    <div className={cn(inline ? 'relative shrink-0' : 'fixed top-16 right-3 sm:top-4 sm:right-4 z-[100]')}>
+    <div
+      className={cn(
+        inline
+          ? 'relative shrink-0'
+          : 'fixed top-16 right-3 md:top-1.5 md:right-[190px] z-[100]'
+      )}
+    >
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={`Change language. Current language: ${current.native}`}

@@ -58,7 +58,7 @@ export default function LandingPage() {
         </div>
 
         <div className="flex items-center justify-end gap-2 sm:gap-3 min-w-0">
-          <LanguageSwitcher />
+          <LanguageSwitcher inline />
           <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
           <Link href="/dashboard" className="btn-primary hidden sm:inline-flex shadow-lg shadow-blue-500/20">
             Launch App <ArrowRight className="w-4 h-4" />

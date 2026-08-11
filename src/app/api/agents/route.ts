@@ -6,72 +6,56 @@ import { obs } from '@/lib/observability/logger';
 import { verifyApiWallet } from '@/lib/auth/middleware';
 import type { AgentType } from '@/types';
 
-// GET /api/agents?wallet=0x...
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet');
   if (!wallet) return NextResponse.json({ error: 'wallet required' }, { status: 400 });
   try {
-    const agents = await getUserAgents(wallet);
-    return NextResponse.json({ agents });
+    return NextResponse.json({ agents: await getUserAgents(wallet) });
   } catch (err) {
     const e = err as Error;
     return NextResponse.json({ error: e.message, agents: [] }, { status: 500 });
   }
 }
 
-// POST /api/agents — create new agent
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      walletAddress: string;
-      name: string;
-      type: AgentType;
-      description: string;
-      goals: string[];
-      instructions: string;
-      model: string;
-      monthlyBudgetCredits: number;
-      maxCreditsPerExecution: number;
-      tags: string[];
+      walletAddress: string; name: string; type: AgentType; description?: string;
+      goals?: string[]; instructions?: string; model?: string;
+      monthlyBudgetCredits?: number; maxCreditsPerExecution?: number; tags?: string[];
     };
 
-    const { walletAddress, name, type } = body;
-    if (!walletAddress || !name || !type) {
+    if (!body.walletAddress || !body.name || !body.type) {
       return NextResponse.json({ error: 'walletAddress, name, type required' }, { status: 400 });
     }
 
-    const auth = await verifyApiWallet(req, walletAddress, true);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.reason ?? 'Wallet signature required' }, { status: 401 });
-    }
+    const auth = await verifyApiWallet(req, body.walletAddress, true);
+    if (!auth.ok) return NextResponse.json({ error: auth.reason ?? 'Wallet signature required' }, { status: 401 });
     const ownerWallet = auth.walletAddress;
 
-    // Check agent limit against membership
     const [currentCount, membership] = await Promise.all([
       countUserAgents(ownerWallet),
       getMembership(ownerWallet),
     ]);
-
     const tier = membership?.tier ?? 'free';
     const plan = MEMBERSHIP_PLANS.find((p) => p.id === tier);
     const maxAgents = plan?.maxAgents ?? 1;
-
     if (currentCount >= maxAgents) {
       return NextResponse.json({
         error: `Agent limit reached. Your ${tier} plan allows ${maxAgents} agent${maxAgents === 1 ? '' : 's'}. Upgrade to create more.`,
-        limitReached: true,
-        currentCount,
-        maxAgents,
+        limitReached: true, currentCount, maxAgents,
       }, { status: 403 });
     }
 
+    // Persist the field only for compatibility. Runtime routing ignores it
+    // and always uses the current automatic model registry.
     const agent = await createAgent(ownerWallet, {
       name: body.name,
       type: body.type,
       description: body.description || '',
       goals: body.goals || [],
       instructions: body.instructions || '',
-      model: body.model || 'moonshot/kimi-k1-5-32k',
+      model: 'automatic',
       monthlyBudgetCredits: Math.max(10, body.monthlyBudgetCredits || 100),
       maxCreditsPerExecution: Math.max(5, body.maxCreditsPerExecution || 20),
       tags: body.tags || [],
@@ -86,7 +70,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/agents — update agent status/fields
 export async function PATCH(req: NextRequest) {
   try {
     const { agentId, ...updates } = await req.json() as { agentId: string; [key: string]: unknown };

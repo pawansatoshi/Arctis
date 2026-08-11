@@ -28,8 +28,6 @@ function isSupportedSwapPair(fromToken?: string, toToken?: string): boolean {
   return false;
 }
 
-// Canonical display form for Passport identities. Keep the .arc suffix in
-// proposals so the UI never turns a verified identity into ambiguous text.
 function normalizePassportRecipient(value: string): string {
   const username = value.trim().toLowerCase().replace(/^@/, '').replace(/\\.arc$/, '');
   return `${username}.arc`;
@@ -86,13 +84,19 @@ export function parseFinancialIntent(message: string): PendingFinancialAction | 
     if (fromToken) return { action: 'swap', amount: swapPartial[1], fromToken, missing: 'toToken', createdAt: Date.now() };
   }
 
+  // Bridge with amount only deliberately enters a two-step clarification:
+  // 1) source network, then 2) destination network. Never ask for generic
+  // "details" because the user has already supplied the amount.
+  const bridgeAmountOnly = text.match(new RegExp(`\\bbridge\\s+(${AMOUNT_RE})\\s*usdc\\s*$`, 'i'));
+  if (bridgeAmountOnly) return { action: 'bridge', amount: bridgeAmountOnly[1], fromToken: 'USDC', missing: 'sourceChain', createdAt: Date.now() };
+
   const bridge = text.match(new RegExp(`\\bbridge\\s+(${AMOUNT_RE})\\s*usdc\\s+from\\s+(.+?)\\s+to\\s+(.+?)\\s*$`, 'i'));
   if (bridge) {
     const source = matchBridgeChain(bridge[2]); const destination = matchBridgeChain(bridge[3]);
     const base: PendingFinancialAction = { action: 'bridge', amount: bridge[1], fromToken: 'USDC', createdAt: Date.now() };
     if (!source) return { ...base, missing: 'sourceChain' };
-    if (!destination) return { ...base, sourceChain: source.name, sourceChainId: source.chainId, missing: 'sourceChain', error: 'Please specify a supported destination chain.' };
-    if (source.chainId === destination.chainId) return { ...base, sourceChain: source.name, sourceChainId: source.chainId, missing: 'sourceChain', error: 'Source and destination chains must be different.' };
+    if (!destination) return { ...base, sourceChain: source.name, sourceChainId: source.chainId, missing: 'destinationChain', error: 'Please specify a supported destination chain.' };
+    if (source.chainId === destination.chainId) return { ...base, sourceChain: source.name, sourceChainId: source.chainId, missing: 'destinationChain', error: 'Destination must be different from the source chain.' };
     return { ...base, sourceChain: source.name, sourceChainId: source.chainId, destinationChain: destination.name, destinationChainId: destination.chainId };
   }
   return null;
@@ -102,10 +106,36 @@ export function resolveClarification(pending: PendingFinancialAction, replyText:
   const text = replyText.trim(); const { error: _drop, ...clean } = pending as PendingFinancialAction & { error?: string };
   switch (pending.missing) {
     case 'full': return parseFinancialIntent(`${pending.action} ${text}`) ?? clean;
-    case 'amount': { const m = text.match(new RegExp(`^${AMOUNT_RE}$`)); if (!m) return { ...clean, missing: 'amount', error: 'Please enter a valid numeric amount.' }; return pending.action === 'transfer' ? { ...clean, amount: m[0], missing: 'recipient', error: undefined } : { ...clean, amount: m[0], missing: undefined, error: undefined }; }
-    case 'recipient': { const address = text.match(new RegExp(`^${ADDRESS_RE}$`, 'i')); if (address) return { ...clean, recipient: address[0], missing: undefined }; const passport = text.match(new RegExp(`^${PASSPORT_RE}$`, 'i')); if (passport) return { ...clean, recipient: normalizePassportRecipient(passport[0]), missing: undefined }; return { ...clean, missing: 'recipient', error: 'Please provide a valid 0x wallet address or Passport username.' }; }
-    case 'toToken': { const toToken = normalizeSwapToken(text.match(new RegExp(TOKEN_RE, 'i'))?.[0]); if (toToken && toToken !== clean.fromToken && isSupportedSwapPair(clean.fromToken, toToken)) return { ...clean, toToken, missing: undefined, error: undefined }; return { ...clean, missing: 'toToken', error: 'That token pair is not currently supported. Choose USDC, EURC, cirBTC, tUSDC or tARC.' }; }
-    case 'sourceChain': { const chain = matchBridgeChain(text); if (!chain) return { ...clean, missing: 'sourceChain', error: 'Please provide a supported chain name.' }; if (!clean.sourceChainId) return { ...clean, sourceChain: chain.name, sourceChainId: chain.chainId, missing: undefined }; if (clean.sourceChainId === chain.chainId) return { ...clean, missing: 'sourceChain', error: 'Destination must be different from the source chain.' }; return { ...clean, destinationChain: chain.name, destinationChainId: chain.chainId, missing: undefined, error: undefined }; }
+    case 'amount': {
+      const m = text.match(new RegExp(`^${AMOUNT_RE}$`));
+      if (!m) return { ...clean, missing: 'amount', error: 'Please enter a valid numeric amount.' };
+      return pending.action === 'transfer'
+        ? { ...clean, amount: m[0], missing: 'recipient', error: undefined }
+        : { ...clean, amount: m[0], missing: undefined, error: undefined };
+    }
+    case 'recipient': {
+      const address = text.match(new RegExp(`^${ADDRESS_RE}$`, 'i'));
+      if (address) return { ...clean, recipient: address[0], missing: undefined };
+      const passport = text.match(new RegExp(`^${PASSPORT_RE}$`, 'i'));
+      if (passport) return { ...clean, recipient: normalizePassportRecipient(passport[0]), missing: undefined };
+      return { ...clean, missing: 'recipient', error: 'Please provide a valid 0x wallet address or Passport username.' };
+    }
+    case 'toToken': {
+      const toToken = normalizeSwapToken(text.match(new RegExp(TOKEN_RE, 'i'))?.[0]);
+      if (toToken && toToken !== clean.fromToken && isSupportedSwapPair(clean.fromToken, toToken)) return { ...clean, toToken, missing: undefined, error: undefined };
+      return { ...clean, missing: 'toToken', error: 'That token pair is not currently supported. Choose USDC, EURC, cirBTC, tUSDC or tARC.' };
+    }
+    case 'sourceChain': {
+      const chain = matchBridgeChain(text);
+      if (!chain) return { ...clean, missing: 'sourceChain', error: `Please choose a supported source network: ${listSourceChainNames().join(', ')}.` };
+      return { ...clean, sourceChain: chain.name, sourceChainId: chain.chainId, missing: 'destinationChain', error: undefined };
+    }
+    case 'destinationChain': {
+      const chain = matchBridgeChain(text);
+      if (!chain) return { ...clean, missing: 'destinationChain', error: `Please choose a supported destination network: ${listSourceChainNames().join(', ')}.` };
+      if (clean.sourceChainId === chain.chainId) return { ...clean, missing: 'destinationChain', error: 'Destination network must be different from the source network.' };
+      return { ...clean, destinationChain: chain.name, destinationChainId: chain.chainId, missing: undefined, error: undefined };
+    }
     default: return clean;
   }
 }
@@ -117,7 +147,8 @@ export function clarificationQuestion(pending: PendingFinancialAction): string {
     case 'amount': if (pending.action === 'transfer') return 'How much USDC would you like to send?'; if (pending.action === 'swap') return `How much ${pending.fromToken ?? 'USDC'} would you like to swap?`; return 'How much USDC would you like to bridge?';
     case 'recipient': return `Got it — ${pending.amount} USDC. What wallet address or Passport username should receive it?`;
     case 'toToken': return `Got it — ${pending.amount} ${pending.fromToken}. Which token would you like to receive? You can use USDC, EURC, cirBTC (BTC), tUSDC or tARC.`;
-    case 'sourceChain': return pending.sourceChain ? `Source is ${pending.sourceChain}. Which destination chain should I use? Supported: ${chains}.` : `Which source and destination chains should I use? Supported: ${chains}.`;
+    case 'sourceChain': return `Got it — ${pending.amount} USDC. Which network do you want to bridge from? Supported: ${chains}.`;
+    case 'destinationChain': return `Source: ${pending.sourceChain}. Which network do you want to bridge to? Supported: ${chains}.`;
     default: return 'Could you clarify that?';
   }
 }

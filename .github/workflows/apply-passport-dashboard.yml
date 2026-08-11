@@ -1,0 +1,48 @@
+name: apply passport dashboard card
+
+on:
+  push:
+    branches: [feat/dashboard-passport-identity]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/dashboard-passport-identity
+
+      - name: Integrate Passport identity card
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          page = Path('src/app/dashboard/page.tsx')
+          text = page.read_text()
+          import_line = "import type { TransactionRecord } from '@/types';"
+          new_import = import_line + "\nimport PassportIdentityCard from '@/components/passport/PassportIdentityCard';"
+          if "PassportIdentityCard from '@/components/passport/PassportIdentityCard'" not in text:
+              text = text.replace(import_line, new_import, 1)
+
+          anchor = "      {/* ── BALANCE ROW ────────────────────────────────────── */}"
+          block = "      <motion.div variants={row}><PassportIdentityCard /></motion.div>\n\n"
+          if block.strip() not in text:
+              text = text.replace(anchor, block + anchor, 1)
+          page.write_text(text)
+
+          card = Path('src/components/passport/PassportIdentityCard.tsx')
+          card_text = card.read_text()
+          card_text = card_text.replace('/api/passport/by-wallet?walletAddress=${address}', '/api/passport/profile?walletAddress=${address}')
+          card.write_text(card_text)
+          PY
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/dashboard/page.tsx src/components/passport/PassportIdentityCard.tsx
+          git diff --cached --quiet || git commit -m "feat: integrate Passport identity into dashboard"
+          git push origin feat/dashboard-passport-identity

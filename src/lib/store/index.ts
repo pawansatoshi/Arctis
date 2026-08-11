@@ -8,68 +8,45 @@ export interface PendingFinancialAction {
   fromToken?: string;
   toToken?: string;
   recipient?: string;
-  sourceChain?: string;   // human-readable source chain
-  sourceChainId?: number; // numeric source chain ID
-  destinationChain?: string;   // human-readable destination chain
-  destinationChainId?: number; // numeric destination chain ID
-  missing?: 'amount' | 'recipient' | 'toToken' | 'sourceChain' | 'full';
-  error?: string; // set when the last clarification reply resolved to something invalid
-  createdAt: number; // epoch ms — used to expire stale pending actions
+  sourceChain?: string;
+  sourceChainId?: number;
+  destinationChain?: string;
+  destinationChainId?: number;
+  missing?: 'amount' | 'recipient' | 'toToken' | 'sourceChain' | 'destinationChain' | 'full';
+  error?: string;
+  createdAt: number;
 }
 
 export interface AppState {
-  // Sidebar
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
   aiEnabled: boolean;
   setAiEnabled: (v: boolean) => void;
   toggleSidebar: () => void;
-
-  // Transactions
   transactions: TransactionRecord[];
   addTransaction: (tx: TransactionRecord) => void;
   updateTransaction: (id: string, updates: Partial<TransactionRecord>) => void;
   clearTransactions: () => void;
-
-  // Credits
   creditBalance: CreditBalance | null;
   setCreditBalance: (b: CreditBalance) => void;
-
-  // Membership
   membership: UserMembership | null;
   setMembership: (m: UserMembership | null) => void;
-
-  // AI Sessions
   aiSessions: AISession[];
   currentSession: AISession | null;
   addAISession: (s: AISession) => void;
   setCurrentSession: (s: AISession | null) => void;
   updateCurrentSession: (updates: Partial<AISession>) => void;
-
-  // AI Mode + Model
   aiMode: AIMode;
   setAIMode: (m: AIMode) => void;
   aiModel: string;
   setAIModel: (m: string) => void;
-
-  // Agents (local cache — source of truth is Firebase)
   agents: Agent[];
   setAgents: (agents: Agent[]) => void;
   upsertAgent: (agent: Agent) => void;
-
-  // UI
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (v: boolean) => void;
-
-  // AI-orchestrated financial action handoff — set by AI Workspace when
-  // the user confirms a parsed intent (e.g. "bridge 5 USDC"), consumed
-  // once by the destination page (Transfer/Swap/Bridge) to pre-fill its
-  // form, then cleared. The AI never executes the action itself — this
-  // only carries the plan to the existing, already-working page/flow.
   pendingAction: PendingFinancialAction | null;
   setPendingAction: (a: PendingFinancialAction | null) => void;
-
-  // Onboarding
   onboardingComplete: boolean;
   setOnboardingComplete: (v: boolean) => void;
 }
@@ -82,46 +59,30 @@ export const useAppStore = create<AppState>()(
       setAiEnabled: (v) => set({ aiEnabled: v }),
       setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-
       transactions: [],
       addTransaction: (tx) => set((s) => ({ transactions: [tx, ...s.transactions].slice(0, 200) })),
-      updateTransaction: (id, updates) =>
-        set((s) => ({ transactions: s.transactions.map((t) => t.id === id ? { ...t, ...updates } : t) })),
+      updateTransaction: (id, updates) => set((s) => ({ transactions: s.transactions.map((t) => t.id === id ? { ...t, ...updates } : t) })),
       clearTransactions: () => set({ transactions: [] }),
-
       creditBalance: null,
       setCreditBalance: (b) => set({ creditBalance: b }),
-
       membership: null,
       setMembership: (m) => set({ membership: m }),
-
       aiSessions: [],
       currentSession: null,
       addAISession: (s) => set((st) => ({ aiSessions: [s, ...st.aiSessions].slice(0, 50) })),
       setCurrentSession: (s) => set({ currentSession: s }),
-      updateCurrentSession: (updates) => set((s) => ({
-        currentSession: s.currentSession ? { ...s.currentSession, ...updates } : null,
-      })),
-
+      updateCurrentSession: (updates) => set((s) => ({ currentSession: s.currentSession ? { ...s.currentSession, ...updates } : null })),
       aiMode: 'build',
       setAIMode: (m) => set({ aiMode: m }),
       aiModel: '',
       setAIModel: (m) => set({ aiModel: m }),
-
       agents: [],
       setAgents: (agents) => set({ agents }),
-      upsertAgent: (agent) => set((s) => ({
-        agents: s.agents.find((a) => a.id === agent.id)
-          ? s.agents.map((a) => a.id === agent.id ? agent : a)
-          : [agent, ...s.agents],
-      })),
-
+      upsertAgent: (agent) => set((s) => ({ agents: s.agents.find((a) => a.id === agent.id) ? s.agents.map((a) => a.id === agent.id ? agent : a) : [agent, ...s.agents] })),
       commandPaletteOpen: false,
       setCommandPaletteOpen: (v) => set({ commandPaletteOpen: v }),
-
       pendingAction: null,
       setPendingAction: (a) => set({ pendingAction: a }),
-
       onboardingComplete: false,
       setOnboardingComplete: (v) => set({ onboardingComplete: v }),
     }),

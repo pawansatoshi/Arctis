@@ -7,14 +7,15 @@ import {
   ArrowRight, ArrowUpRight, Bot, ArrowLeftRight, GitMerge,
   Sparkles, Shield, ChevronRight, Zap, Youtube,
 } from 'lucide-react';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 const ConnectButton = dynamic(
   () => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })),
   { ssr: false }
 );
 
-const DEMO_VIDEO_URL = 'https://www.youtube.com/watch?v=EaXlv4ajv8g';
-const DEMO_VIDEO_EMBED = 'https://www.youtube.com/embed/EaXlv4ajv8g?rel=0&modestbranding=1';
+const DEMO_VIDEO_URL = 'https://youtu.be/EaXlv4ajv8g';
+const DEMO_VIDEO_EMBED = 'https://www.youtube.com/embed/EaXlv4ajv8g?rel=0&playsinline=1';
 const YOUTUBE_CHANNEL_URL = 'https://youtube.com/@PawanSatoshi';
 
 const OS_PILLARS = [
@@ -42,13 +43,30 @@ export default function LandingPage() {
         <div className="hidden dark:block absolute inset-0 opacity-[0.015]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)', backgroundSize: '72px 72px' }} />
       </div>
 
-      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/30 to-violet-500/20 border border-black/[0.1] dark:border-white/[0.1] flex items-center justify-center shadow-lg shadow-blue-500/10"><span className="text-blue-600 dark:text-blue-400 font-black text-sm tracking-tighter">A</span></div><span className="text-surface-950 font-bold text-lg tracking-tight">ARCTIS</span></div>
-        <div className="hidden md:flex items-center gap-8 text-sm text-surface-700"><Link href="#pillars" className="hover:text-surface-950 transition-colors">Platform</Link><Link href="#proof" className="hover:text-surface-950 transition-colors">Trust</Link><Link href="/dashboard" className="hover:text-surface-950 transition-colors">Dashboard</Link></div>
-        <div className="flex items-center gap-3"><ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} /><Link href="/dashboard" className="btn-primary hidden sm:inline-flex shadow-lg shadow-blue-500/20">Launch App <ArrowRight className="w-4 h-4" /></Link></div>
+      <nav className="relative z-10 flex items-center justify-between gap-3 px-4 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/30 to-violet-500/20 border border-black/[0.1] dark:border-white/[0.1] flex items-center justify-center shadow-lg shadow-blue-500/10">
+            <span className="text-blue-600 dark:text-blue-400 font-black text-sm tracking-tighter">A</span>
+          </div>
+          <span className="text-surface-950 font-bold text-lg tracking-tight">ARCTIS</span>
+        </div>
+
+        <div className="hidden md:flex items-center gap-8 text-sm text-surface-700">
+          <Link href="#pillars" className="hover:text-surface-950 transition-colors">Platform</Link>
+          <Link href="#proof" className="hover:text-surface-950 transition-colors">Trust</Link>
+          <Link href="/dashboard" className="hover:text-surface-950 transition-colors">Dashboard</Link>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 sm:gap-3 min-w-0">
+          <LanguageSwitcher />
+          <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
+          <Link href="/dashboard" className="btn-primary hidden sm:inline-flex shadow-lg shadow-blue-500/20">
+            Launch App <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </nav>
 
-      <section className="relative z-10 pt-20 pb-20 px-6 text-center max-w-5xl mx-auto">
+      <section className="relative z-10 pt-12 sm:pt-20 pb-20 px-4 sm:px-6 text-center max-w-5xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}>
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-medium mb-8"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Built on Arc · Testnet Live · Chain 5042002</div>
           <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-surface-950 mb-6 leading-[1.06]">The Web3{' '}<span className="text-arc-gradient">Operating System</span><br />for Humans and Agents</h1>
@@ -56,14 +74,39 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4"><Link href="/dashboard" className="btn-primary px-8 py-3.5 text-base shadow-xl shadow-blue-500/20">Open ARCTIS <ArrowRight className="w-5 h-5" /></Link><Link href="/transfer" className="btn-ghost px-7 py-3.5 text-base border border-black/[0.08] dark:border-white/[0.08]">Send USDC</Link></div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }} className="mt-16 max-w-4xl mx-auto">
-          <div className="text-center mb-5"><p className="text-surface-950 font-semibold text-lg tracking-tight">See ARCTIS in action</p><p className="text-surface-600 text-sm mt-1">A quick demo of the platform on desktop and mobile.</p></div>
-          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-black/[0.08] dark:border-white/[0.10] bg-black shadow-2xl shadow-blue-500/10 ring-1 ring-black/[0.04] dark:ring-white/[0.05]"><div className="aspect-video w-full"><iframe className="h-full w-full" src={DEMO_VIDEO_EMBED} title="ARCTIS Demo — Web3 Operating System for Humans and Agents" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen loading="lazy" /></div></div>
-          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-surface-950 bg-surface-100 border border-black/[0.08] dark:border-white/[0.08] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"><Youtube className="w-4 h-4 text-red-500" />Watch on YouTube<ArrowUpRight className="w-3.5 h-3.5" /></a>
-            <a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noopener noreferrer" aria-label="Visit Pawan Satoshi YouTube channel" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-[#FF0000] hover:bg-[#D90000] shadow-lg shadow-red-500/20 transition-all"><Youtube className="w-4 h-4" />Pawan Satoshi Channel<ArrowUpRight className="w-3.5 h-3.5" /></a>
+        <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }} className="mt-14 sm:mt-16 max-w-4xl mx-auto">
+          <div className="text-center mb-5">
+            <p className="text-surface-950 font-semibold text-lg tracking-tight">See ARCTIS in action</p>
+            <p className="text-surface-600 text-sm mt-1">Watch the demo here or continue to YouTube.</p>
           </div>
-          <p className="text-xs text-surface-500 mt-3">Watch here, open the video on YouTube, or visit the Pawan Satoshi channel for more demos.</p>
+
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-black/[0.08] dark:border-white/[0.10] bg-black shadow-2xl shadow-blue-500/10 ring-1 ring-black/[0.04] dark:ring-white/[0.05]">
+            <div className="aspect-video w-full">
+              <iframe
+                className="h-full w-full"
+                src={DEMO_VIDEO_EMBED}
+                title="ARCTIS Demo — Web3 Operating System for Humans and Agents"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                loading="eager"
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
+            <a href={DEMO_VIDEO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-surface-950 bg-surface-100 border border-black/[0.08] dark:border-white/[0.08] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors">
+              <Youtube className="w-4 h-4 text-red-500" aria-hidden="true" />
+              Watch on YouTube
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </a>
+            <a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noopener noreferrer" aria-label="Visit Pawan Satoshi YouTube channel" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white bg-[#FF0000] hover:bg-[#D90000] shadow-lg shadow-red-500/20 transition-all">
+              <Youtube className="w-4 h-4" aria-hidden="true" />
+              Pawan Satoshi Channel
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </a>
+          </div>
+          <p className="text-xs text-surface-500 mt-3">Play the demo on ARCTIS, open the same video on YouTube, or visit the channel for more demos.</p>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.45, ease: [0.22, 1, 0.36, 1] }} className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">{OS_PILLARS.map((p) => (<div key={p.label} className={`glass-card p-4 text-left border ${p.border}`}><div className={`w-9 h-9 rounded-xl ${p.bg} flex items-center justify-center mb-3`}><p.icon className={`w-4.5 h-4.5 ${p.color}`} /></div><div className="text-surface-950 font-semibold text-sm mb-1">{p.label}</div><div className="text-surface-600 text-xs leading-relaxed">{p.description}</div></div>))}</motion.div>

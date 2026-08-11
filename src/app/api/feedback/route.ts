@@ -44,14 +44,14 @@ export async function POST(req: Request) {
     const feedback = {
       name: body.name.trim(),
       country: body.country?.trim() || 'Unknown',
-      email: body.email?.trim() || null,
+      email: body.email?.trim() || undefined,
       category: body.category as
         | 'bug_report'
         | 'feature_request'
         | 'improvement'
         | 'general',
       message: body.message.trim(),
-      walletAddress: body.walletAddress?.trim() || null,
+      walletAddress: body.walletAddress?.trim() || undefined,
     };
 
     // 1. Always save feedback to Firestore first.

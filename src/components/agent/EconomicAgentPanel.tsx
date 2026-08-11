@@ -43,11 +43,11 @@ const INTRO_COPY: Record<LockedAction, { prompt: string; examples: string[] }> =
     prompt: 'Choose a bridge route:',
     examples: [
       'Bridge USDC from Arc Testnet to Base Sepolia',
-      'Bridge USDC from Base Sepolia to Arc Testnet',
+      'Bridge USDC from Arc Testnet to Arbitrum Sepolia',
       'Bridge USDC from Arc Testnet to Ethereum Sepolia',
+      'Bridge USDC from Base Sepolia to Arc Testnet',
+      'Bridge USDC from Arbitrum Sepolia to Arc Testnet',
       'Bridge USDC from Ethereum Sepolia to Arc Testnet',
-      'Bridge USDC from Base Sepolia to Ethereum Sepolia',
-      'Bridge USDC from Ethereum Sepolia to Base Sepolia',
     ],
   },
 };

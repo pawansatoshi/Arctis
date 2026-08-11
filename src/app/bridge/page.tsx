@@ -5,14 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
-import { createPublicClient, formatEther, http } from 'viem';
+import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
 import { AppKit } from '@circle-fin/app-kit';
 import {
   GitMerge, CheckCircle2, AlertCircle, ExternalLink,
   ChevronDown, RefreshCw, History, Wallet, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatRelative, formatAddress } from '@/lib/utils';
-import { RPC_FALLBACK_URLS } from '@/lib/contracts';
+import { ERC20_ABI, RPC_FALLBACK_URLS } from '@/lib/contracts';
 import { ModeTabs, type ExecutionMode } from '@/components/agent/ModeTabs';
 import { EconomicAgentPanel } from '@/components/agent/EconomicAgentPanel';
 import { useAppStore } from '@/lib/store';
@@ -80,31 +80,54 @@ const BRIDGE_NATIVE_SYMBOL: Record<number, string> = {
   421614: 'ETH',
 };
 
-async function preflightNativeGas(chain: BridgeChain, address: string) {
+async function preflightBridgeFunds(chain: BridgeChain, address: string, amount: string) {
   const rpc = BRIDGE_NATIVE_RPC[chain.chainId];
-  if (!rpc) throw new Error(`No gas preflight RPC configured for ${chain.chain}`);
+  if (!rpc) throw new Error(`No balance preflight RPC configured for ${chain.chain}`);
 
   const client = createPublicClient({ transport: http(rpc) });
-  const [balance, gasPrice] = await Promise.all([
-    client.getBalance({ address: address as `0x${string}` }),
-    client.getGasPrice(),
-  ]);
+  const requiredUsdc = parseUnits(amount, 6);
 
-  // Destination CCTP receiveMessage can be materially more expensive than a
-  // simple transfer. Use a conservative 400k-gas envelope with 2x headroom.
-  const required = gasPrice * 400_000n * 2n;
-  if (balance < required) {
-    const symbol = BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas';
-    throw new Error(
-      `Insufficient ${symbol} on ${chain.chain}. You need approximately ${formatEther(required)} ${symbol} for bridge execution. No USDC will be burned.`,
-    );
+  try {
+    const [nativeBalance, gasPrice, usdcBalance] = await Promise.all([
+      client.getBalance({ address: address as `0x${string}` }),
+      client.getGasPrice(),
+      client.readContract({
+        address: chain.usdc as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`],
+      }),
+    ]);
+
+    // Source-side CCTP execution needs native gas for approval/burn.
+    // Keep a conservative envelope, but do not require destination gas from
+    // the user: destination minting is not their source-chain transaction.
+    const requiredNativeGas = gasPrice * 300_000n * 2n;
+
+    if (usdcBalance < requiredUsdc) {
+      throw new Error(
+        `Insufficient USDC on ${chain.chain}. Required ${formatUnits(requiredUsdc, 6)} USDC, available ${formatUnits(usdcBalance, 6)} USDC. No USDC will be burned.`,
+      );
+    }
+
+    if (nativeBalance < requiredNativeGas) {
+      const symbol = BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas';
+      throw new Error(
+        `Insufficient ${symbol} on ${chain.chain}. You need approximately ${formatEther(requiredNativeGas)} ${symbol} for the source-chain bridge transaction. No USDC will be burned.`,
+      );
+    }
+
+    return {
+      usdcBalance,
+      requiredUsdc,
+      nativeBalance,
+      requiredNativeGas,
+      symbol: BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas',
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Insufficient ')) throw error;
+    throw new Error(`Unable to verify USDC/native balance on ${chain.chain}. Please refresh your wallet balance and try again.`);
   }
-
-  return {
-    balance,
-    required,
-    symbol: BRIDGE_NATIVE_SYMBOL[chain.chainId] ?? 'native gas',
-  };
 }
 
 function extractTxHashes(result: unknown): { burnTxHash?: string; forwardTxHash?: string } {
@@ -389,10 +412,9 @@ function BridgePageInner() {
         await switchChainAsync({ chainId: route.chainId });
       }
 
-      // CCTP is a multi-chain lifecycle. Preflight both sides before the
-      // source burn so a missing destination gas balance cannot strand USDC.
-      await preflightNativeGas(route, address);
-      await preflightNativeGas(target, address);
+      // Verify the exact source-side USDC burn amount and source native gas
+      // before App Kit opens the wallet. No USDC is burned when this fails.
+      await preflightBridgeFunds(route, address, bridgeAmount);
 
       const provider = await connector.getProvider();
       const adapter = await createViemAdapterFromProvider({ provider: provider as never });
@@ -515,12 +537,30 @@ function BridgePageInner() {
     setDestinationChain(target);
     setAgentExecuting(true);
 
-    setBridgeConfirmation({ amount: proposal.amount, route, target });
+    try {
+      // Economic Agent uses the same verified execution path as Manual, but
+      // keeps its status/errors inside the Economic Agent panel.
+      await executeBridge(proposal.amount, route, target);
+    } catch {
+      // executeBridge owns step/errorMsg; the agent panel renders that state.
+    } finally {
+      setAgentExecuting(false);
+    }
   }, [chains, sourceChain, destinationChain, executeBridge]);
 
   const handleManualBridge = async () => {
-    if (!sourceChain || !destinationChain) return;
-    setBridgeConfirmation({ amount, route: sourceChain, target: destinationChain });
+    if (!sourceChain || !destinationChain || !address) return;
+
+    setErrorMsg(null);
+    try {
+      await preflightBridgeFunds(sourceChain, address, amount);
+      setStep('idle');
+      setBridgeConfirmation({ amount, route: sourceChain, target: destinationChain });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to verify bridge balances';
+      setErrorMsg(message);
+      setStep('error');
+    }
   };
 
   const confirmBridge = async () => {
@@ -573,7 +613,7 @@ function BridgePageInner() {
     setAgentExecuting(false);
   };
 
-  if (step === 'completed') {
+  if (step === 'completed' && mode === 'manual') {
     return (
       <div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">
         <motion.div
@@ -673,7 +713,14 @@ function BridgePageInner() {
       </motion.div>
 
       <div className="mb-6">
-        <ModeTabs mode={mode} onChange={setMode} />
+        <ModeTabs
+          mode={mode}
+          onChange={(nextMode) => {
+            setShowSourceMenu(false);
+            setShowDestinationMenu(false);
+            setMode(nextMode);
+          }}
+        />
       </div>
 
       {mode === 'agent' && (
@@ -683,6 +730,8 @@ function BridgePageInner() {
           executionStatus={
             step === 'error'
               ? 'failed'
+              : step === 'completed'
+                ? 'success'
                 : agentExecuting
                   ? 'executing'
                   : 'idle'
@@ -783,7 +832,7 @@ function BridgePageInner() {
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="absolute top-full left-0 right-0 mt-1 glass-card z-20 overflow-hidden"
+                      className="absolute top-full left-0 right-0 mt-1 glass-card z-50 max-h-[50vh] overflow-y-auto overscroll-contain touch-pan-y"
                     >
                       {chains.map((chain) => (
                         <button
@@ -864,7 +913,7 @@ function BridgePageInner() {
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="absolute top-full left-0 right-0 mt-1 glass-card z-20 overflow-hidden"
+                      className="absolute top-full left-0 right-0 mt-1 glass-card z-50 max-h-[50vh] overflow-y-auto overscroll-contain touch-pan-y"
                     >
                       {chains.map((chain) => (
                         <button
@@ -1016,7 +1065,7 @@ function BridgePageInner() {
               </button>
             )}
 
-            <AnimatePresence>
+            {mode === 'manual' && <AnimatePresence>
               {bridgeConfirmation && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -1058,7 +1107,7 @@ function BridgePageInner() {
                   </motion.div>
                 </motion.div>
               )}
-            </AnimatePresence>
+            </AnimatePresence>}
 
             <p className="text-center text-surface-500 text-xs">
               Circle App Kit · CCTP V2 · Testnet only · Arc ↔ Ethereum / Base / Arbitrum

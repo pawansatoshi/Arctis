@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import {
-  ArrowRight, Bot, ArrowLeftRight, GitMerge,
+  ArrowRight, ArrowUpRight, Bot, ArrowLeftRight, GitMerge,
   Sparkles, Shield, ChevronRight, Zap, Youtube,
 } from 'lucide-react';
 

@@ -5,19 +5,17 @@ import type { SwapRoute, SwapRouteId, SwapRecord, SwapQuote, SwapToken } from '.
 
 const COL = 'swap_records';
 
-// ── Route registry (locked scope: USDC ↔ tUSDC ↔ tARC) ──────
-// Rates are OTC — set by the swap wallet's liquidity pricing.
-// tUSDC and tARC have no external market; this is intentional
-// per the locked "real liquidity, no fake settlement" rule —
-// the swap wallet itself is the counterparty, holding real
-// on-chain reserves it settles from.
+// OTC route registry for ARCTIS-owned tUSDC/tARC.
+// These are NOT Circle App Kit Swap assets. Circle App Kit Swap is kept for
+// supported market assets; ARCTIS owns the liquidity, pricing and settlement
+// policy for these custom testnet tokens.
 export const DEFAULT_ROUTES: Record<SwapRouteId, SwapRoute> = {
-  'usdc-tusdc': { id: 'usdc-tusdc', fromToken: 'USDC',  toToken: 'tUSDC', rate: 1,        feeBps: 30, enabled: true },
-  'tusdc-usdc': { id: 'tusdc-usdc', fromToken: 'tUSDC', toToken: 'USDC',  rate: 1,        feeBps: 30, enabled: true },
-  'usdc-tarc':  { id: 'usdc-tarc',  fromToken: 'USDC',  toToken: 'tARC',  rate: 150,      feeBps: 30, enabled: true },
-  'tarc-usdc':  { id: 'tarc-usdc',  fromToken: 'tARC',  toToken: 'USDC',  rate: 0.006667, feeBps: 30, enabled: true },
-  'tusdc-tarc': { id: 'tusdc-tarc', fromToken: 'tUSDC', toToken: 'tARC',  rate: 150,      feeBps: 30, enabled: true },
-  'tarc-tusdc': { id: 'tarc-tusdc', fromToken: 'tARC',  toToken: 'tUSDC', rate: 0.006667, feeBps: 30, enabled: true },
+  'usdc-tusdc': { id: 'usdc-tusdc', fromToken: 'USDC',  toToken: 'tUSDC', rate: 1, feeBps: 30, enabled: true },
+  'tusdc-usdc': { id: 'tusdc-usdc', fromToken: 'tUSDC', toToken: 'USDC',  rate: 1, feeBps: 30, enabled: true },
+  'usdc-tarc':  { id: 'usdc-tarc',  fromToken: 'USDC',  toToken: 'tARC',  rate: 150, feeBps: 30, enabled: true },
+  'tarc-usdc':  { id: 'tarc-usdc',  fromToken: 'tARC',  toToken: 'USDC',  rate: 1 / 150, feeBps: 30, enabled: true },
+  'tusdc-tarc': { id: 'tusdc-tarc', fromToken: 'tUSDC', toToken: 'tARC',  rate: 150, feeBps: 30, enabled: true },
+  'tarc-tusdc': { id: 'tarc-tusdc', fromToken: 'tARC', toToken: 'tUSDC', rate: 1 / 150, feeBps: 30, enabled: true },
 };
 
 export function getRouteId(fromToken: SwapToken, toToken: SwapToken): SwapRouteId | null {
@@ -31,13 +29,21 @@ export function getSwapRoute(routeId: SwapRouteId): SwapRoute | null {
 
 export function calculateSwapQuote(routeId: SwapRouteId, inputAmount: number): SwapQuote | null {
   const route = getSwapRoute(routeId);
-  if (!route || !route.enabled) return null;
+  if (!route || !route.enabled || !Number.isFinite(inputAmount) || inputAmount <= 0) return null;
+
   const fee = inputAmount * (route.feeBps / 10_000);
   const netInput = inputAmount - fee;
   const outputAmount = netInput * route.rate;
+
   return {
-    routeId, fromToken: route.fromToken, toToken: route.toToken,
-    inputAmount, outputAmount, fee, feeBps: route.feeBps, rate: route.rate,
+    routeId,
+    fromToken: route.fromToken,
+    toToken: route.toToken,
+    inputAmount,
+    outputAmount,
+    fee,
+    feeBps: route.feeBps,
+    rate: route.rate,
   };
 }
 
@@ -49,7 +55,6 @@ function toIso(ts: unknown): string {
   return new Date().toISOString();
 }
 
-/** Idempotency: inboundTxHash is the document ID. */
 export async function swapTxAlreadyProcessed(inboundTxHash: string): Promise<SwapRecord | null> {
   try {
     const db = getAdminDb();

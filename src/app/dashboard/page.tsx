@@ -15,6 +15,7 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
+import PassportIdentityCard from '@/components/passport/PassportIdentityCard';
 
 /* ── Motion variants ───────────────────────────────────────── */
 const page = {
@@ -204,6 +205,8 @@ export default function DashboardPage() {
           </Link>
         </div>
       </motion.div>
+
+      <motion.div variants={row}><PassportIdentityCard /></motion.div>
 
       {/* ── BALANCE ROW ────────────────────────────────────── */}
       <motion.div variants={row} className="grid grid-cols-1 sm:grid-cols-3 gap-3">

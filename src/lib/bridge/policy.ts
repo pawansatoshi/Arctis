@@ -1,6 +1,9 @@
-import type { BridgeChain } from './types';
-
 export type BridgeExecutionMode = 'forwarder' | 'direct_cctp';
+
+export interface BridgeChainPolicyInput {
+  chainId: number;
+  enabled: boolean;
+}
 
 export interface BridgePolicy {
   mode: BridgeExecutionMode;
@@ -10,14 +13,14 @@ export interface BridgePolicy {
 }
 
 /**
- * ARCTIS bridge policy.
+ * ARCTIS bridge execution policy.
  *
  * Circle App Kit supports the CCTP Forwarding Service through
- * `to.useForwarder`. When enabled, Circle submits the destination mint,
+ * `to.useForwarder`. With it enabled, Circle submits the destination mint,
  * so the end-user does not need destination-chain native gas.
  *
- * Keep this decision deterministic and outside the LLM. The Economic Agent
- * may explain the selected policy, but it must never invent it.
+ * This decision is deterministic and must stay outside the LLM. The
+ * Economic Agent can explain the policy, but it cannot invent it.
  */
 export function getBridgePolicy(): BridgePolicy {
   return {
@@ -29,8 +32,8 @@ export function getBridgePolicy(): BridgePolicy {
 }
 
 export function validateBridgeRoute(
-  source: BridgeChain,
-  destination: BridgeChain,
+  source: BridgeChainPolicyInput,
+  destination: BridgeChainPolicyInput,
 ): void {
   if (source.chainId === destination.chainId) {
     throw new Error('Source and destination networks must be different.');

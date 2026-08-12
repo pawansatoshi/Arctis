@@ -62,9 +62,6 @@ async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amou
     // App Kit performs the authoritative estimate immediately before send.
   }
 
-  // Gas is returned in Arc's 18-decimal native USDC representation. Convert
-  // the fee upward into the ERC-20 6-decimal representation before comparing
-  // it with the ERC-20 balance. This avoids mixing the two decimal systems.
   const estimatedNativeGas = gasPrice * gasLimit;
   const nativeScale = 10n ** 12n;
   const gasFeeUsdc = (estimatedNativeGas + nativeScale - 1n) / nativeScale;
@@ -107,7 +104,7 @@ export function useTransfer() {
     setIsSuccess(true);
     setIsPending(false);
     updateTransaction(localIdRef.current, { status: 'confirmed', txHash });
-    patchTransferRecord({ docId: firestoreIdRef.current, status: 'confirmed', txHash, log: { level: 'info', message: 'Transfer confirmed', data: { hash: txHash }, walletAddress: address });
+    patchTransferRecord({ docId: firestoreIdRef.current, status: 'confirmed', txHash, log: { level: 'info', message: 'Transfer confirmed', data: { hash: txHash }, walletAddress: address } });
     toast.dismiss(txHash);
     toast.success('Transfer confirmed on Arc!');
   }

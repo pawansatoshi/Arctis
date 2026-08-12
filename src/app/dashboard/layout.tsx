@@ -24,7 +24,7 @@ const ConnectButton = dynamic(
   { ssr: false }
 );
 
-/* ── Navigation groups — organised by OS pillar ─────────────── */
+/* ── Navigation groups — strict hackathon information architecture ── */
 const NAV_GROUPS = [
   {
     label: 'Overview',
@@ -37,16 +37,9 @@ const NAV_GROUPS = [
   {
     label: 'AI OS',
     items: [
-      { label: 'AI Workspace', href: '/ai',        icon: Bot },
-      { label: 'Copilot',      href: '/copilot',   icon: MessageCircle },
-      { label: 'Agents',       href: '/agents',    icon: Zap },
-    ],
-  },
-  {
-    label: 'Knowledge OS',
-    items: [
-      { label: 'Workspace',  href: '/workspace',  icon: FolderOpen },
-      { label: 'Knowledge',  href: '/knowledge',  icon: BookOpen },
+      { label: 'AI Workspace', href: '/ai',      icon: Bot },
+      { label: 'Agents',       href: '/agents',  icon: Zap },
+      { label: 'Copilot',      href: '/copilot', icon: MessageCircle },
     ],
   },
   {
@@ -58,10 +51,17 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'Knowledge OS',
+    items: [
+      { label: 'Workspace', href: '/workspace', icon: FolderOpen },
+      { label: 'Knowledge', href: '/knowledge', icon: BookOpen },
+    ],
+  },
+  {
     label: 'Finance',
     items: [
-      { label: 'Treasury',   href: '/treasury',   icon: Building2 },
-      { label: 'Credits',    href: '/credits',    icon: Coins },
+      { label: 'Treasury', href: '/treasury', icon: Building2 },
+      { label: 'Credits',  href: '/credits',  icon: Coins },
     ],
   },
   {

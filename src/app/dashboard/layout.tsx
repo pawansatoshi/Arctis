@@ -8,7 +8,7 @@ import {
   LayoutDashboard, ArrowUpRight, History,
   Settings, ChevronLeft,
   Building2, ArrowLeftRight, GitMerge, Shield,
-  Coins, Menu, X, FolderOpen, Activity,
+  Coins, Menu, X, FolderOpen,
   MessageCircle, Heart, Zap, BookOpen,
   ChevronRight, Search,
 } from 'lucide-react';
@@ -25,13 +25,18 @@ const ConnectButton = dynamic(
   { ssr: false }
 );
 
-/* ── Navigation groups — mirrors the four ARCTIS operating systems ── */
+/*
+ * Primary product navigation.
+ *
+ * ARCTIS is the product; Arc is the infrastructure. The information
+ * architecture deliberately separates AI, DeFi/money, knowledge and finance
+ * so a first-time visitor can understand the product without duplicate feeds.
+ */
 const NAV_GROUPS = [
   {
     label: 'Overview',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Activity',  href: '/activity',  icon: Activity },
       { label: 'History',   href: '/history',   icon: History },
     ],
   },
@@ -39,10 +44,11 @@ const NAV_GROUPS = [
     label: 'AI OS',
     items: [
       { label: 'Copilot', href: '/copilot', icon: MessageCircle },
+      { label: 'Agents',  href: '/agents',  icon: Zap },
     ],
   },
   {
-    label: 'Stablecoin OS',
+    label: 'DeFi OS',
     items: [
       { label: 'Transfer', href: '/transfer', icon: ArrowUpRight },
       { label: 'Swap',     href: '/swap',     icon: ArrowLeftRight },
@@ -54,12 +60,6 @@ const NAV_GROUPS = [
     items: [
       { label: 'Workspace', href: '/workspace', icon: FolderOpen },
       { label: 'Knowledge', href: '/knowledge', icon: BookOpen },
-    ],
-  },
-  {
-    label: 'Economic Agent OS',
-    items: [
-      { label: 'Agents', href: '/agents', icon: Zap },
     ],
   },
   {
@@ -120,13 +120,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         'flex items-center gap-3 border-b border-black/[0.06] dark:border-white/[0.06] flex-shrink-0 transition-all duration-300',
         sidebarCollapsed ? 'px-3 py-4 justify-center' : 'px-4 py-4',
       )}>
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/30 to-violet-500/20 border border-black/[0.1] dark:border-white/[0.1] flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/10">
-          <span className="text-blue-600 dark:text-blue-400 font-black text-sm tracking-tighter">A</span>
-        </div>
+        <Link href="/dashboard" aria-label="ARCTIS home" className="relative flex-shrink-0 group">
+          <div className="absolute -inset-1 rounded-2xl bg-blue-500/10 blur-md opacity-70 group-hover:opacity-100 transition-opacity" />
+          <img
+            src="/icons/logo.svg"
+            alt="ARCTIS"
+            className="relative w-9 h-9 rounded-xl object-contain drop-shadow-sm"
+          />
+        </Link>
         {!sidebarCollapsed && (
-          <div>
+          <div className="min-w-0">
             <div className="text-surface-950 font-bold tracking-tight text-sm leading-none">ARCTIS</div>
-            <div className="text-surface-600 text-[10px] mt-0.5 font-medium">Operating System</div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-surface-600 text-[10px] font-medium">Operating System</span>
+              <span className="inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/8 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                Premium
+              </span>
+            </div>
           </div>
         )}
       </div>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">ARCTIS architecture flow</title>
+  <desc id="desc">Animated architecture overview showing the ARCTIS product layer, server routes, AI routing, Firestore, user wallet and Arc testnet.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b14"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>
+      .label{font:600 16px ui-sans-serif,system-ui,sans-serif;fill:#f8fafc}.small{font:500 12px ui-sans-serif,system-ui,sans-serif;fill:#94a3b8}.box{fill:#0f172a;stroke:#334155;stroke-width:1.5}.pillar{fill:#111827;stroke:#475569;stroke-width:1.5}.line{fill:none;stroke:url(#accent);stroke-width:2;stroke-linecap:round;stroke-dasharray:8 10;animation:flow 2.8s linear infinite}.pulse{fill:#93c5fd;filter:url(#glow);animation:pulse 1.8s ease-in-out infinite}.arc{fill:#0f172a;stroke:#60a5fa;stroke-width:2}.title{font:800 30px ui-sans-serif,system-ui,sans-serif;fill:#fff;letter-spacing:-.8px}@keyframes flow{to{stroke-dashoffset:-36}}@keyframes pulse{0%,100%{opacity:.25;r:4}50%{opacity:1;r:7}}
+    </style>
+  </defs>
+  <rect width="1200" height="620" rx="28" fill="url(#bg)"/>
+  <text x="60" y="62" class="title">ARCTIS · system architecture</text>
+  <text x="60" y="88" class="small">AI, knowledge, agents and stablecoin operations — with the user retaining transaction control.</text>
+
+  <rect x="60" y="130" width="1080" height="120" rx="20" class="box"/>
+  <text x="90" y="165" class="label">Product layer</text>
+  <rect x="90" y="185" width="220" height="42" rx="12" class="pillar"/><text x="110" y="211" class="label">AI OS</text>
+  <rect x="330" y="185" width="220" height="42" rx="12" class="pillar"/><text x="350" y="211" class="label">Knowledge OS</text>
+  <rect x="570" y="185" width="220" height="42" rx="12" class="pillar"/><text x="590" y="211" class="label">DeFi OS</text>
+  <rect x="810" y="185" width="270" height="42" rx="12" class="pillar"/><text x="830" y="211" class="label">Economic Agent OS</text>
+
+  <path d="M200 250 C200 285 200 285 200 320" class="line"/><circle cx="200" cy="285" class="pulse"/>
+  <path d="M440 250 C440 285 440 285 440 320" class="line"/><circle cx="440" cy="285" class="pulse"/>
+  <path d="M680 250 C680 285 680 285 680 320" class="line"/><circle cx="680" cy="285" class="pulse"/>
+  <path d="M945 250 C945 285 945 285 945 320" class="line"/><circle cx="945" cy="285" class="pulse"/>
+
+  <rect x="60" y="320" width="1080" height="105" rx="20" class="box"/>
+  <text x="90" y="355" class="label">Application / orchestration layer</text>
+  <rect x="90" y="372" width="430" height="36" rx="10" class="pillar"/><text x="110" y="396" class="small">Next.js App Router · API routes · Zustand</text>
+  <rect x="545" y="372" width="280" height="36" rx="10" class="pillar"/><text x="565" y="396" class="small">Deterministic intent + policy</text>
+  <rect x="850" y="372" width="250" height="36" rx="10" class="pillar"/><text x="870" y="396" class="small">Wallet-controlled signing</text>
+
+  <path d="M305 425 C305 455 305 455 305 490" class="line"/><circle cx="305" cy="457" class="pulse"/>
+  <path d="M600 425 C600 455 600 455 600 490" class="line"/><circle cx="600" cy="457" class="pulse"/>
+  <path d="M970 425 C970 455 970 455 970 490" class="line"/><circle cx="970" cy="457" class="pulse"/>
+
+  <rect x="80" y="490" width="300" height="75" rx="18" class="box"/><text x="105" y="520" class="label">Firebase / Firestore</text><text x="105" y="543" class="small">Admin SDK · server mediated</text>
+  <rect x="450" y="490" width="300" height="75" rx="18" class="box"/><text x="475" y="520" class="label">AI routing</text><text x="475" y="543" class="small">free-model registry · health failover</text>
+  <rect x="820" y="490" width="300" height="75" rx="18" class="arc"/><text x="845" y="520" class="label">Arc Testnet + Circle rails</text><text x="845" y="543" class="small">USDC · CCTP/App Kit · onchain proofs</text>
+</svg>

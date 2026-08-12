@@ -48,6 +48,10 @@ export interface UserMembership {
   status: 'active' | 'expired' | 'cancelled' | 'trial';
   startDate: string;
   renewalDate: string;
+  activationDate?: string;
+  expiryDate?: string;
+  priceUSDC?: number;
+  monthlyCredits?: number;
   txHash?: string;
   autoRenew: boolean;
 }
@@ -73,6 +77,7 @@ export interface CreditLedgerEntry {
   sessionId?: string;
   txHash?: string;
   createdAt: string;
+  source?: 'membership' | 'topup' | 'ai' | 'refund' | 'system';
 }
 
 export interface CreditBalance {

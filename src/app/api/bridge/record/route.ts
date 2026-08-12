@@ -18,10 +18,9 @@ const SOURCE_RPC: Record<number, string> = {
 
 /**
  * Records the lifecycle of a Circle App Kit bridge after the burn tx exists.
- * The endpoint never executes CCTP and never accepts an arbitrary wallet claim
- * as proof of execution. A submitted burn is persisted as pending first so
- * History can represent pending/failed bridges, then the record is promoted
- * to completed only after the source receipt is independently verified.
+ * A submitted burn is persisted first, so History can represent pending and
+ * failed bridges. Completion is written only after the source receipt is
+ * independently verified and a forwarding hash is supplied.
  */
 export async function POST(req: NextRequest) {
   let burnTxHash = '';
@@ -41,56 +40,36 @@ export async function POST(req: NextRequest) {
     walletAddress = body.walletAddress ?? '';
 
     if (!burnTxHash || !sourceChainId || !destinationChainId || !walletAddress || !amount) {
-      return NextResponse.json(
-        { error: 'burnTxHash, sourceChainId, destinationChainId, walletAddress, amount required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'burnTxHash, sourceChainId, destinationChainId, walletAddress, amount required' }, { status: 400 });
     }
-
-    if (
-      !/^0x[0-9a-fA-F]{64}$/.test(burnTxHash) ||
-      (forwardTxHash && !/^0x[0-9a-fA-F]{64}$/.test(forwardTxHash))
-    ) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(burnTxHash) || (forwardTxHash && !/^0x[0-9a-fA-F]{64}$/.test(forwardTxHash))) {
       return NextResponse.json({ error: 'Invalid transaction hash format' }, { status: 400 });
     }
-
-    if (!isValidEthAddress(walletAddress)) {
-      return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
-    }
-
-    if (amount < BRIDGE_MIN_AMOUNT || amount > BRIDGE_MAX_AMOUNT) {
-      return NextResponse.json({ error: 'Bridge amount outside configured limits' }, { status: 422 });
-    }
-
-    if (sourceChainId === destinationChainId) {
-      return NextResponse.json({ error: 'Source and destination chains must differ' }, { status: 400 });
-    }
+    if (!isValidEthAddress(walletAddress)) return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
+    if (amount < BRIDGE_MIN_AMOUNT || amount > BRIDGE_MAX_AMOUNT) return NextResponse.json({ error: 'Bridge amount outside configured limits' }, { status: 422 });
+    if (sourceChainId === destinationChainId) return NextResponse.json({ error: 'Source and destination chains must differ' }, { status: 400 });
 
     const source = CCTP_BRIDGE_CHAINS[String(sourceChainId) as keyof typeof CCTP_BRIDGE_CHAINS];
     const destination = CCTP_BRIDGE_CHAINS[String(destinationChainId) as keyof typeof CCTP_BRIDGE_CHAINS];
     const rpc = SOURCE_RPC[sourceChainId];
+    if (!source || !destination || !rpc) return NextResponse.json({ error: 'Unsupported bridge route' }, { status: 400 });
 
-    if (!source || !destination || !rpc) {
-      return NextResponse.json({ error: 'Unsupported bridge route' }, { status: 400 });
-    }
-
-    const rl = await checkRateLimit(
-      `bridge-record:${walletAddress.toLowerCase()}`,
-      RATE_LIMITS.bridge.maxCalls,
-      RATE_LIMITS.bridge.windowMs,
-    );
-    if (!rl.allowed) {
-      return NextResponse.json({ error: 'Too many bridge record requests' }, { status: 429 });
-    }
+    const rl = await checkRateLimit(`bridge-record:${walletAddress.toLowerCase()}`, RATE_LIMITS.bridge.maxCalls, RATE_LIMITS.bridge.windowMs);
+    if (!rl.allowed) return NextResponse.json({ error: 'Too many bridge record requests' }, { status: 429 });
 
     const existing = await bridgeTxAlreadyProcessed(burnTxHash);
     if (existing) {
+      // The first call may have created a pending record while the burn was
+      // still propagating. A later call with the forwarding tx must finalize
+      // that same record rather than returning the stale pending state.
+      if (forwardTxHash && existing.status !== 'completed') {
+        const now = new Date().toISOString();
+        await updateBridgePending(burnTxHash, { status: 'completed', forwardTxHash, completedAt: now });
+        return NextResponse.json({ bridge: { ...existing, status: 'completed', forwardTxHash, completedAt: now }, alreadyRecorded: true });
+      }
       return NextResponse.json({ bridge: existing, alreadyRecorded: true });
     }
 
-    // Persist immediately after the burn hash is known. This is the key
-    // lifecycle record that allows History to show a pending bridge while
-    // CCTP confirmation/attestation/forwarding is still in progress.
     await createBridgePending({
       burnTxHash,
       walletAddress,
@@ -109,16 +88,12 @@ export async function POST(req: NextRequest) {
     try {
       tx = await client.getTransaction({ hash: burnTxHash as `0x${string}` });
     } catch {
-      // The tx may still be propagating. Keep the durable record pending.
       return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash });
     }
 
     if (tx.from.toLowerCase() !== walletAddress.toLowerCase()) {
       await updateBridgePending(burnTxHash, { status: 'failed', failureReason: 'Source transaction does not belong to the supplied wallet' });
-      return NextResponse.json(
-        { error: 'Source transaction does not belong to the supplied wallet' },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: 'Source transaction does not belong to the supplied wallet' }, { status: 403 });
     }
 
     let receipt;
@@ -134,22 +109,11 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
-
-    // The source burn is verified. If forwarding has already been completed
-    // by the caller, expose completed; otherwise keep the lifecycle pending.
     const finalStatus = forwardTxHash ? 'completed' : 'attesting';
-    await updateBridgePending(burnTxHash, {
-      status: finalStatus,
-      ...(forwardTxHash ? { forwardTxHash, completedAt: now } : {}),
-    });
+    await updateBridgePending(burnTxHash, { status: finalStatus, ...(forwardTxHash ? { forwardTxHash, completedAt: now } : {}) });
 
     if (!forwardTxHash) {
-      return NextResponse.json({
-        bridgeId: burnTxHash,
-        status: 'attesting',
-        burnTxHash,
-        forwardTxHash: null,
-      });
+      return NextResponse.json({ bridgeId: burnTxHash, status: 'attesting', burnTxHash, forwardTxHash: null });
     }
 
     const recordedHash = forwardTxHash;
@@ -169,38 +133,14 @@ export async function POST(req: NextRequest) {
         type: 'bridge',
         note: `Bridged from ${source.name} to ${destination.name} via Circle App Kit / CCTP V2`,
       }),
-      writeActivity(
-        buildBridgeActivity(
-          walletAddress,
-          amount,
-          `${source.name} → ${destination.name}`,
-          burnTxHash,
-          recordedHash,
-        ),
-      ),
-      logTreasuryEvent(
-        'bridge_activity',
-        amount,
-        `USDC bridged from ${source.name} to ${destination.name} via Circle App Kit`,
-        walletAddress,
-        recordedHash,
-      ),
+      writeActivity(buildBridgeActivity(walletAddress, amount, `${source.name} → ${destination.name}`, burnTxHash, recordedHash)),
+      logTreasuryEvent('bridge_activity', amount, `USDC bridged from ${source.name} to ${destination.name} via Circle App Kit`, walletAddress, recordedHash),
     ]);
 
-    return NextResponse.json({
-      bridgeId: burnTxHash,
-      status: 'completed',
-      burnTxHash,
-      forwardTxHash,
-      sourceChain: source.name,
-      destinationChain: destination.name,
-      completedAt: now,
-    });
+    return NextResponse.json({ bridgeId: burnTxHash, status: 'completed', burnTxHash, forwardTxHash, sourceChain: source.name, destinationChain: destination.name, completedAt: now });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unable to record bridge';
-    if (burnTxHash) {
-      await updateBridgePending(burnTxHash, { status: 'failed', failureReason: message });
-    }
+    if (burnTxHash) await updateBridgePending(burnTxHash, { status: 'failed', failureReason: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

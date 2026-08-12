@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Providers } from '@/components/ui/Providers';
+import ScrollToTopButton from '@/components/ui/ScrollToTopButton';
 import { assertEnvOrThrow } from '@/lib/security/env';
 import './globals.css';
 
@@ -89,6 +90,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>{children}</Providers>
+        <ScrollToTopButton />
       </body>
     </html>
   );

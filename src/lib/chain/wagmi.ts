@@ -8,20 +8,21 @@ import {
 import { defineChain, fallback, http } from 'viem';
 import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL } from '@/lib/contracts';
 
+// Arc's native asset is USDC, not ARC or ETH. Native gas accounting uses
+// 18 decimals internally; user-facing USDC balances use 6 decimals.
 export const arcTestnet = defineChain({
   id: CHAIN_ID,
   name: 'Arc Testnet',
-  nativeCurrency: { decimals: 18, name: 'Arc', symbol: 'ARC' },
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
   rpcUrls: {
     default: { http: RPC_FALLBACK_URLS },
-    public:  { http: RPC_FALLBACK_URLS },
+    public: { http: RPC_FALLBACK_URLS },
   },
   blockExplorers: {
     default: { name: 'ArcScan', url: EXPLORER_URL },
   },
   testnet: true,
 });
-
 
 export const ethereumSepolia = defineChain({
   id: 11155111,

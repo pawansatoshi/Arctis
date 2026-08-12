@@ -73,7 +73,6 @@ const NAV_GROUPS = [
     items: [
       { label: 'Settings', href: '/settings', icon: Settings },
       { label: 'Feedback', href: '/feedback', icon: Heart },
-      { label: 'Admin',    href: '/admin',    icon: Shield },
     ],
   },
 ] as const;

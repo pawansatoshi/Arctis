@@ -1,10 +1,11 @@
 // ============================================================
 // Circle App Kit Swap rail — Arc Testnet
 // ============================================================
-// Circle's current Arc Testnet Swap surface supports only these
-// three assets. Keep these separate from ARCTIS-owned OTC assets.
+// Keep Circle-supported swap assets separate from ARCTIS-owned OTC assets.
+// cirBTC is intentionally excluded: it is not part of the currently
+// documented Circle/Arc swap asset set used by this application.
 
-export const CIRCLE_SWAP_TOKENS = ['USDC', 'EURC', 'cirBTC'] as const;
+export const CIRCLE_SWAP_TOKENS = ['USDC', 'EURC'] as const;
 export type CircleSwapToken = typeof CIRCLE_SWAP_TOKENS[number];
 
 export function isCircleSwapToken(value?: string): value is CircleSwapToken {

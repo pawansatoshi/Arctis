@@ -9,9 +9,7 @@ import { getBridgeHistory } from '@/lib/bridge/service';
 // ============================================================
 // GET /api/activity?wallet=0x...&limit=50
 // Aggregates all activity types into one unified, chronological feed.
-// NOTE: `meta` is internal-only and intentionally never includes a
-// `model`/provider field — ARCTIS AI routing must never be visible,
-// even to someone inspecting raw API responses in devtools.
+// `meta` is internal-only and intentionally never exposes the AI model/provider.
 // ============================================================
 
 interface ActivityItem {
@@ -29,6 +27,16 @@ interface ActivityItem {
   meta?: Record<string, unknown>;
 }
 
+function historyStatus(status: string | undefined): string | undefined {
+  if (!status) return undefined;
+  if (status === 'completed' || status === 'confirmed') return status;
+  if (status === 'failed' || status === 'timeout') return 'failed';
+  // pending, confirming, dispatching, burning, attesting, forwarding,
+  // approving and other active lifecycle states are presented consistently
+  // to the History UI as pending.
+  return 'pending';
+}
+
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet');
   const limitCount = parseInt(req.nextUrl.searchParams.get('limit') ?? '50');
@@ -40,8 +48,8 @@ export async function GET(req: NextRequest) {
       getCreditHistory(wallet, limitCount).catch(() => []),
       getUserSessions(wallet, 20).catch(() => []),
       getOwnerExecutions(wallet, 20).catch(() => []),
-      getSwapHistory(wallet, 20).catch(() => []),
-      getBridgeHistory(wallet, 20).catch(() => []),
+      getSwapHistory(wallet, Math.max(limitCount, 50)).catch(() => []),
+      getBridgeHistory(wallet, Math.max(limitCount, 50)).catch(() => []),
     ]);
 
     const items: ActivityItem[] = [];
@@ -55,10 +63,10 @@ export async function GET(req: NextRequest) {
         timestamp: tx.createdAt,
         amount: tx.amountFormatted,
         token: tx.token,
-        status: tx.status,
+        status: historyStatus(tx.status),
         txHash: tx.txHash,
         explorerUrl: tx.explorerUrl,
-        meta: { blockNumber: tx.blockNumber, gasUsed: tx.gasUsed },
+        meta: { blockNumber: tx.blockNumber, gasUsed: tx.gasUsed, rawStatus: tx.status },
       });
     }
 
@@ -95,8 +103,8 @@ export async function GET(req: NextRequest) {
         description: exec.task.slice(0, 80),
         timestamp: exec.startedAt,
         credits: exec.creditsConsumed,
-        status: exec.status,
-        meta: { agentType: exec.agentType, durationMs: exec.durationMs, reportId: exec.reportId },
+        status: historyStatus(exec.status),
+        meta: { agentType: exec.agentType, durationMs: exec.durationMs, reportId: exec.reportId, rawStatus: exec.status },
       });
     }
 
@@ -107,8 +115,9 @@ export async function GET(req: NextRequest) {
         title: `Swap ${swap.fromToken} → ${swap.toToken}`,
         description: `${swap.inputAmount} ${swap.fromToken} → ${swap.outputAmount} ${swap.toToken}`,
         timestamp: swap.createdAt,
-        status: swap.status,
+        status: historyStatus(swap.status),
         txHash: swap.outboundTxHash ?? swap.inboundTxHash,
+        meta: { rawStatus: swap.status, failureReason: swap.failureReason },
       });
     }
 
@@ -116,11 +125,12 @@ export async function GET(req: NextRequest) {
       items.push({
         id: bridge.burnTxHash,
         type: 'bridge',
-        title: `Bridge ${bridge.amount} USDC → Arc Testnet`,
-        description: `From chain ${bridge.sourceChainId}`,
+        title: `Bridge ${bridge.sourceChain} → ${bridge.destinationChain}`,
+        description: `${bridge.amount} USDC · ${bridge.status}`,
         timestamp: bridge.createdAt,
-        status: bridge.status,
+        status: historyStatus(bridge.status),
         txHash: bridge.forwardTxHash ?? bridge.burnTxHash,
+        meta: { rawStatus: bridge.status, failureReason: bridge.failureReason },
       });
     }
 

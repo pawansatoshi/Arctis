@@ -1,34 +1,50 @@
-# Documentation Authority Map
+# ARCTIS Documentation Map
 
-ARCTIS has accumulated several architecture and submission documents during development. They are not all equally authoritative.
+The repository has accumulated documentation during several months of rapid development. The goal now is to keep the root concise, current and useful to an external developer.
 
 ## Canonical
 
-- `ARCHITECTURE_TRUTH.md` — current product and architecture truth.
-- `src/config/billing.ts` — current pricing and credit grants.
-- `src/config/ai.ts` — current AI persona definitions.
-- `src/config/assets.ts` — current executable asset registry.
-- `src/lib/contracts.ts` — current chain/contract configuration.
-- `src/lib/ai/copilot/product-context.ts` — Copilot's generated product facts.
+These documents describe the current product and should be maintained with the code:
 
-## Technical references
+- `README.md` — public product overview and current status.
+- `ARCHITECTURE_TRUTH.md` — canonical product/capability truth.
+- `SYSTEM_ARCHITECTURE.md` — detailed runtime architecture and boundaries.
+- `API_REFERENCE.md` — current API inventory.
+- `DATABASE.md` — current Firestore/data model.
+- `DEPLOYMENT.md` — local and testnet deployment guidance.
+- `SECURITY.md` — security posture and limitations.
+- `ARC_BRAND_GUIDELINES.md` — Arc relationship/naming rules used by ARCTIS.
+- `CHANGELOG.md` — concise record of material implementation changes.
 
-- `SYSTEM_ARCHITECTURE.md` — detailed implementation architecture; reconcile against `ARCHITECTURE_TRUTH.md` when changes occur.
-- `API_REFERENCE.md` — API inventory; update when routes change.
-- `DATABASE.md` — Firestore/data reference; update when collections or fields change.
+## Source-of-truth code
 
-## Historical / submission snapshots
+When a fact can be derived from runtime configuration, code is authoritative:
 
-The following can intentionally describe a particular submission or development phase and should not be treated as the live product source without verification:
+| Fact | Source |
+|---|---|
+| AI personas | `src/config/ai.ts` |
+| Billing / credits | `src/config/billing.ts` |
+| Executable assets | `src/config/assets.ts` |
+| Network / contracts | `src/lib/contracts.ts` |
+| Bridge policy | `src/lib/bridge/policy.ts` |
+| AI routing | `src/lib/ai/router/` |
+| Product context | `src/lib/ai/copilot/product-context.ts` |
 
-- `LEPTON_SUBMISSION.md`
-- `ENCODE_ARC_SUBMISSION.md`
-- `FINAL_PROJECT_STATUS.md`
-- `BUILD_REPORT.md`
-- `RELEASE_NOTES.md`
-- `PROJECT_SPEC.md`
-- `README.md`
+## Historical material
 
-### Rule
+Submission reports, patch reports, phase-by-phase build reports and temporary deployment notes are development history, not product truth. They should not be used to describe the current implementation without checking the code.
 
-When a historical or submission document conflicts with runtime configuration, do not change runtime behavior to match the document. Update the document or explicitly label it as a historical snapshot.
+The root repository should not accumulate timestamped ZIP snapshots or source-code backup copies. Git history already preserves earlier versions.
+
+## Maintenance rule
+
+When a feature changes:
+
+1. Update the source-of-truth code/configuration.
+2. Update `ARCHITECTURE_TRUTH.md` if the capability model changed.
+3. Update `SYSTEM_ARCHITECTURE.md` if runtime boundaries changed.
+4. Update API/database docs when their contracts changed.
+5. Add one concise entry to `CHANGELOG.md` for meaningful user/developer-facing changes.
+6. Do not create another snapshot document merely to record the change.
+
+This keeps the repository readable months later and prevents historical implementation notes from becoming accidental specifications.

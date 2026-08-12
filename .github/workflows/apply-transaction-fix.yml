@@ -1,0 +1,47 @@
+name: apply transaction fix
+
+on:
+  push:
+    branches: [fix/arc-transactions-rpc-cirbtc]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply source fixes
+        run: python3 scripts/apply-transaction-fix.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Architecture check
+        run: npm run architecture-truth
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit fixes and remove one-time automation
+        run: |
+          rm -f scripts/apply-transaction-fix.py .github/workflows/apply-transaction-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: restore Arc transaction flows and remove cirBTC UI" || exit 0
+          git push origin HEAD:fix/arc-transactions-rpc-cirbtc

@@ -10,10 +10,9 @@ export const ARCTIS_ASSETS: Record<string, AssetDefinition> = {
   tARC: { symbol: 'tARC', name: 'ARCTIS Test ARC', decimals: DECIMALS.tARC, address: CONTRACTS.tARC, chainId: CHAIN_ID, rail: 'arctis-otc', purpose: 'ARCTIS OTC swap-layer test asset; not an official Arc native token', executable: true },
 };
 
-/** Circle-rail assets not executable until their active network contracts are explicitly verified. */
+/** Circle-rail assets are intentionally limited to assets with an explicitly configured route. */
 export const CIRCLE_RAIL_ASSET_NOTES = {
   EURC: { status: 'integration-dependent', executable: false },
-  cirBTC: { status: 'integration-dependent', executable: false },
 } as const;
 
 export const EXECUTABLE_ASSETS = Object.values(ARCTIS_ASSETS).filter((asset) => asset.executable);

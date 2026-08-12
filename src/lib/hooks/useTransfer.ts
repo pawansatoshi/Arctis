@@ -22,7 +22,6 @@ async function resolveTransferRecipient(value: string): Promise<string> {
   const recipient = value.trim();
   if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
   if (!isPassportRecipient(recipient)) throw new Error('Enter a valid wallet address or Passport ID');
-
   const username = recipient.toLowerCase().endsWith('.arc') ? recipient.slice(0, -4) : recipient;
   const response = await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);
   let data: { walletAddress?: string; error?: string } = {};
@@ -49,7 +48,7 @@ async function preflightTransfer(address: `0x${string}`, amount: string) {
   }
 }
 
-async function createTransferRecord(payload: { walletAddress: string; toAddress: string; amount: string; amountFormatted: string; token: TransactionRecord['token']; note?: string }): Promise<string | null> {
+async function createTransferRecord(payload: { walletAddress: string; toAddress: string; amount: string; amountFormatted: string; token: TransactionRecord['token']; note?: string; mode?: TransactionRecord['mode'] }): Promise<string | null> {
   try {
     const res = await fetch('/api/transfer/record', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) return null;
@@ -105,15 +104,16 @@ export function useTransfer() {
     try {
       const resolvedTo = await resolveTransferRecipient(to);
       await preflightTransfer(address, amount);
+      const mode: TransactionRecord['mode'] = typeof window !== 'undefined' && window.sessionStorage.getItem('arctis-transfer-mode') === 'agent' ? 'agent' : 'manual';
 
       const amountBigInt = parseUnits(amount, PRIMARY_DECIMALS);
-      addTransaction({ id: localId, walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, status: 'pending', token: 'USDC', chainId: CHAIN_ID, createdAt: new Date().toISOString(), note, type: 'send' });
+      addTransaction({ id: localId, walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, status: 'pending', token: 'USDC', chainId: CHAIN_ID, createdAt: new Date().toISOString(), note, mode, type: 'send' });
       toast.loading('Confirm in wallet…', { id: localId });
 
       let docId: string | null = null;
       try {
         docId = await Promise.race([
-          createTransferRecord({ walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, token: 'USDC', note }),
+          createTransferRecord({ walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, token: 'USDC', note, mode }),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
         if (docId) firestoreIdRef.current = docId;

@@ -12,7 +12,7 @@ const ENV: NetworkEnv =
 const TESTNET = {
   chainId: 5042002,
   // Official Arc Testnet RPC. Source: Arc developer documentation.
-  rpc: 'https://rpc.testnet.arc.network',
+  rpc: 'https://rpc.testnet.arc.io',
   explorer: 'https://testnet.arcscan.app',
   networkName: 'Arc Testnet',
   contracts: {
@@ -57,9 +57,9 @@ export const RPC_URL         = NETWORK.rpc;
 // Official Arc Testnet RPC providers documented by Arc.
 export const RPC_FALLBACK_URLS = [
   RPC_URL,
-  'https://rpc.blockdaemon.testnet.arc.network',
-  'https://rpc.drpc.testnet.arc.network',
-  'https://rpc.quicknode.testnet.arc.network',
+  'https://rpc.blockdaemon.testnet.arc.io',
+  'https://rpc.drpc.testnet.arc.io',
+  'https://rpc.quicknode.testnet.arc.io',
 ].filter(Boolean);
 
 export const EXPLORER_URL    = NETWORK.explorer;

@@ -13,20 +13,30 @@ import type { TransactionRecord } from '@/types';
 
 interface TransferParams { to: string; amount: string; note?: string; }
 
+/** Normalize the human-facing Passport input used by both manual and agentic flows. */
+function normalizePassportRecipient(value: string): string {
+  return value
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/^@/, '')
+    .toLowerCase();
+}
+
 function isPassportRecipient(value: string): boolean {
-  const v = value.trim().toLowerCase();
-  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\\.arc)?$/.test(v);
+  const v = normalizePassportRecipient(value);
+  return !v.startsWith('0x') && /^[a-z0-9_-]{2,32}(?:\.arc)?$/.test(v);
 }
 
 async function resolveTransferRecipient(value: string): Promise<string> {
-  const recipient = value.trim();
+  const recipient = normalizePassportRecipient(value);
   if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
   if (!isPassportRecipient(recipient)) throw new Error('Enter a valid wallet address or Passport ID');
-  const username = recipient.toLowerCase().endsWith('.arc') ? recipient.slice(0, -4) : recipient;
+
+  const username = recipient.endsWith('.arc') ? recipient.slice(0, -4) : recipient;
   const response = await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);
   let data: { walletAddress?: string; error?: string } = {};
   try { data = await response.json(); } catch { /* explicit error below */ }
-  if (!response.ok || !data.walletAddress) throw new Error(data.error || `Passport not found: ${recipient}`);
+  if (!response.ok || !data.walletAddress) throw new Error(data.error || `Passport not found: ${username}.arc`);
   if (!/^0x[a-fA-F0-9]{40}$/.test(data.walletAddress)) throw new Error('Passport resolved to an invalid wallet address');
   return data.walletAddress;
 }
@@ -39,7 +49,7 @@ async function resolveTransferRecipient(value: string): Promise<string> {
 async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amount: string) {
   const client = createPublicClient({ transport: http(RPC_URL) });
   const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
-  const nativeScale = 10n ** 12n; // 6-decimal ERC-20 USDC -> 18-decimal native USDC
+  const nativeScale = 10n ** 12n;
 
   const [nativeBalance, usdcBalance, gasPrice] = await Promise.all([
     client.getBalance({ address }),
@@ -61,17 +71,13 @@ async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amou
       account: address,
     });
   } catch {
-    // App Kit performs its own authoritative estimate immediately before send.
-    // Keep a conservative fallback here so a temporary estimate RPC issue does
-    // not incorrectly block a transaction that App Kit can successfully send.
+    // App Kit performs its authoritative estimate immediately before send.
   }
 
   const estimatedNativeGas = gasPrice * gasLimit;
   const requiredTotalNative = requiredUsdc * nativeScale + estimatedNativeGas;
   const nativeBalanceFromErc20 = usdcBalance * nativeScale;
 
-  // Prefer the ERC-20 balance for the user-facing asset check, but also verify
-  // the native USDC view so the same underlying balance covers gas + payment.
   if (nativeBalance < requiredTotalNative || nativeBalanceFromErc20 < requiredTotalNative) {
     const feeUsdc = formatUnits(estimatedNativeGas, 18);
     const availableUsdc = formatUnits(usdcBalance, PRIMARY_DECIMALS);

@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
-import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
+import { createPublicClient, formatUnits, http, parseUnits } from 'viem';
 import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_URL } from '@/lib/contracts';
 import { useAppStore } from '@/lib/store';
 import { parseTransactionError, generateId } from '@/lib/utils';
@@ -15,7 +15,7 @@ interface TransferParams { to: string; amount: string; note?: string; }
 
 function isPassportRecipient(value: string): boolean {
   const v = value.trim().toLowerCase();
-  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\.arc)?$/.test(v);
+  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\\.arc)?$/.test(v);
 }
 
 async function resolveTransferRecipient(value: string): Promise<string> {
@@ -31,20 +31,52 @@ async function resolveTransferRecipient(value: string): Promise<string> {
   return data.walletAddress;
 }
 
-async function preflightTransfer(address: `0x${string}`, amount: string) {
+/**
+ * Arc uses USDC as its native gas asset. There is no separate ARC/ETH gas
+ * balance. The native balance returned by eth_getBalance is the same USDC
+ * pool as the ERC-20 balance, represented at 18 decimals instead of 6.
+ */
+async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amount: string) {
   const client = createPublicClient({ transport: http(RPC_URL) });
   const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
-  const [nativeBalance, gasPrice, usdcBalance] = await Promise.all([
+  const nativeScale = 10n ** 12n; // 6-decimal ERC-20 USDC -> 18-decimal native USDC
+
+  const [nativeBalance, usdcBalance, gasPrice] = await Promise.all([
     client.getBalance({ address }),
-    client.getGasPrice(),
     client.readContract({ address: PRIMARY_CONTRACT, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
+    client.getGasPrice(),
   ]);
+
   if (usdcBalance < requiredUsdc) {
     throw new Error(`Insufficient USDC. You have ${formatUnits(usdcBalance, PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`);
   }
-  const requiredNativeGas = gasPrice * 100_000n * 2n;
-  if (nativeBalance < requiredNativeGas) {
-    throw new Error(`Insufficient ARC for network fees. You need approximately ${formatEther(requiredNativeGas)} ARC to submit this transfer. No USDC was sent.`);
+
+  let gasLimit = 100_000n;
+  try {
+    gasLimit = await client.estimateContractGas({
+      address: PRIMARY_CONTRACT,
+      abi: ERC20_ABI,
+      functionName: 'transfer',
+      args: [to, requiredUsdc],
+      account: address,
+    });
+  } catch {
+    // App Kit performs its own authoritative estimate immediately before send.
+    // Keep a conservative fallback here so a temporary estimate RPC issue does
+    // not incorrectly block a transaction that App Kit can successfully send.
+  }
+
+  const estimatedNativeGas = gasPrice * gasLimit;
+  const requiredTotalNative = requiredUsdc * nativeScale + estimatedNativeGas;
+  const nativeBalanceFromErc20 = usdcBalance * nativeScale;
+
+  // Prefer the ERC-20 balance for the user-facing asset check, but also verify
+  // the native USDC view so the same underlying balance covers gas + payment.
+  if (nativeBalance < requiredTotalNative || nativeBalanceFromErc20 < requiredTotalNative) {
+    const feeUsdc = formatUnits(estimatedNativeGas, 18);
+    const availableUsdc = formatUnits(usdcBalance, PRIMARY_DECIMALS);
+    const requiredDisplay = formatUnits(requiredUsdc, PRIMARY_DECIMALS);
+    throw new Error(`Insufficient USDC for payment and network fee. Available: ${availableUsdc} USDC. Required: ${requiredDisplay} USDC + ~${feeUsdc} USDC network fee. No transaction was submitted.`);
   }
 }
 
@@ -103,7 +135,7 @@ export function useTransfer() {
 
     try {
       const resolvedTo = await resolveTransferRecipient(to);
-      await preflightTransfer(address, amount);
+      await preflightTransfer(address, resolvedTo as `0x${string}`, amount);
       const mode: TransactionRecord['mode'] = typeof window !== 'undefined' && window.sessionStorage.getItem('arctis-transfer-mode') === 'agent' ? 'agent' : 'manual';
 
       const amountBigInt = parseUnits(amount, PRIMARY_DECIMALS);

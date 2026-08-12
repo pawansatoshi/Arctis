@@ -4,8 +4,8 @@ import { useState, useCallback, useRef } from 'react';
 import { useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
-import { createPublicClient, formatUnits, http, parseUnits } from 'viem';
-import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_URL } from '@/lib/contracts';
+import { createPublicClient, fallback, formatUnits, http, parseUnits } from 'viem';
+import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_FALLBACK_URLS } from '@/lib/contracts';
 import { useAppStore } from '@/lib/store';
 import { parseTransactionError, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -13,13 +13,8 @@ import type { TransactionRecord } from '@/types';
 
 interface TransferParams { to: string; amount: string; note?: string; }
 
-/** Normalize the human-facing Passport input used by both manual and agentic flows. */
 function normalizePassportRecipient(value: string): string {
-  return value
-    .trim()
-    .replace(/^['"`]+|['"`]+$/g, '')
-    .replace(/^@/, '')
-    .toLowerCase();
+  return value.trim().replace(/^['"`]+|['"`]+$/g, '').replace(/^@/, '').toLowerCase();
 }
 
 function isPassportRecipient(value: string): boolean {
@@ -47,7 +42,8 @@ async function resolveTransferRecipient(value: string): Promise<string> {
  * pool as the ERC-20 balance, represented at 18 decimals instead of 6.
  */
 async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amount: string) {
-  const client = createPublicClient({ transport: http(RPC_URL) });
+  // Use only Arc-documented RPC endpoints and fail over if the primary is unavailable.
+  const client = createPublicClient({ transport: fallback(RPC_FALLBACK_URLS.map((url) => http(url))) });
   const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
   const nativeScale = 10n ** 12n;
 
@@ -71,7 +67,7 @@ async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amou
       account: address,
     });
   } catch {
-    // App Kit performs its authoritative estimate immediately before send.
+    // App Kit performs the authoritative estimate immediately before send.
   }
 
   const estimatedNativeGas = gasPrice * gasLimit;

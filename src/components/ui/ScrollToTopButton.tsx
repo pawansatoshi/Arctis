@@ -4,13 +4,9 @@ import { useEffect, useState } from 'react';
 import { ChevronUp } from 'lucide-react';
 
 function getNestedScrollContainers(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('*')).filter((element) => {
-    const style = window.getComputedStyle(element);
-    return (
-      (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-      element.scrollHeight > element.clientHeight + 10
-    );
-  });
+  return Array.from(document.querySelectorAll<HTMLElement>('.overflow-y-auto, .overflow-auto')).filter(
+    (element) => element.scrollHeight > element.clientHeight + 10,
+  );
 }
 
 export default function ScrollToTopButton() {
@@ -18,8 +14,7 @@ export default function ScrollToTopButton() {
 
   useEffect(() => {
     const update = () => {
-      const nested = getNestedScrollContainers();
-      const nestedScrolled = nested.some((element) => element.scrollTop > 350);
+      const nestedScrolled = getNestedScrollContainers().some((element) => element.scrollTop > 350);
       setVisible(window.scrollY > 500 || nestedScrolled);
     };
 
@@ -31,14 +26,20 @@ export default function ScrollToTopButton() {
     };
 
     let attached = attach();
+    let refreshTimer: number | undefined;
     const observer = new MutationObserver(() => {
-      attached.forEach((element) => element.removeEventListener('scroll', update));
-      attached = attach();
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        attached.forEach((element) => element.removeEventListener('scroll', update));
+        attached = attach();
+      }, 100);
     });
+
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('scroll', update, { passive: true });
 
     return () => {
+      window.clearTimeout(refreshTimer);
       window.removeEventListener('scroll', update);
       attached.forEach((element) => element.removeEventListener('scroll', update));
       observer.disconnect();

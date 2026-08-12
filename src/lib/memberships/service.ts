@@ -78,14 +78,18 @@ export async function activateMembership(
     expiryDate: expiry.toISOString(),
     priceUSDC: plan.priceUSDC,
     monthlyCredits: plan.credits,
-    txHash,
+    ...(txHash ? { txHash } : {}),
     autoRenew: false,
   };
 
-  await ref.set({
+  // Firestore rejects `undefined` field values. Free memberships have no
+  // transaction hash, so only persist txHash when an on-chain payment exists.
+  const membershipDocument: Record<string, unknown> = {
     ...membership,
     updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  };
+
+  await ref.set(membershipDocument, { merge: true });
 
   // Monthly membership allocation is granted exactly once per activation.
   await addCredits(addr, plan.credits, 'bonus', `${plan.name} membership credits`, txHash);

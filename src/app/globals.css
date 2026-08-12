@@ -124,17 +124,6 @@ body { overscroll-behavior: none; min-height: 100dvh; }
   .status-dot-pending { @apply status-dot bg-amber-400 animate-pulse-slow; }
 }
 
-/* Hackathon information architecture: the financial execution rail is the
-   primary follow-on from AI OS, while Knowledge OS remains a distinct layer. */
-@layer components {
-  aside nav {
-    display: flex;
-    flex-direction: column;
-  }
-  aside nav > div:nth-child(3) { order: 4; }
-  aside nav > div:nth-child(4) { order: 3; }
-}
-
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }

@@ -132,7 +132,7 @@ Canonical application registry: `src/config/assets.ts`.
 | tARC | ARCTIS OTC test asset; not an official Arc native token | Yes |
 | EURC | Circle-rail integration concept pending explicit configuration | No |
 
-Only assets with an explicit active contract/route configuration should be exposed as executable. Do not document or expose unsupported assets such as cirBTC.
+Only assets with an explicit active contract/route configuration should be exposed as executable. Do not document or expose unsupported assets.
 
 Network/contract truth lives in `src/lib/contracts.ts`.
 

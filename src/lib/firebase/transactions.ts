@@ -10,8 +10,9 @@ export async function saveTransaction(
   tx: Omit<TransactionRecord, 'id' | 'createdAt' | 'walletAddress'>
 ): Promise<string> {
   const db = getAdminDb();
+  const cleanTx = Object.fromEntries(Object.entries(tx).filter(([, value]) => value !== undefined));
   const ref = await db.collection(COL).add({
-    ...tx,
+    ...cleanTx,
     walletAddress: walletAddress.toLowerCase(),
     createdAt: FieldValue.serverTimestamp(),
   });

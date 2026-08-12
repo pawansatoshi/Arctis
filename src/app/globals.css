@@ -10,24 +10,16 @@
   --font-geist-sans: 'GeistSans', system-ui, sans-serif;
   --font-geist-mono: 'GeistMono', monospace;
 
-  /* Motion tokens */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
-  /* Timing */
   --duration-fast: 120ms;
   --duration-base: 200ms;
   --duration-slow: 350ms;
   --duration-cinematic: 600ms;
 
-  /* ============================================================
-     Surface palette — LIGHT (default). Values are space-separated
-     RGB triples so Tailwind's `rgb(var(--x) / <alpha-value>)`
-     opacity syntax works. A soft, warm off-white base rather than
-     stark white — Apple/Linear/Notion-inspired, not clinical.
-     ============================================================ */
   --surface-0: 255 255 255;
   --surface-50: 248 249 251;
   --surface-100: 242 243 246;
@@ -44,8 +36,6 @@
 }
 
 .dark {
-  /* Surface palette — DARK. Identical to the original single-theme
-     values this project shipped with; preserved exactly. */
   --surface-0: 0 0 0;
   --surface-50: 10 10 11;
   --surface-100: 17 17 19;
@@ -61,13 +51,7 @@
   --surface-950: 244 244 245;
 }
 
-/* ============================================================
-   Base resets
-   ============================================================ */
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   scroll-behavior: smooth;
@@ -76,41 +60,14 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  overscroll-behavior: none;
-  min-height: 100dvh;
-}
+body { overscroll-behavior: none; min-height: 100dvh; }
 
-::selection {
-  background: rgba(59, 130, 246, 0.25);
-  color: rgb(var(--surface-950));
-}
+::selection { background: rgba(59, 130, 246, 0.25); color: rgb(var(--surface-950)); }
 
-/* ============================================================
-   Scrollbar styling
-   ============================================================ */
-
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgb(var(--surface-950) / 0.15);
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--surface-950) / 0.25);
-}
-
-/* ============================================================
-   Glass layers
-   ============================================================ */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--surface-950) / 0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--surface-950) / 0.25); }
 
 @layer base {
   body {
@@ -125,237 +82,67 @@ body {
     letter-spacing: -0.02em;
     line-height: 1.2;
   }
-
   h1 { letter-spacing: -0.025em; }
-
-  p {
-    @apply text-surface-700;
-    line-height: 1.6;
-  }
-
-  /* Financial figures read better with tabular numerals — applied via
-     a utility class rather than globally, so prose text isn't affected */
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Safe-area utilities for notched phones / gesture-nav devices */
-  .safe-bottom {
-    padding-bottom: max(env(safe-area-inset-bottom), 0px);
-  }
-  .safe-top {
-    padding-top: max(env(safe-area-inset-top), 0px);
-  }
+  p { @apply text-surface-700; line-height: 1.6; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+  .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+  .safe-top { padding-top: max(env(safe-area-inset-top), 0px); }
 }
 
 @layer components {
-  .glass {
-    @apply backdrop-blur-md bg-surface-0/60 border border-surface-950/[0.06];
-  }
-  .dark .glass {
-    @apply bg-white/[0.03] border-white/[0.06];
-  }
-
-  .glass-card {
-    @apply backdrop-blur-sm bg-surface-0 border border-surface-950/[0.06] rounded-2xl shadow-card;
-  }
-  .dark .glass-card {
-    @apply bg-surface-200/80 border-white/[0.06];
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.3);
-  }
-
-  .glass-card-hover {
-    @apply glass-card transition-all duration-200;
-  }
-
-  .glass-card-hover:hover {
-    @apply border-surface-950/[0.1] shadow-card-hover;
-  }
-  .dark .glass-card-hover:hover {
-    @apply border-white/[0.1];
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.5);
-  }
-
-  /* Standard single-column page wrapper — used by Transfer/Swap/Bridge.
-     Was referenced across 5 pages but never actually defined; now gives
-     consistent, generous vertical rhythm instead of doing nothing. */
-  .page-container {
-    @apply w-full mx-auto px-4 py-8 sm:py-10;
-  }
-
-  /* Metric card */
-  .metric-card {
-    @apply glass-card p-5 flex flex-col gap-3;
-  }
-
-  /* Input base */
-  .input-base {
-    @apply w-full bg-surface-100/80 border border-surface-950/[0.08] rounded-xl px-4 py-3
-           text-surface-950 placeholder:text-surface-500 text-sm
-           focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20
-           transition-all duration-200;
-  }
-  .dark .input-base {
-    @apply bg-surface-300/50 border-white/[0.08] placeholder:text-surface-600;
-  }
-
-  /* input-field is the canonical name used across all form pages */
-  .input-field {
-    @apply input-base;
-  }
-
-  /* Button variants */
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-accent-blue hover:bg-blue-600 text-white text-sm font-medium
-           rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50;
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2
-           text-surface-700 hover:text-surface-950 hover:bg-surface-950/[0.05]
-           text-sm font-medium rounded-xl transition-all duration-200
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50;
-  }
-  .dark .btn-ghost {
-    @apply text-surface-800 hover:bg-white/[0.06];
-  }
-
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-accent-rose hover:bg-red-500 text-white text-sm font-medium
-           rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50;
-  }
-
-  /* Secondary — outlined variant, for actions alongside a primary CTA
-     (e.g. "Buy Credits" / "Swap Tokens" next to "New Bridge"). Was
-     referenced in Bridge and Passport pages but never actually defined. */
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-transparent border border-black/[0.12] dark:border-white/[0.12]
-           text-surface-800 hover:text-surface-950 hover:border-blue-500/40 hover:bg-blue-500/[0.04]
-           text-sm font-medium rounded-xl transition-all duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50;
-  }
-  .dark .btn-primary, .dark .btn-ghost, .dark .btn-danger, .dark .btn-secondary {
-    @apply focus-visible:ring-offset-surface-100;
-  }
-
-  /* Status badges — darker text shade in light mode for contrast against
-     a light card background; original bright shade preserved for dark. */
-  .badge-success {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
-           bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20;
-  }
-
-  .badge-pending {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
-           bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20;
-  }
-
-  .badge-error {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
-           bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20;
-  }
-
-  /* Skeleton loader */
-  .skeleton {
-    @apply relative overflow-hidden bg-surface-200/70 rounded-lg;
-  }
-  .dark .skeleton {
-    @apply bg-surface-300/40;
-  }
-
-  .skeleton::after {
-    content: '';
-    @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(15,23,42,0.04) 50%,
-      transparent 100%
-    );
-    animation: shimmer 1.8s ease-in-out infinite;
-  }
-  .dark .skeleton::after {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255,255,255,0.04) 50%,
-      transparent 100%
-    );
-  }
-
-  /* Glow effects */
-  .glow-blue {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-  }
-
-  .glow-cyan {
-    box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
-  }
-
-  /* Arc gradient text */
-  .text-arc-gradient {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #8b5cf6 100%);
-  }
-
-  /* Network status dot */
-  .status-dot {
-    @apply w-2 h-2 rounded-full;
-  }
-
-  .status-dot-online {
-    @apply status-dot bg-emerald-400;
-    box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
-  }
-
-  .status-dot-offline {
-    @apply status-dot bg-rose-400;
-  }
-
-  .status-dot-pending {
-    @apply status-dot bg-amber-400 animate-pulse-slow;
-  }
+  .glass { @apply backdrop-blur-md bg-surface-0/60 border border-surface-950/[0.06]; }
+  .dark .glass { @apply bg-white/[0.03] border-white/[0.06]; }
+  .glass-card { @apply backdrop-blur-sm bg-surface-0 border border-surface-950/[0.06] rounded-2xl shadow-card; }
+  .dark .glass-card { @apply bg-surface-200/80 border-white/[0.06]; box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.3); }
+  .glass-card-hover { @apply glass-card transition-all duration-200; }
+  .glass-card-hover:hover { @apply border-surface-950/[0.1] shadow-card-hover; }
+  .dark .glass-card-hover:hover { @apply border-white/[0.1]; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.5); }
+  .page-container { @apply w-full mx-auto px-4 py-8 sm:py-10; }
+  .metric-card { @apply glass-card p-5 flex flex-col gap-3; }
+  .input-base { @apply w-full bg-surface-100/80 border border-surface-950/[0.08] rounded-xl px-4 py-3 text-surface-950 placeholder:text-surface-500 text-sm focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all duration-200; }
+  .dark .input-base { @apply bg-surface-300/50 border-white/[0.08] placeholder:text-surface-600; }
+  .input-field { @apply input-base; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-accent-blue hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-surface-700 hover:text-surface-950 hover:bg-surface-950/[0.05] text-sm font-medium rounded-xl transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50; }
+  .dark .btn-ghost { @apply text-surface-800 hover:bg-white/[0.06]; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-accent-rose hover:bg-red-500 text-white text-sm font-medium rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-transparent border border-black/[0.12] dark:border-white/[0.12] text-surface-800 hover:text-surface-950 hover:border-blue-500/40 hover:bg-blue-500/[0.04] text-sm font-medium rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50; }
+  .dark .btn-primary, .dark .btn-ghost, .dark .btn-danger, .dark .btn-secondary { @apply focus-visible:ring-offset-surface-100; }
+  .badge-success { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20; }
+  .badge-pending { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20; }
+  .badge-error { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20; }
+  .skeleton { @apply relative overflow-hidden bg-surface-200/70 rounded-lg; }
+  .dark .skeleton { @apply bg-surface-300/40; }
+  .skeleton::after { content: ''; @apply absolute inset-0; background: linear-gradient(90deg, transparent 0%, rgba(15,23,42,0.04) 50%, transparent 100%); animation: shimmer 1.8s ease-in-out infinite; }
+  .dark .skeleton::after { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%); }
+  .glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+  .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.3); }
+  .text-arc-gradient { @apply bg-clip-text text-transparent; background-image: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #8b5cf6 100%); }
+  .status-dot { @apply w-2 h-2 rounded-full; }
+  .status-dot-online { @apply status-dot bg-emerald-400; box-shadow: 0 0 6px rgba(52, 211, 153, 0.8); }
+  .status-dot-offline { @apply status-dot bg-rose-400; }
+  .status-dot-pending { @apply status-dot bg-amber-400 animate-pulse-slow; }
 }
 
-/* ============================================================
-   Shimmer animation
-   ============================================================ */
+/* Hackathon information architecture: the financial execution rail is the
+   primary follow-on from AI OS, while Knowledge OS remains a distinct layer. */
+@layer components {
+  aside nav {
+    display: flex;
+    flex-direction: column;
+  }
+  aside nav > div:nth-child(3) { order: 4; }
+  aside nav > div:nth-child(4) { order: 3; }
+}
 
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
 
-/* ============================================================
-   Page transitions
-   ============================================================ */
+.page-enter { opacity: 0; transform: translateY(8px); }
+.page-enter-active { opacity: 1; transform: translateY(0); transition: opacity 300ms ease-out, transform 300ms ease-out; }
 
-.page-enter {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.page-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 300ms ease-out, transform 300ms ease-out;
-}
-
-/* ============================================================
-   RainbowKit overrides
-   ============================================================ */
-
-[data-rk] {
-  --rk-fonts-body: var(--font-geist-sans);
-}
-
-/* Global RTL support for Arabic and other right-to-left locales. */
+[data-rk] { --rk-fonts-body: var(--font-geist-sans); }
 html[dir='rtl'] body { direction: rtl; }
-html[dir='rtl'] input,
-html[dir='rtl'] textarea { text-align: right; }
+html[dir='rtl'] input, html[dir='rtl'] textarea { text-align: right; }

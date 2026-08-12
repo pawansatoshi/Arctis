@@ -87,7 +87,8 @@ export const useAppStore = create<AppState>()(
       setOnboardingComplete: (v) => set({ onboardingComplete: v }),
     }),
     {
-      name: 'arctis-v3',
+      // v4 intentionally resets stale persisted AI mode state from the previous UI.
+      name: 'arctis-v4',
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         sidebarCollapsed: s.sidebarCollapsed,

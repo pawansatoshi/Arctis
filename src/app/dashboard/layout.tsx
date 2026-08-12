@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import CommandPalette from '@/components/ui/CommandPalette';
+import AppOrientation from '@/components/ui/AppOrientation';
 import { useAppStore } from '@/lib/store';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
@@ -324,7 +325,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          {pathname === '/dashboard' && <AppOrientation />}
+          {children}
+        </main>
       </div>
     </div>
   );

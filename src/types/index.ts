@@ -2,7 +2,6 @@
 // ARCTIS — Global TypeScript Types
 // ============================================================
 
-// ─── Wallet / Chain ─────────────────────────────────────────
 export type TransactionStatus = 'pending' | 'confirmed' | 'failed' | 'dropped';
 
 export interface TransactionRecord {
@@ -23,6 +22,7 @@ export interface TransactionRecord {
   blockNumber?: number;
   note?: string;
   reason?: string;
+  mode?: 'manual' | 'agent';
   type?: 'send' | 'receive' | 'swap' | 'bridge' | 'credit_purchase' | 'membership' | 'refund' | 'treasury' | 'ai_usage';
 }
 
@@ -85,7 +85,6 @@ export interface CreditBalance {
 // ─── AI ──────────────────────────────────────────────────────
 export type AIProvider = 'openrouter' | 'groq' | 'gemini';
 
-// All supported AI modes — includes new educational roles
 export type AIMode =
   | 'study' | 'build' | 'analyze' | 'research'
   | 'generate' | 'treasury' | 'developer' | 'student'
@@ -110,10 +109,6 @@ export interface AIMessage {
   tokens?: { prompt: number; completion: number };
   attachments?: AIAttachment[];
   actionProposal?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChain?: string; sourceChainId?: number; createdAt: number };
-  // A financial action still missing a required field — the message content
-  // already contains the question; this carries the state to resolve on
-  // the user's next reply. Distinct from actionProposal, which is only
-  // ever set once every required field is present and validated.
   clarification?: { action: 'transfer' | 'swap' | 'bridge'; amount: string; fromToken?: string; toToken?: string; recipient?: string; sourceChain?: string; sourceChainId?: number; missing: 'recipient' | 'toToken' | 'sourceChain' | 'full'; error?: string; createdAt: number };
 }
 
@@ -138,7 +133,6 @@ export interface AISession {
   workspaceId?: string;
 }
 
-// ─── Workspace ───────────────────────────────────────────────
 export type WorkspaceDomain =
   | 'student' | 'developer' | 'research' | 'treasury'
   | 'engineering' | 'operations' | 'teacher' | 'professor' | 'child';
@@ -163,7 +157,6 @@ export interface SavedPrompt {
   createdAt: string;
 }
 
-// ─── Treasury ────────────────────────────────────────────────
 export interface TreasurySnapshot {
   id: string;
   timestamp: string;
@@ -193,7 +186,6 @@ export interface TreasuryLog {
   createdAt: string;
 }
 
-// ─── Observability ───────────────────────────────────────────
 export interface ObsLog {
   id: string;
   level: 'info' | 'warn' | 'error' | 'debug';
@@ -204,7 +196,6 @@ export interface ObsLog {
   createdAt: string;
 }
 
-// ─── Swap / Bridge ───────────────────────────────────────────
 export type SwapProvider = 'lifi' | 'socket' | 'relay' | 'across' | 'debridge';
 export type SwapStatus = 'unsupported' | 'available' | 'pending' | 'confirmed' | 'failed';
 
@@ -219,7 +210,6 @@ export interface SwapRoute {
   steps: { type: string; protocol: string; description: string }[];
 }
 
-// ─── Admin ───────────────────────────────────────────────────
 export interface AdminUser {
   walletAddress: string;
   membership: MembershipTier;
@@ -238,7 +228,6 @@ export interface FeatureFlag {
   rolloutPercent: number;
 }
 
-// ─── Feedback ────────────────────────────────────────────────
 export type FeedbackCategory = 'bug_report' | 'feature_request' | 'improvement' | 'general';
 
 export interface FeedbackEntry {
@@ -261,16 +250,9 @@ export interface NavItem {
   group?: string;
 }
 
-// ─── Economic Agent Layer (Lepton) ──────────────────────────
-
 export type AgentType =
-  | 'research'
-  | 'developer'
-  | 'engineering'
-  | 'treasury'
-  | 'monitoring'
-  | 'document'
-  | 'custom';
+  | 'research' | 'developer' | 'engineering' | 'treasury'
+  | 'monitoring' | 'document' | 'custom';
 
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'error' | 'archived';
 
@@ -280,34 +262,25 @@ export interface Agent {
   name: string;
   type: AgentType;
   description: string;
-  goals: string[];           // what the agent is trying to accomplish
-  instructions: string;      // system-level instructions for this agent
-  model: string;             // preferred AI model
+  goals: string[];
+  instructions: string;
+  model: string;
   status: AgentStatus;
-  // Budget management
   monthlyBudgetCredits: number;
   maxCreditsPerExecution: number;
   creditsUsedThisMonth: number;
-  budgetResetDate: string;   // ISO date — first of next month
-  // Metadata
+  budgetResetDate: string;
   createdAt: string;
   lastActiveAt: string | null;
   executionCount: number;
   totalCreditsConsumed: number;
-  // Associated content
   reportIds: string[];
   tags: string[];
 }
 
 export type AgentExecutionStatus =
-  | 'proposed'    // created, awaiting human review — Prepare phase complete
-  | 'approved'    // human approved, queued for execution
-  | 'rejected'    // human rejected, will not run, zero credits consumed
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  | 'proposed' | 'approved' | 'rejected' | 'pending' | 'running'
+  | 'completed' | 'failed' | 'cancelled';
 
 export interface AgentExecution {
   id: string;
@@ -315,28 +288,23 @@ export interface AgentExecution {
   agentName: string;
   agentType: AgentType;
   ownerWallet: string;
-  // Task
-  task: string;              // human-readable task description
-  input: string;             // full input sent to AI
-  outputSummary: string;     // summary of what was produced
-  outputFull?: string;       // full output (may be large)
-  // Economy
+  task: string;
+  input: string;
+  outputSummary: string;
+  outputFull?: string;
   creditsConsumed: number;
   model: string;
-  // Timing
   status: AgentExecutionStatus;
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;
-  // References
-  reportId?: string;         // if a report was generated
+  reportId?: string;
   relatedTxHashes: string[];
   errorMessage?: string;
-  // Evaluation (Phase 16 — Independent Evaluator Layer, additive, optional)
   evaluationVerdict?: 'PASS' | 'FAIL';
   evaluationReasons?: string[];
   evaluationSuggestions?: string;
-  revisionCount?: number;    // how many times the generator revised after a FAIL
+  revisionCount?: number;
 }
 
 export interface AgentLedgerEntry {
@@ -344,7 +312,7 @@ export interface AgentLedgerEntry {
   agentId: string;
   ownerWallet: string;
   type: 'execution' | 'budget_allocated' | 'budget_reset' | 'created' | 'archived';
-  creditsAmount: number;     // negative = consumed, positive = allocated
+  creditsAmount: number;
   balanceBefore: number;
   balanceAfter: number;
   description: string;
@@ -359,8 +327,8 @@ export interface AgentReport {
   ownerWallet: string;
   title: string;
   type: AgentType;
-  content: string;           // full markdown report
-  summary: string;           // 2-3 sentence summary
+  content: string;
+  summary: string;
   executionId: string;
   createdAt: string;
   tags: string[];

@@ -1,16 +1,41 @@
-# ARCTIS Codex Final Fix
+# ARCTIS Changelog
 
-- Added centralized undefined stripping for Firestore agent updates.
-- Constrained deterministic financial intent parsing to executable transfer/swap/bridge routes and added structured clarification responses.
-- Registered CCTP source chains in wagmi and pinned Arc token reads to Arc Testnet.
-- Lowered bridge application minimum to the ERC-20/CCTP unit floor and improved bridge source-chain handoff and wallet-switch error messaging.
+This changelog records meaningful product and architecture changes. Git history remains the detailed implementation history.
 
-## 2026-08-10 — App Kit + Global Language Fix
+## 2026-08-12 — Product architecture and repository polish
 
-- Replaced the browser bridge execution path with Circle App Kit + the Viem EIP-1193 adapter.
-- Removed the bridge page's direct CCTP `approve` / `depositForBurn` / Iris polling orchestration.
-- Added Circle App Kit pre-flight estimation and result lifecycle handling.
-- Added GitHub Codespaces configuration using Node.js 22 and automatic `npm install`.
-- Added a global one-button language selector with English, Hindi, Spanish, Portuguese, Chinese, Korean, Vietnamese, French, Swahili, and Arabic.
-- Added persistent locale selection and RTL support for Arabic.
-- Added local bridge history fallback so successful App Kit bridges remain visible even when the legacy server history collection is unavailable.
+- Refined the primary navigation around the current product model.
+- Moved Agents under AI OS in the primary navigation while retaining Economic Agent OS as a product architecture pillar.
+- Renamed the money-movement navigation group to DeFi OS.
+- Removed Activity from primary navigation; History is the canonical user-facing historical surface.
+- Added the current ARCTIS logo treatment and compliant “Built on Arc” relationship language.
+- Rebuilt the public README around the current implementation instead of historical phase claims.
+- Added an animated, self-contained architecture diagram for repository visitors.
+- Consolidated documentation authority around current architecture/configuration sources.
+- Refreshed API, database, deployment and security documentation to match the current code direction.
+- Marked testnet limitations and remaining mainnet hardening work explicitly instead of using production-readiness language.
+
+## 2026-08-10 — App Kit + global language support
+
+- Reworked the browser bridge execution path around Circle App Kit with the Viem EIP-1193 adapter.
+- Removed the bridge page's previous direct CCTP transaction orchestration and legacy browser polling path.
+- Added Circle App Kit preflight/result lifecycle handling.
+- Added a Codespaces configuration using Node.js 22 and automatic dependency installation.
+- Added a one-button language selector with English, Hindi, Spanish, Portuguese, Chinese, Korean, Vietnamese, French, Swahili and Arabic.
+- Added persisted locale selection and RTL handling for Arabic.
+- Added a local bridge-history fallback so successful App Kit bridge results remain visible when legacy server history is unavailable.
+
+## 2026-08-12 — Membership and UX hardening
+
+- Redesigned membership activation and entitlement management.
+- Added membership entitlement dates and credit-source tracking.
+- Surfaced membership and credit entitlements in Passport.
+- Derived expired membership state from entitlement expiry.
+- Added first-run ARCTIS product orientation.
+- Added accessible global/back-to-top navigation aids for long pages.
+- Optimized nested scroll detection.
+- Removed admin from primary navigation.
+
+## Earlier development
+
+The repository has undergone several architecture, persistence, AI-routing, agent-safety, accessibility, responsive-design and visual-design iterations over the preceding months. Those changes remain available in Git history; current product facts belong in `ARCHITECTURE_TRUTH.md` rather than in a growing collection of phase reports.

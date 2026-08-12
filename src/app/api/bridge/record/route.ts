@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
-import { createBridgePending, bridgeTxAlreadyProcessed } from '@/lib/bridge/service';
+import { createBridgePending, bridgeTxAlreadyProcessed, updateBridgePending } from '@/lib/bridge/service';
 import { saveTransaction } from '@/lib/firebase/transactions';
 import { writeActivity, buildBridgeActivity } from '@/lib/firebase/activity';
 import { logTreasuryEvent } from '@/lib/treasury/service';
@@ -17,11 +17,15 @@ const SOURCE_RPC: Record<number, string> = {
 };
 
 /**
- * Records a successful Circle App Kit bridge after independently checking
- * the source transaction. This endpoint never executes CCTP and never
- * accepts an arbitrary wallet claim as proof of execution.
+ * Records the lifecycle of a Circle App Kit bridge after the burn tx exists.
+ * The endpoint never executes CCTP and never accepts an arbitrary wallet claim
+ * as proof of execution. A submitted burn is persisted as pending first so
+ * History can represent pending/failed bridges, then the record is promoted
+ * to completed only after the source receipt is independently verified.
  */
 export async function POST(req: NextRequest) {
+  let burnTxHash = '';
+  let walletAddress = '';
   try {
     const body = await req.json() as {
       burnTxHash?: string;
@@ -32,14 +36,9 @@ export async function POST(req: NextRequest) {
       amount?: number;
     };
 
-    const {
-      burnTxHash,
-      forwardTxHash,
-      sourceChainId,
-      destinationChainId,
-      walletAddress,
-      amount,
-    } = body;
+    const { forwardTxHash, sourceChainId, destinationChainId, amount } = body;
+    burnTxHash = body.burnTxHash ?? '';
+    walletAddress = body.walletAddress ?? '';
 
     if (!burnTxHash || !sourceChainId || !destinationChainId || !walletAddress || !amount) {
       return NextResponse.json(
@@ -89,23 +88,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ bridge: existing, alreadyRecorded: true });
     }
 
-    const client = createPublicClient({ transport: http(rpc) });
-    const tx = await client.getTransaction({ hash: burnTxHash as `0x${string}` });
-
-    if (tx.from.toLowerCase() !== walletAddress.toLowerCase()) {
-      return NextResponse.json(
-        { error: 'Source transaction does not belong to the supplied wallet' },
-        { status: 403 },
-      );
-    }
-
-    const receipt = await client.getTransactionReceipt({ hash: burnTxHash as `0x${string}` });
-    if (receipt.status !== 'success') {
-      return NextResponse.json({ error: 'Source bridge transaction did not succeed' }, { status: 422 });
-    }
-
-    const now = new Date().toISOString();
-
+    // Persist immediately after the burn hash is known. This is the key
+    // lifecycle record that allows History to show a pending bridge while
+    // CCTP confirmation/attestation/forwarding is still in progress.
     await createBridgePending({
       burnTxHash,
       walletAddress,
@@ -116,12 +101,59 @@ export async function POST(req: NextRequest) {
       destinationChainId,
       destinationDomain: destination.domain,
       amount,
-      status: 'completed',
-      forwardTxHash,
+      status: 'burning',
     });
 
-    const recordedHash = forwardTxHash ?? burnTxHash;
-    const recordedExplorer = forwardTxHash ? destination.explorer : source.explorer;
+    const client = createPublicClient({ transport: http(rpc) });
+    let tx;
+    try {
+      tx = await client.getTransaction({ hash: burnTxHash as `0x${string}` });
+    } catch {
+      // The tx may still be propagating. Keep the durable record pending.
+      return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash });
+    }
+
+    if (tx.from.toLowerCase() !== walletAddress.toLowerCase()) {
+      await updateBridgePending(burnTxHash, { status: 'failed', failureReason: 'Source transaction does not belong to the supplied wallet' });
+      return NextResponse.json(
+        { error: 'Source transaction does not belong to the supplied wallet' },
+        { status: 403 },
+      );
+    }
+
+    let receipt;
+    try {
+      receipt = await client.getTransactionReceipt({ hash: burnTxHash as `0x${string}` });
+    } catch {
+      return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash });
+    }
+
+    if (receipt.status !== 'success') {
+      await updateBridgePending(burnTxHash, { status: 'failed', failureReason: 'Source bridge transaction did not succeed' });
+      return NextResponse.json({ error: 'Source bridge transaction did not succeed' }, { status: 422 });
+    }
+
+    const now = new Date().toISOString();
+
+    // The source burn is verified. If forwarding has already been completed
+    // by the caller, expose completed; otherwise keep the lifecycle pending.
+    const finalStatus = forwardTxHash ? 'completed' : 'attesting';
+    await updateBridgePending(burnTxHash, {
+      status: finalStatus,
+      ...(forwardTxHash ? { forwardTxHash, completedAt: now } : {}),
+    });
+
+    if (!forwardTxHash) {
+      return NextResponse.json({
+        bridgeId: burnTxHash,
+        status: 'attesting',
+        burnTxHash,
+        forwardTxHash: null,
+      });
+    }
+
+    const recordedHash = forwardTxHash;
+    const recordedExplorer = destination.explorer;
 
     await Promise.allSettled([
       saveTransaction(walletAddress, {
@@ -159,15 +191,16 @@ export async function POST(req: NextRequest) {
       bridgeId: burnTxHash,
       status: 'completed',
       burnTxHash,
-      forwardTxHash: forwardTxHash ?? null,
+      forwardTxHash,
       sourceChain: source.name,
       destinationChain: destination.name,
       completedAt: now,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unable to record bridge' },
-      { status: 500 },
-    );
+    const message = err instanceof Error ? err.message : 'Unable to record bridge';
+    if (burnTxHash) {
+      await updateBridgePending(burnTxHash, { status: 'failed', failureReason: message });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

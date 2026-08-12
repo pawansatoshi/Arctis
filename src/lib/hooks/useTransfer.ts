@@ -37,25 +37,17 @@ async function resolveTransferRecipient(value: string): Promise<string> {
 }
 
 /**
- * Arc uses USDC as its native gas asset. There is no separate ARC/ETH gas
- * balance. The native balance returned by eth_getBalance is the same USDC
- * pool as the ERC-20 balance, represented at 18 decimals instead of 6.
+ * Arc uses USDC as its native gas asset. Arc documents the ERC-20 USDC
+ * interface as the recommended balance/transfer interface; the native
+ * representation is the same underlying balance at 18 decimals.
  */
 async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amount: string) {
-  // Use only Arc-documented RPC endpoints and fail over if the primary is unavailable.
   const client = createPublicClient({ transport: fallback(RPC_FALLBACK_URLS.map((url) => http(url))) });
   const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
-  const nativeScale = 10n ** 12n;
-
-  const [nativeBalance, usdcBalance, gasPrice] = await Promise.all([
-    client.getBalance({ address }),
+  const [usdcBalance, gasPrice] = await Promise.all([
     client.readContract({ address: PRIMARY_CONTRACT, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
     client.getGasPrice(),
   ]);
-
-  if (usdcBalance < requiredUsdc) {
-    throw new Error(`Insufficient USDC. You have ${formatUnits(usdcBalance, PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`);
-  }
 
   let gasLimit = 100_000n;
   try {
@@ -70,14 +62,18 @@ async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amou
     // App Kit performs the authoritative estimate immediately before send.
   }
 
+  // Gas is returned in Arc's 18-decimal native USDC representation. Convert
+  // the fee upward into the ERC-20 6-decimal representation before comparing
+  // it with the ERC-20 balance. This avoids mixing the two decimal systems.
   const estimatedNativeGas = gasPrice * gasLimit;
-  const requiredTotalNative = requiredUsdc * nativeScale + estimatedNativeGas;
-  const nativeBalanceFromErc20 = usdcBalance * nativeScale;
+  const nativeScale = 10n ** 12n;
+  const gasFeeUsdc = (estimatedNativeGas + nativeScale - 1n) / nativeScale;
+  const requiredTotalUsdc = requiredUsdc + gasFeeUsdc;
 
-  if (nativeBalance < requiredTotalNative || nativeBalanceFromErc20 < requiredTotalNative) {
-    const feeUsdc = formatUnits(estimatedNativeGas, 18);
+  if (usdcBalance < requiredTotalUsdc) {
     const availableUsdc = formatUnits(usdcBalance, PRIMARY_DECIMALS);
     const requiredDisplay = formatUnits(requiredUsdc, PRIMARY_DECIMALS);
+    const feeUsdc = formatUnits(gasFeeUsdc, PRIMARY_DECIMALS);
     throw new Error(`Insufficient USDC for payment and network fee. Available: ${availableUsdc} USDC. Required: ${requiredDisplay} USDC + ~${feeUsdc} USDC network fee. No transaction was submitted.`);
   }
 }
@@ -111,7 +107,7 @@ export function useTransfer() {
     setIsSuccess(true);
     setIsPending(false);
     updateTransaction(localIdRef.current, { status: 'confirmed', txHash });
-    patchTransferRecord({ docId: firestoreIdRef.current, status: 'confirmed', txHash, log: { level: 'info', message: 'Transfer confirmed', data: { hash: txHash }, walletAddress: address } });
+    patchTransferRecord({ docId: firestoreIdRef.current, status: 'confirmed', txHash, log: { level: 'info', message: 'Transfer confirmed', data: { hash: txHash }, walletAddress: address });
     toast.dismiss(txHash);
     toast.success('Transfer confirmed on Arc!');
   }

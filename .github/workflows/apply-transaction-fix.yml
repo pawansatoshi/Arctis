@@ -3,6 +3,12 @@ name: apply transaction fix
 on:
   push:
     branches: [fix/arc-transactions-rpc-cirbtc]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-transaction-fix.yml'
+      - 'scripts/apply-transaction-fix.py'
+      - 'src/app/swap/page.tsx'
 
 permissions:
   contents: write

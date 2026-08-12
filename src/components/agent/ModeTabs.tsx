@@ -3,44 +3,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAccount } from 'wagmi';
-import {
-  Wallet, Sparkles, History, Download, X, ExternalLink, Copy,
-  CheckCircle2, Clock3, XCircle, RefreshCw, ChevronRight,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { copyToClipboard, formatAddress } from '@/lib/utils';
+import { Wallet, Sparkles, History, Download, X, ExternalLink, Copy, CheckCircle2, Clock3, XCircle, RefreshCw, ChevronRight } from 'lucide-react';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { exportCSV, exportExcel, exportPDF, exportTXT } from '@/lib/utils/export';
 import toast from 'react-hot-toast';
-
-// ============================================================
-// ModeTabs — Manual / Economic Agent switcher + contextual history
-// ============================================================
-// Shared by Transfer, Swap, and Bridge pages. History intentionally
-// stays inside the current Stablecoin OS surface and never replaces
-// the Manual / Economic Agent transaction experience.
-// ============================================================
 
 export type ExecutionMode = 'manual' | 'agent';
 type ContextKind = 'transfer' | 'swap' | 'bridge';
 type StatusFilter = 'all' | 'confirmed' | 'completed' | 'pending' | 'failed';
 
 interface HistoryRecord {
-  id: string;
-  kind: ContextKind;
-  mode?: 'manual' | 'agent';
-  status: string;
-  createdAt: string;
-  amount?: string;
-  from?: string;
-  to?: string;
-  sourceChain?: string;
-  destinationChain?: string;
-  txHash?: string;
-  burnTxHash?: string;
-  forwardTxHash?: string;
-  explorerUrl?: string;
-  rail?: string;
-  reason?: string;
+  id: string; kind: ContextKind; mode?: 'manual' | 'agent'; status: string; createdAt: string;
+  amount?: string; from?: string; to?: string; sourceChain?: string; destinationChain?: string;
+  txHash?: string; burnTxHash?: string; forwardTxHash?: string; explorerUrl?: string; rail?: string; reason?: string;
   raw: Record<string, unknown>;
 }
 
@@ -50,36 +25,23 @@ function normalizeStatus(status?: string): string {
   if (status === 'failed' || status === 'timeout') return 'failed';
   return 'pending';
 }
-
 function statusLabel(status: string): string {
   if (status === 'confirmed' || status === 'completed') return 'Successful';
   if (status === 'failed') return 'Failed';
   return 'Pending';
 }
-
 function StatusIcon({ status }: { status: string }) {
   if (status === 'confirmed' || status === 'completed') return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
   if (status === 'failed') return <XCircle className="w-4 h-4 text-rose-600" />;
   return <Clock3 className="w-4 h-4 text-amber-600 animate-pulse" />;
 }
-
-function shortHash(hash?: string) {
-  if (!hash) return '—';
-  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
-}
-
+function shortHash(hash?: string) { return hash ? `${hash.slice(0, 10)}…${hash.slice(-8)}` : '—'; }
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+  return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
-
-function explorerFor(record: HistoryRecord) {
-  return record.explorerUrl || (record.txHash ? `https://testnet.arcscan.app/tx/${record.txHash}` : undefined);
-}
+function explorerFor(record: HistoryRecord) { return record.explorerUrl || (record.txHash ? `https://testnet.arcscan.app/tx/${record.txHash}` : undefined); }
 
 function ContextHistory({ kind, open, onClose }: { kind: ContextKind; open: boolean; onClose: () => void }) {
   const { address } = useAccount();
@@ -97,15 +59,14 @@ function ContextHistory({ kind, open, onClose }: { kind: ContextKind; open: bool
       if (kind === 'transfer') {
         const response = await fetch(`/api/activity?wallet=${address}&limit=300`);
         const data = await response.json() as { items?: Array<Record<string, unknown>> };
-        next = (data.items ?? [])
-          .filter((item) => item.type === 'transfer')
-          .map((item) => ({
-            id: String(item.id), kind, status: normalizeStatus(String(item.status ?? 'pending')),
-            createdAt: String(item.timestamp), amount: item.amount ? `${item.amount} ${item.token ?? 'USDC'}` : undefined,
-            to: String(item.description ?? ''), txHash: typeof item.txHash === 'string' ? item.txHash : undefined,
-            explorerUrl: typeof item.explorerUrl === 'string' ? item.explorerUrl : undefined,
-            raw: item,
-          }));
+        next = (data.items ?? []).filter((item) => item.type === 'transfer').map((item) => {
+          const meta = (item.meta ?? {}) as { mode?: 'manual' | 'agent'; toAddress?: string; fromAddress?: string };
+          return {
+            id: String(item.id), kind, mode: meta.mode, status: normalizeStatus(String(item.status ?? 'pending')), createdAt: String(item.timestamp),
+            amount: item.amount ? `${item.amount} ${item.token ?? 'USDC'}` : undefined, from: meta.fromAddress, to: meta.toAddress ?? String(item.description ?? ''),
+            txHash: typeof item.txHash === 'string' ? item.txHash : undefined, explorerUrl: typeof item.explorerUrl === 'string' ? item.explorerUrl : undefined, raw: item,
+          };
+        });
       } else if (kind === 'swap') {
         const [remote, localRaw] = await Promise.all([
           fetch(`/api/swap/history?wallet=${address}`).then((r) => r.json()).catch(() => ({ swaps: [] })),
@@ -114,14 +75,10 @@ function ContextHistory({ kind, open, onClose }: { kind: ContextKind; open: bool
         const local = localRaw ? JSON.parse(localRaw) as Array<Record<string, unknown>> : [];
         const all = [...(remote.swaps ?? []), ...local];
         next = Array.from(new Map(all.map((item) => [String(item.id ?? item.inboundTxHash), item])).values()).map((item) => ({
-          id: String(item.id ?? item.inboundTxHash), kind,
-          status: normalizeStatus(String(item.status)), createdAt: String(item.createdAt),
-          amount: `${item.inputAmount ?? ''} ${item.fromToken ?? ''}`.trim(),
-          from: String(item.fromToken ?? ''), to: String(item.toToken ?? ''),
-          txHash: String(item.outboundTxHash ?? item.inboundTxHash ?? ''),
-          rail: typeof item.rail === 'string' ? item.rail : undefined,
-          reason: typeof item.failureReason === 'string' ? item.failureReason : undefined,
-          raw: item,
+          id: String(item.id ?? item.inboundTxHash), kind, mode: item.mode === 'agent' ? 'agent' : item.mode === 'manual' ? 'manual' : undefined,
+          status: normalizeStatus(String(item.status)), createdAt: String(item.createdAt), amount: `${item.inputAmount ?? ''} ${item.fromToken ?? ''}`.trim(),
+          from: String(item.fromToken ?? ''), to: String(item.toToken ?? ''), txHash: String(item.outboundTxHash ?? item.inboundTxHash ?? ''),
+          rail: typeof item.rail === 'string' ? item.rail : undefined, reason: typeof item.failureReason === 'string' ? item.failureReason : undefined, raw: item,
         }));
       } else {
         const [remote, localRaw] = await Promise.all([
@@ -131,194 +88,84 @@ function ContextHistory({ kind, open, onClose }: { kind: ContextKind; open: bool
         const local = localRaw ? JSON.parse(localRaw) as Array<Record<string, unknown>> : [];
         const all = [...(remote.bridges ?? []), ...local];
         next = Array.from(new Map(all.map((item) => [String(item.burnTxHash), item])).values()).map((item) => ({
-          id: String(item.burnTxHash), kind,
-          status: normalizeStatus(String(item.status)), createdAt: String(item.createdAt),
-          amount: `${item.amount ?? ''} USDC`,
-          sourceChain: String(item.sourceChain ?? ''), destinationChain: String(item.destinationChain ?? ''),
-          from: String(item.sourceChain ?? ''), to: String(item.destinationChain ?? ''),
-          txHash: String(item.forwardTxHash ?? item.burnTxHash ?? ''),
-          burnTxHash: typeof item.burnTxHash === 'string' ? item.burnTxHash : undefined,
-          forwardTxHash: typeof item.forwardTxHash === 'string' ? item.forwardTxHash : undefined,
-          rail: 'Circle CCTP V2',
-          reason: typeof item.failureReason === 'string' ? item.failureReason : undefined,
-          raw: item,
+          id: String(item.burnTxHash), kind, mode: item.mode === 'agent' ? 'agent' : item.mode === 'manual' ? 'manual' : undefined,
+          status: normalizeStatus(String(item.status)), createdAt: String(item.createdAt), amount: `${item.amount ?? ''} USDC`,
+          sourceChain: String(item.sourceChain ?? ''), destinationChain: String(item.destinationChain ?? ''), from: String(item.sourceChain ?? ''), to: String(item.destinationChain ?? ''),
+          txHash: String(item.forwardTxHash ?? item.burnTxHash ?? ''), burnTxHash: typeof item.burnTxHash === 'string' ? item.burnTxHash : undefined,
+          forwardTxHash: typeof item.forwardTxHash === 'string' ? item.forwardTxHash : undefined, rail: 'Circle CCTP V2',
+          reason: typeof item.failureReason === 'string' ? item.failureReason : undefined, raw: item,
         }));
       }
       next.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setRecords(next);
-    } catch {
-      toast.error(`Unable to load ${kind} history`);
-    } finally {
-      setLoading(false);
-    }
+    } catch { toast.error(`Unable to load ${kind} history`); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (open) void load();
-    if (!open) setSelected(null);
-  }, [open, kind, address]);
-
+  useEffect(() => { if (open) void load(); if (!open) setSelected(null); }, [open, kind, address]);
   const filtered = useMemo(() => status === 'all' ? records : records.filter((r) => r.status === status), [records, status]);
-
   const exportRows = filtered.map((r) => ({
-    Date: formatDate(r.createdAt),
-    Type: r.kind,
-    Mode: r.mode ?? '—',
-    Status: statusLabel(r.status),
-    Amount: r.amount ?? '',
-    From: r.from ?? '',
-    To: r.to ?? '',
-    'Source Network': r.sourceChain ?? '',
-    'Destination Network': r.destinationChain ?? '',
-    'Transaction ID': r.txHash ?? '',
-    'Burn Transaction ID': r.burnTxHash ?? '',
-    'Forward Transaction ID': r.forwardTxHash ?? '',
-    Rail: r.rail ?? '',
-    'Failure Reason': r.reason ?? '',
+    Date: formatDate(r.createdAt), Type: r.kind, Mode: r.mode ?? '—', Status: statusLabel(r.status), Amount: r.amount ?? '', From: r.from ?? '', To: r.to ?? '',
+    'Source Network': r.sourceChain ?? '', 'Destination Network': r.destinationChain ?? '', 'Transaction ID': r.txHash ?? '',
+    'Burn Transaction ID': r.burnTxHash ?? '', 'Forward Transaction ID': r.forwardTxHash ?? '', Rail: r.rail ?? '', 'Failure Reason': r.reason ?? '',
   }));
 
   if (!open) return null;
-
   return (
     <div className="fixed inset-0 z-[80]">
       <button aria-label="Close history" onClick={onClose} className="absolute inset-0 bg-black/35 backdrop-blur-[2px]" />
       <aside className="absolute right-0 top-0 h-full w-full max-w-xl bg-surface-0 border-l border-black/[.08] dark:border-white/[.08] shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-black/[.06] dark:border-white/[.06]">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-surface-500 font-semibold">Stablecoin OS</p>
-            <h2 className="text-lg font-bold text-surface-950">{kind === 'transfer' ? 'Transfer' : kind === 'swap' ? 'Swap' : 'Bridge'} History</h2>
-            <p className="text-xs text-surface-500">Only {kind} transactions · manual and agentic flows</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => void load()} className="btn-ghost p-2" aria-label="Refresh history"><RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} /></button>
-            <button onClick={onClose} className="btn-ghost p-2" aria-label="Close"><X className="w-4 h-4" /></button>
-          </div>
+          <div><p className="text-[10px] uppercase tracking-widest text-surface-500 font-semibold">Stablecoin OS</p><h2 className="text-lg font-bold text-surface-950">{kind === 'transfer' ? 'Transfer' : kind === 'swap' ? 'Swap' : 'Bridge'} History</h2><p className="text-xs text-surface-500">Only {kind} transactions · manual and agentic flows</p></div>
+          <div className="flex items-center gap-1"><button onClick={() => void load()} className="btn-ghost p-2" aria-label="Refresh history"><RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} /></button><button onClick={onClose} className="btn-ghost p-2" aria-label="Close"><X className="w-4 h-4" /></button></div>
         </div>
-
         <div className="px-5 py-3 border-b border-black/[.06] dark:border-white/[.06] space-y-2">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {(['all', 'confirmed', 'completed', 'pending', 'failed'] as StatusFilter[]).map((value) => (
-              <button key={value} onClick={() => setStatus(value)} className={cn('px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap', status === value ? 'bg-blue-500/15 text-blue-600' : 'text-surface-600 hover:bg-black/[.04]')}>
-                {value === 'all' ? 'All' : statusLabel(value)}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-surface-500">{filtered.length} transaction{filtered.length === 1 ? '' : 's'}</span>
-            <div className="relative">
-              <button onClick={() => setExportOpen((v) => !v)} disabled={!filtered.length} className="btn-ghost text-xs gap-1.5 disabled:opacity-40"><Download className="w-3.5 h-3.5" /> Export</button>
-              {exportOpen && <>
-                <button className="fixed inset-0 z-[81]" aria-label="Close export menu" onClick={() => setExportOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 z-[82] w-32 glass-card p-1">
-                  <button onClick={() => { exportCSV(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">CSV</button>
-                  <button onClick={() => { exportExcel(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">Excel</button>
-                  <button onClick={() => { exportPDF(exportRows, `arctis-${kind}-history`, `ARCTIS ${kind} history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">PDF</button>
-                  <button onClick={() => { exportTXT(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">TXT</button>
-                </div>
-              </>}
-            </div>
-          </div>
+          <div className="flex items-center gap-1 overflow-x-auto">{(['all', 'confirmed', 'completed', 'pending', 'failed'] as StatusFilter[]).map((value) => <button key={value} onClick={() => setStatus(value)} className={cn('px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap', status === value ? 'bg-blue-500/15 text-blue-600' : 'text-surface-600 hover:bg-black/[.04]')}>{value === 'all' ? 'All' : statusLabel(value)}</button>)}</div>
+          <div className="flex items-center justify-between gap-2"><span className="text-xs text-surface-500">{filtered.length} transaction{filtered.length === 1 ? '' : 's'}</span><div className="relative">
+            <button onClick={() => setExportOpen((v) => !v)} disabled={!filtered.length} className="btn-ghost text-xs gap-1.5 disabled:opacity-40"><Download className="w-3.5 h-3.5" /> Export</button>
+            {exportOpen && <><button className="fixed inset-0 z-[81]" aria-label="Close export menu" onClick={() => setExportOpen(false)} /><div className="absolute right-0 top-full mt-1 z-[82] w-32 glass-card p-1">
+              <button onClick={() => { exportCSV(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">CSV</button>
+              <button onClick={() => { exportExcel(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">Excel</button>
+              <button onClick={() => { exportPDF(exportRows, `arctis-${kind}-history`, `ARCTIS ${kind} history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">PDF</button>
+              <button onClick={() => { exportTXT(exportRows, `arctis-${kind}-history`); setExportOpen(false); }} className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-black/[.04]">TXT</button>
+            </div></>}
+          </div></div>
         </div>
-
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {!address && <div className="glass-card p-8 text-center text-sm text-surface-600">Connect your wallet to view transaction history.</div>}
           {address && loading && <div className="glass-card p-8 text-center text-sm text-surface-500">Loading history…</div>}
           {address && !loading && filtered.length === 0 && <div className="glass-card p-8 text-center text-sm text-surface-600">No {kind} transactions found.</div>}
-          {address && !loading && filtered.map((record) => (
-            <button key={`${record.id}-${record.createdAt}`} onClick={() => setSelected(record)} className="w-full text-left glass-card p-4 hover:border-blue-500/30 transition-colors">
-              <div className="flex items-start gap-3">
-                <StatusIcon status={record.status} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-surface-950 truncate">
-                      {kind === 'swap' ? `${record.from} → ${record.to}` : kind === 'bridge' ? `${record.sourceChain} → ${record.destinationChain}` : 'USDC Transfer'}
-                    </p>
-                    <span className="text-xs font-semibold text-surface-600 whitespace-nowrap">{record.amount ?? ''}</span>
-                  </div>
-                  <p className="text-xs text-surface-500 mt-1">{formatDate(record.createdAt)} · {statusLabel(record.status)}</p>
-                  {kind === 'bridge' && record.burnTxHash && <p className="text-[10px] text-surface-500 font-mono mt-1 truncate">Burn: {shortHash(record.burnTxHash)}</p>}
-                  {record.txHash && <p className="text-[10px] text-surface-500 font-mono mt-1 truncate">TX: {shortHash(record.txHash)}</p>}
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-400 mt-1" />
-              </div>
-            </button>
-          ))}
+          {address && !loading && filtered.map((record) => <button key={`${record.id}-${record.createdAt}`} onClick={() => setSelected(record)} className="w-full text-left glass-card p-4 hover:border-blue-500/30 transition-colors"><div className="flex items-start gap-3"><StatusIcon status={record.status} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-surface-950 truncate">{kind === 'swap' ? `${record.from} → ${record.to}` : kind === 'bridge' ? `${record.sourceChain} → ${record.destinationChain}` : 'USDC Transfer'}</p><span className="text-xs font-semibold text-surface-600 whitespace-nowrap">{record.amount ?? ''}</span></div><p className="text-xs text-surface-500 mt-1">{formatDate(record.createdAt)} · {statusLabel(record.status)}{record.mode ? ` · ${record.mode === 'agent' ? 'Agentic' : 'Manual'}` : ''}</p>{kind === 'bridge' && record.burnTxHash && <p className="text-[10px] text-surface-500 font-mono mt-1 truncate">Burn: {shortHash(record.burnTxHash)}</p>}{record.txHash && <p className="text-[10px] text-surface-500 font-mono mt-1 truncate">TX: {shortHash(record.txHash)}</p>}</div><ChevronRight className="w-4 h-4 text-surface-400 mt-1" /></div></button>)}
         </div>
-
-        {selected && (
-          <div className="absolute inset-0 z-[85] bg-surface-0 overflow-y-auto">
-            <div className="sticky top-0 bg-surface-0/95 backdrop-blur border-b border-black/[.06] dark:border-white/[.06] px-5 py-4 flex items-center gap-3">
-              <button onClick={() => setSelected(null)} className="btn-ghost p-2"><ChevronRight className="w-4 h-4 rotate-180" /></button>
-              <div><p className="text-xs text-surface-500">Transaction details</p><h3 className="font-bold text-surface-950">{kind === 'bridge' ? 'Bridge' : kind === 'swap' ? 'Swap' : 'Transfer'}</h3></div>
+        {selected && <div className="absolute inset-0 z-[85] bg-surface-0 overflow-y-auto">
+          <div className="sticky top-0 bg-surface-0/95 backdrop-blur border-b border-black/[.06] dark:border-white/[.06] px-5 py-4 flex items-center gap-3"><button onClick={() => setSelected(null)} className="btn-ghost p-2"><ChevronRight className="w-4 h-4 rotate-180" /></button><div><p className="text-xs text-surface-500">Transaction details</p><h3 className="font-bold text-surface-950">{kind === 'bridge' ? 'Bridge' : kind === 'swap' ? 'Swap' : 'Transfer'}</h3></div></div>
+          <div className="p-5 space-y-3">
+            <div className="glass-card p-4 space-y-3"><div className="flex items-center gap-2"><StatusIcon status={selected.status} /><span className="font-semibold text-surface-950">{statusLabel(selected.status)}</span>{selected.mode && <span className="text-[10px] px-2 py-1 rounded-full bg-violet-500/10 text-violet-700">{selected.mode === 'agent' ? 'Economic Agent' : 'Manual'}</span>}</div>
+              <div className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-surface-500">Date & time</p><p className="text-surface-950 mt-1">{formatDate(selected.createdAt)}</p></div><div><p className="text-xs text-surface-500">Amount</p><p className="font-mono text-surface-950 mt-1">{selected.amount ?? '—'}</p></div><div><p className="text-xs text-surface-500">From</p><p className="text-surface-950 mt-1 break-all">{selected.from ?? selected.sourceChain ?? '—'}</p></div><div><p className="text-xs text-surface-500">To</p><p className="text-surface-950 mt-1 break-all">{selected.to ?? selected.destinationChain ?? '—'}</p></div>{selected.rail && <div className="col-span-2"><p className="text-xs text-surface-500">Execution rail</p><p className="text-surface-950 mt-1">{selected.rail}</p></div>}{selected.reason && <div className="col-span-2"><p className="text-xs text-surface-500">Failure reason</p><p className="text-rose-600 mt-1">{selected.reason}</p></div>}</div>
             </div>
-            <div className="p-5 space-y-3">
-              <div className="glass-card p-4 space-y-3">
-                <div className="flex items-center gap-2"><StatusIcon status={selected.status} /><span className="font-semibold text-surface-950">{statusLabel(selected.status)}</span></div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-xs text-surface-500">Date & time</p><p className="text-surface-950 mt-1">{formatDate(selected.createdAt)}</p></div>
-                  <div><p className="text-xs text-surface-500">Amount</p><p className="font-mono text-surface-950 mt-1">{selected.amount ?? '—'}</p></div>
-                  <div><p className="text-xs text-surface-500">From</p><p className="text-surface-950 mt-1 break-all">{selected.from ?? selected.sourceChain ?? '—'}</p></div>
-                  <div><p className="text-xs text-surface-500">To</p><p className="text-surface-950 mt-1 break-all">{selected.to ?? selected.destinationChain ?? '—'}</p></div>
-                  {selected.rail && <div className="col-span-2"><p className="text-xs text-surface-500">Execution rail</p><p className="text-surface-950 mt-1">{selected.rail}</p></div>}
-                  {selected.reason && <div className="col-span-2"><p className="text-xs text-surface-500">Failure reason</p><p className="text-rose-600 mt-1">{selected.reason}</p></div>}
-                </div>
-              </div>
-
-              {selected.burnTxHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Burn Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.burnTxHash}</code><button onClick={() => { copyToClipboard(selected.burnTxHash!); toast.success('Burn TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div><a href={explorerFor({ ...selected, txHash: selected.burnTxHash })} target="_blank" rel="noopener noreferrer" className="btn-ghost w-full justify-center mt-2 text-xs">View burn transaction <ExternalLink className="w-3.5 h-3.5" /></a></div>}
-              {selected.forwardTxHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Forward / Mint Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.forwardTxHash}</code><button onClick={() => { copyToClipboard(selected.forwardTxHash!); toast.success('Forward TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div></div>}
-              {selected.txHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.txHash}</code><button onClick={() => { copyToClipboard(selected.txHash!); toast.success('TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div><a href={explorerFor(selected)} target="_blank" rel="noopener noreferrer" className="btn-ghost w-full justify-center mt-2 text-xs">Open in explorer <ExternalLink className="w-3.5 h-3.5" /></a></div>}
-            </div>
+            {selected.burnTxHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Burn Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.burnTxHash}</code><button onClick={() => { copyToClipboard(selected.burnTxHash!); toast.success('Burn TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div><a href={explorerFor({ ...selected, txHash: selected.burnTxHash })} target="_blank" rel="noopener noreferrer" className="btn-ghost w-full justify-center mt-2 text-xs">View burn transaction <ExternalLink className="w-3.5 h-3.5" /></a></div>}
+            {selected.forwardTxHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Forward / Mint Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.forwardTxHash}</code><button onClick={() => { copyToClipboard(selected.forwardTxHash!); toast.success('Forward TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div></div>}
+            {selected.txHash && <div className="glass-card p-4"><p className="text-xs text-surface-500 mb-1">Transaction ID</p><div className="flex items-center gap-2"><code className="text-xs font-mono text-surface-950 break-all flex-1">{selected.txHash}</code><button onClick={() => { copyToClipboard(selected.txHash!); toast.success('TX ID copied'); }} className="btn-ghost p-1.5"><Copy className="w-3.5 h-3.5" /></button></div><a href={explorerFor(selected)} target="_blank" rel="noopener noreferrer" className="btn-ghost w-full justify-center mt-2 text-xs">Open in explorer <ExternalLink className="w-3.5 h-3.5" /></a></div>}
           </div>
-        )}
+        </div>}
       </aside>
     </div>
   );
 }
 
-export function ModeTabs({
-  mode,
-  onChange,
-}: {
-  mode: ExecutionMode;
-  onChange: (mode: ExecutionMode) => void;
-}) {
+export function ModeTabs({ mode, onChange }: { mode: ExecutionMode; onChange: (mode: ExecutionMode) => void }) {
   const pathname = usePathname();
-  const { address } = useAccount();
   const kind: ContextKind | null = pathname === '/transfer' ? 'transfer' : pathname === '/swap' ? 'swap' : pathname === '/bridge' ? 'bridge' : null;
   const [historyOpen, setHistoryOpen] = useState(false);
-
-  useEffect(() => {
-    setHistoryOpen(false);
-  }, [pathname]);
-
+  useEffect(() => { setHistoryOpen(false); }, [pathname]);
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-surface-200/50 border border-black/[0.04] dark:border-white/[0.04]">
-          <button
-            onClick={() => onChange('manual')}
-            className={cn(
-              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
-              mode === 'manual' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
-            )}
-          >
-            <Wallet className="w-3.5 h-3.5" /> Manual
-          </button>
-          <button
-            onClick={() => onChange('agent')}
-            className={cn(
-              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
-              mode === 'agent' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
-            )}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" /> Economic Agent
-          </button>
+          <button onClick={() => onChange('manual')} className={cn('flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200', mode === 'manual' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950')}><Wallet className="w-3.5 h-3.5" /> Manual</button>
+          <button onClick={() => onChange('agent')} className={cn('flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200', mode === 'agent' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950')}><Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" /> Economic Agent</button>
         </div>
-        {kind && (
-          <button onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/[.08] dark:border-white/[.08] bg-surface-0 text-surface-700 hover:text-blue-600 hover:border-blue-500/30 shadow-sm text-xs font-medium">
-            <History className="w-3.5 h-3.5" /> History{address ? '' : ''}
-          </button>
-        )}
+        {kind && <button onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/[.08] dark:border-white/[.08] bg-surface-0 text-surface-700 hover:text-blue-600 hover:border-blue-500/30 shadow-sm text-xs font-medium"><History className="w-3.5 h-3.5" /> History</button>}
       </div>
       {kind && <ContextHistory kind={kind} open={historyOpen} onClose={() => setHistoryOpen(false)} />}
     </>

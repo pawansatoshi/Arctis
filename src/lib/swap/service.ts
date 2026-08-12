@@ -66,12 +66,17 @@ export async function swapTxAlreadyProcessed(inboundTxHash: string): Promise<Swa
 }
 
 export async function createSwapRecord(data: Omit<SwapRecord, 'createdAt' | 'completedAt'>): Promise<void> {
-  const db = getAdminDb();
-  await db.collection(COL).doc(data.id).set({
-    ...data,
-    walletAddress: data.walletAddress.toLowerCase(),
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  try {
+    const db = getAdminDb();
+    await db.collection(COL).doc(data.id).set({
+      ...data,
+      walletAddress: data.walletAddress.toLowerCase(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch {
+    // Persistence is auxiliary to the signed on-chain settlement path.
+    // A Firestore configuration failure must not block a valid testnet swap.
+  }
 }
 
 export async function updateSwapRecord(

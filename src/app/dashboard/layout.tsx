@@ -65,8 +65,9 @@ const NAV_GROUPS = [
   {
     label: 'Finance',
     items: [
-      { label: 'Treasury', href: '/treasury', icon: Building2 },
-      { label: 'Credits',  href: '/credits',  icon: Coins },
+      { label: 'Treasury',   href: '/treasury',   icon: Building2 },
+      { label: 'Membership', href: '/membership', icon: Shield },
+      { label: 'Credits',    href: '/credits',    icon: Coins },
     ],
   },
   {

@@ -1,75 +1,54 @@
 // ============================================================
 // ARCTIS Export System — client-side, no external dependencies
-// Supports: CSV, JSON, TXT (no deps needed)
-// PDF: uses browser print API (no jsPDF needed)
+// Supports CSV, JSON, TXT, PDF and Excel-compatible XLS.
 // ============================================================
 
 export interface ExportRow {
   [key: string]: string | number | boolean | null | undefined;
 }
 
-// ─── CSV ─────────────────────────────────────────────────────
+function escapeCsv(value: unknown): string {
+  const s = String(value ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
+}
+
 export function exportCSV(rows: ExportRow[], filename: string): void {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
-  const escape  = (v: unknown) => {
-    const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [
-    headers.join(','),
-    ...rows.map((r) => headers.map((h) => escape(r[h])).join(',')),
-  ].join('\n');
-  downloadBlob(csv, `${filename}.csv`, 'text/csv');
+  const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => escapeCsv(r[h])).join(','))].join('\n');
+  downloadBlob(`\uFEFF${csv}`, `${filename}.csv`, 'text/csv');
 }
 
-// ─── JSON ─────────────────────────────────────────────────────
 export function exportJSON(data: unknown, filename: string): void {
   downloadBlob(JSON.stringify(data, null, 2), `${filename}.json`, 'application/json');
 }
 
-// ─── TXT ──────────────────────────────────────────────────────
 export function exportTXT(rows: ExportRow[], filename: string): void {
   const lines = rows.map((row) =>
     Object.entries(row)
-      .filter(([, v]) => v !== null && v !== undefined && v !== '')
-      .map(([k, v]) => `${k}: ${v}`)
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .map(([key, value]) => `${key}: ${value}`)
       .join(' | ')
   );
   downloadBlob(lines.join('\n'), `${filename}.txt`, 'text/plain');
 }
 
-// ─── PDF (browser print) ─────────────────────────────────────
 export function exportPDF(rows: ExportRow[], filename: string, title: string): void {
   const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const safe = (value: unknown) => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <title>${title}</title>
-  <style>
-    body { font-family: -apple-system, system-ui, sans-serif; font-size: 11px; color: #111; margin: 24px; }
-    h1 { font-size: 16px; margin-bottom: 4px; }
-    p.meta { color: #666; font-size: 10px; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #f4f4f5; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e4e4e7; }
-    td { padding: 5px 8px; border-bottom: 1px solid #f4f4f5; font-size: 10px; max-width: 200px; word-break: break-all; }
-    tr:hover td { background: #fafafa; }
-    @media print { body { margin: 0; } }
-  </style>
-</head>
-<body>
-  <h1>${title}</h1>
-  <p class="meta">Exported from ARCTIS · ${new Date().toLocaleString()} · ${rows.length} records</p>
-  <table>
-    <thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>
-      ${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ''}</td>`).join('')}</tr>`).join('')}
-    </tbody>
-  </table>
-</body>
-</html>`;
+  const html = `<!DOCTYPE html><html><head><title>${safe(title)}</title><style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:10px;color:#111;margin:24px}
+    h1{font-size:17px;margin:0 0 4px}p.meta{color:#666;font-size:9px;margin:0 0 14px}
+    table{width:100%;border-collapse:collapse}th{background:#f4f4f5;text-align:left;padding:6px;font-size:9px;border-bottom:1px solid #ddd}
+    td{padding:5px 6px;border-bottom:1px solid #eee;vertical-align:top;word-break:break-all} @media print{body{margin:0}}
+  </style></head><body><h1>${safe(title)}</h1><p class="meta">Exported from ARCTIS · ${new Date().toLocaleString()} · ${rows.length} records</p>
+  <table><thead><tr>${headers.map((h) => `<th>${safe(h)}</th>`).join('')}</tr></thead><tbody>
+  ${rows.map((row) => `<tr>${headers.map((h) => `<td>${safe(row[h])}</td>`).join('')}</tr>`).join('')}
+  </tbody></table></body></html>`;
 
   const win = window.open('', '_blank');
   if (!win) return;
@@ -79,32 +58,32 @@ export function exportPDF(rows: ExportRow[], filename: string, title: string): v
   setTimeout(() => { win.print(); win.close(); }, 300);
 }
 
-// ─── Excel (CSV with .xlsx extension — opens in Excel) ───────
+// Excel-compatible SpreadsheetML 2003 file. It is a real Excel workbook
+// format (not a CSV renamed to .xlsx), works without adding a heavy client
+// dependency, and preserves all transaction IDs as text.
 export function exportExcel(rows: ExportRow[], filename: string): void {
-  // BOM for Excel UTF-8 detection
-  const bom = '\uFEFF';
-  const headers = Object.keys(rows[0] ?? {});
-  const escape  = (v: unknown) => {
-    const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = bom + [
-    headers.join(','),
-    ...rows.map((r) => headers.map((h) => escape(r[h])).join(',')),
-  ].join('\n');
-  downloadBlob(csv, `${filename}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const xmlEscape = (value: unknown) => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
+  <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+    <Worksheet ss:Name="Transactions"><Table>
+      <Row>${headers.map((h) => `<Cell><Data ss:Type="String">${xmlEscape(h)}</Data></Cell>`).join('')}</Row>
+      ${rows.map((row) => `<Row>${headers.map((h) => `<Cell><Data ss:Type="String">${xmlEscape(row[h])}</Data></Cell>`).join('')}</Row>`).join('')}
+    </Table></Worksheet>
+  </Workbook>`;
+  downloadBlob(`\uFEFF${xml}`, `${filename}.xls`, 'application/vnd.ms-excel');
 }
 
-// ─── Helper ───────────────────────────────────────────────────
 function downloadBlob(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
 }

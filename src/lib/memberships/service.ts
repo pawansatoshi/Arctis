@@ -21,11 +21,13 @@ function addOneCalendarMonth(date: Date): Date {
 function normalizeMembership(data: Record<string, unknown>, walletAddress: string): UserMembership {
   const startDate = String(data.activationDate ?? data.startDate ?? new Date().toISOString());
   const expiryDate = String(data.expiryDate ?? data.renewalDate ?? startDate);
+  const storedStatus = (data.status as UserMembership['status']) ?? 'active';
+  const expired = storedStatus === 'active' && Number.isFinite(new Date(expiryDate).getTime()) && new Date(expiryDate).getTime() <= Date.now();
   return {
     ...(data as Partial<UserMembership>),
     walletAddress,
     tier: data.tier as MembershipTier,
-    status: (data.status as UserMembership['status']) ?? 'active',
+    status: expired ? 'expired' : storedStatus,
     startDate,
     renewalDate: expiryDate,
     activationDate: startDate,

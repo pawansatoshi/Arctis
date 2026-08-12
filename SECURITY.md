@@ -1,52 +1,110 @@
-# Security Policy
+# ARCTIS Security Policy
 
-## Supported Versions
+ARCTIS is currently a **testnet-stage application**. The repository should be evaluated as an active engineering project, not as an audited financial system.
 
-ARCTIS is currently in testnet development (Lepton/Encode submission). Production mainnet is not yet launched.
+## Reporting a vulnerability
 
-| Version | Supported |
-|---------|-----------|
-| 1.0.x (testnet) | ✅ |
-| < 1.0 | ❌ |
+Please do **not** publish sensitive vulnerability details in a public GitHub issue.
 
-## Reporting a Vulnerability
+Use the repository maintainer's private security-reporting channel where available. Include:
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+- affected route/file;
+- clear reproduction steps;
+- impact assessment;
+- relevant transaction hash or testnet identifier, if applicable;
+- a minimal proof of concept where safe.
 
-Report privately via Discord or direct message before public disclosure.
+Do not include real private keys, seed phrases or credentials in a report.
 
-Response commitment: within 72 hours for critical issues.
+## Security model
 
-## Security Architecture
+The intended transaction boundary is:
 
-**What is cryptographically verified:**
-- Passport create/update: EIP-191 wallet signature required on every request
-- Credits purchase: on-chain payment verified via `verifyUSDCPayment()` before credits granted
-- Membership activation: on-chain payment verified before tier change
-- Swap execution: on-chain inbound transfer verified before outbound dispatch
-- Bridge execution: Circle Iris attestation verified before completion recorded
-- Agent proposals: wallet ownership verified against stored agent record before execution
+```text
+User intent
+   ↓
+Input validation / policy
+   ↓
+Server coordination and verification
+   ↓
+User wallet or Circle App Kit signing
+   ↓
+Onchain transaction
+   ↓
+Server-side records / history
+```
 
-**Known limitations (testnet stage, pre-mainnet):**
-- Remaining API routes (Chat, Copilot, Activity queries) accept `walletAddress` as a claimed value without cryptographic proof. SIWE (Sign-In With Ethereum) full enforcement is scheduled for post-testnet hardening.
-- Agent execution does not verify caller via on-chain transaction — it relies on application-layer ownership check against Firestore record.
-- Admin panel wallet check is application-layer only.
+The application must not silently take custody of the user's wallet signing authority.
 
-See `SECURITY_NOTES.md` for the full known-gap register.
+## Current controls
 
-## Environment Variables
+- Firebase Admin SDK is used for server-side Firestore access.
+- Firestore rules are configured to deny direct access to sensitive collections.
+- Mutating financial operations perform input validation and onchain verification where implemented.
+- Rate limiting is present on sensitive/high-cost routes.
+- Contract/network configuration is centralized in `src/lib/contracts.ts`.
+- Financial natural-language intent is deliberately deterministic and constrained.
+- Agent actions use a mandatory `Propose → Review → Approve → Execute` boundary.
+- Agent evaluation is structurally separated from generation where the evaluator path is used.
+- Private environment values are excluded from the repository by `.gitignore`.
 
-**Server-side only (must NEVER be in NEXT_PUBLIC_* variables):**
-- `OPENROUTER_API_KEY`
-- `SWAP_WALLET_PRIVATE_KEY`
+## Wallet-proof posture
 
-**Public but scope-restricted (Firebase rules enforce access control):**
-- All `NEXT_PUBLIC_FIREBASE_*` variables are intentionally public; Firestore security rules enforce server-side-only write access to sensitive collections.
+The repository currently has **different authentication strengths across routes**. Do not describe the entire API as SIWE/EIP-191 protected.
 
-## What Should Never Be Committed
+The strongest wallet-signature verification is used where explicitly wired through the authentication helpers. Other application routes still rely on wallet-address ownership checks or claimed request values and require further hardening before a mainnet deployment.
 
-- `.env.local` — contains real API keys and the Swap Wallet private key
-- `SWAP_WALLET_PRIVATE_KEY` in any file
-- Any file containing a real private key or mnemonic
+This is an intentional documented limitation, not a guarantee of production security.
 
-The `.gitignore` correctly excludes all `.env*` files except `.env.example`.
+## Money-specific boundaries
+
+### Transfer
+
+The user wallet signs the transaction.
+
+### Swap
+
+The server verifies the user's inbound transfer before the configured Swap Wallet counterparty leg is dispatched. The Swap Wallet is a separate operational key and must be protected independently.
+
+### Bridge
+
+Bridge execution uses Circle App Kit and configured CCTP routes. Source-chain balance/gas preflight checks are performed before the bridge operation proceeds. Route availability is policy/configuration dependent.
+
+### Agents
+
+Agents do not receive the user's private key. Agent execution is an application workflow with an approval gate. Agents should not be described as autonomous wallet custodians.
+
+## Secrets
+
+Never commit:
+
+- `.env.local` or other populated environment files;
+- `OPENROUTER_API_KEY`;
+- `SWAP_WALLET_PRIVATE_KEY`;
+- Firebase Admin private credentials;
+- seed phrases or wallet mnemonics;
+- production credentials or deployment tokens.
+
+`NEXT_PUBLIC_*` values are browser-visible by design. A value must not be placed in `NEXT_PUBLIC_*` merely to make it convenient if it is actually secret.
+
+## Testnet limitations
+
+Before any mainnet launch decision, the project should at minimum:
+
+1. enforce cryptographic wallet proof consistently across all mutating routes;
+2. complete live bridge end-to-end tests for every intended route;
+3. verify Swap Wallet key management and operational limits;
+4. validate Firestore rules/indexes in the real deployment;
+5. review all mainnet contract addresses and chain configuration;
+6. perform an independent security assessment;
+7. add monitoring and incident-response procedures.
+
+## Security claims policy
+
+Avoid claiming:
+
+- “audited” without an actual independent audit;
+- “production-ready” while the documented mainnet gate is incomplete;
+- “fully decentralized” when server-side coordination, Firebase and provider infrastructure are used;
+- “autonomous wallet control” for Economic Agents;
+- official Arc/Circle partnership or endorsement without formal approval.

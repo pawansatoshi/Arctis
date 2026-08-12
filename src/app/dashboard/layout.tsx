@@ -134,7 +134,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-1.5 mt-1">
               <span className="text-surface-600 text-[10px] font-medium">Operating System</span>
               <span className="inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/8 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                Premium
+                Built on Arc
               </span>
             </div>
           </div>

@@ -11,8 +11,8 @@ const ENV: NetworkEnv =
 // ─── Arc Testnet ────────────────────────────────────────────
 const TESTNET = {
   chainId: 5042002,
-  // Arc official primary RPC. Source: Arc developer documentation.
-  rpc: 'https://rpc.testnet.arc.io',
+  // Official Arc Testnet RPC. Source: Arc developer documentation.
+  rpc: 'https://rpc.testnet.arc.network',
   explorer: 'https://testnet.arcscan.app',
   networkName: 'Arc Testnet',
   contracts: {
@@ -27,7 +27,6 @@ const TESTNET = {
     tUSDC: 6,
     tARC:  18,
   },
-  // Temporary testnet treasury wallet
   treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',
 } as const;
 
@@ -52,18 +51,15 @@ const MAINNET = {
 
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;
 
-// ─── Convenience exports ───────────────────────────────────
 export const CHAIN_ID        = NETWORK.chainId;
 export const RPC_URL         = NETWORK.rpc;
 
-// Arc's official documentation publishes these Arc Testnet endpoints.
-// Keep all Arc RPC fallbacks on documented Arc infrastructure; do not add
-// third-party RPCs here without an explicit architecture decision.
+// Official Arc Testnet RPC providers documented by Arc.
 export const RPC_FALLBACK_URLS = [
   RPC_URL,
-  'https://rpc.blockdaemon.testnet.arc.io',
-  'https://rpc.drpc.testnet.arc.io',
-  'https://rpc.quicknode.testnet.arc.io',
+  'https://rpc.blockdaemon.testnet.arc.network',
+  'https://rpc.drpc.testnet.arc.network',
+  'https://rpc.quicknode.testnet.arc.network',
 ].filter(Boolean);
 
 export const EXPLORER_URL    = NETWORK.explorer;
@@ -72,20 +68,16 @@ export const CONTRACTS       = NETWORK.contracts;
 export const DECIMALS        = NETWORK.decimals;
 export const TREASURY_WALLET = NETWORK.treasury as `0x${string}`;
 
-// Primary payment asset — Arc Native USDC
 export const PRIMARY_TOKEN    = 'USDC' as const;
 export const PRIMARY_DECIMALS = DECIMALS.USDC;
 export const PRIMARY_CONTRACT = CONTRACTS.USDC as `0x${string}`;
 
-// Swap layer
 export const TUSDC_CONTRACT = CONTRACTS.tUSDC as `0x${string}`;
 export const TARC_CONTRACT  = CONTRACTS.tARC  as `0x${string}`;
 
-// Explorer URL builders — always use ArcScan
 export const txUrl      = (hash: string) => `${EXPLORER_URL}/tx/${hash}`;
 export const addressUrl = (addr: string) => `${EXPLORER_URL}/address/${addr}`;
 
-// ─── ERC-20 ABI (covers USDC, tUSDC, tARC) ──────────────────
 export const ERC20_ABI = [
   { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'transfer', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
@@ -97,18 +89,12 @@ export const ERC20_ABI = [
   { anonymous: false, inputs: [{ indexed: true, name: 'from', type: 'address' }, { indexed: true, name: 'to', type: 'address' }, { indexed: false, name: 'value', type: 'uint256' }], name: 'Transfer', type: 'event' },
 ] as const;
 
-// ─── Circle App Kit bridge route registry ───────────────────
-// Protocol execution is delegated to Circle App Kit.
-// Keep only source-chain metadata needed by ARCTIS UI/API routing.
 export const CCTP_SOURCE_CHAINS = {
   '11155111': { name: 'Ethereum Sepolia', domain: 0, usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', explorer: 'https://sepolia.etherscan.io' },
   '84532':    { name: 'Base Sepolia',     domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', explorer: 'https://sepolia.basescan.org' },
   '421614':   { name: 'Arbitrum Sepolia', domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', explorer: 'https://sepolia.arbiscan.io' },
 } as const;
 
-// Bidirectional CCTP V2/App Kit registry. Arc Testnet is a supported
-// CCTP destination as well as a source; keeping both directions in one
-// registry prevents the UI/API from accidentally becoming inbound-only.
 export const CCTP_BRIDGE_CHAINS = {
   '5042002': {
     name: 'Arc Testnet',
@@ -140,11 +126,9 @@ export const CCTP_BRIDGE_CHAINS = {
   },
 } as const;
 
-// Memo contract
-export const MEMO_CONTRACT          = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as const;
-export const MULTICALL3_FROM        = '0x522fAf9A91c41c443c66765030741e4AaCe147D0' as const;
+export const MEMO_CONTRACT   = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as const;
+export const MULTICALL3_FROM = '0x522fAf9A91c41c443c66765030741e4AaCe147D0' as const;
 
-// CCTP TokenMessenger ABI — depositForBurn only (Forwarding Service flow)
 export const CCTP_TOKEN_MESSENGER_ABI = [
   {
     inputs: [
@@ -163,7 +147,6 @@ export const CCTP_TOKEN_MESSENGER_ABI = [
   },
 ] as const;
 
-// Memo ABI
 export const MEMO_ABI = [
   { inputs: [{ name: 'data', type: 'bytes' }], name: 'memo', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ] as const;

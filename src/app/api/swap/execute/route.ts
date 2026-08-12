@@ -18,10 +18,14 @@ const TOKEN_CONTRACT: Record<SwapToken, string> = { USDC: CONTRACTS.USDC, tUSDC:
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 export async function POST(req: NextRequest) {
+  let inboundTxHash = '';
+  let walletAddress = '';
   try {
-    const { walletAddress, fromToken, toToken, amount, inboundTxHash } = await req.json() as {
+    const body = await req.json() as {
       walletAddress: string; fromToken: SwapToken; toToken: SwapToken; amount: number; inboundTxHash: string;
     };
+    ({ walletAddress, inboundTxHash } = body);
+    const { fromToken, toToken, amount } = body;
 
     if (!walletAddress || !fromToken || !toToken || amount == null || !inboundTxHash) {
       return NextResponse.json({ error: 'walletAddress, fromToken, toToken, amount, inboundTxHash required' }, { status: 400 });
@@ -62,6 +66,16 @@ export async function POST(req: NextRequest) {
     const quote = calculateSwapQuote(routeId, numericAmount);
     if (!quote) return NextResponse.json({ error: 'Route unavailable' }, { status: 400 });
 
+    // Persist the lifecycle immediately after the signed inbound transaction is
+    // identified. This guarantees History can show pending/failed swaps even
+    // when verification or settlement fails later.
+    await createSwapRecord({
+      id: inboundTxHash,
+      walletAddress, routeId, fromToken, toToken,
+      inputAmount: quote.inputAmount, outputAmount: quote.outputAmount, fee: quote.fee,
+      inboundTxHash, status: 'pending',
+    });
+
     const swapWalletAddress = getSwapWalletAddress();
     const expectedAmountRaw = parseUnits(numericAmount.toFixed(TOKEN_DECIMALS[fromToken]), TOKEN_DECIMALS[fromToken]);
 
@@ -73,9 +87,12 @@ export async function POST(req: NextRequest) {
       walletAddress,
     );
     if (!verification.valid) {
+      await updateSwapRecord(inboundTxHash, { status: 'failed', failureReason: `Payment verification failed: ${verification.reason}` });
       void obs.warn('swap', 'Inbound payment verification failed', { inboundTxHash, reason: verification.reason }, walletAddress);
       return NextResponse.json({ error: `Payment verification failed: ${verification.reason}` }, { status: 400 });
     }
+
+    await updateSwapRecord(inboundTxHash, { status: 'confirming' });
 
     // Re-check the output reserve immediately before settlement. This cannot
     // eliminate a race between quote and settlement, but it prevents known
@@ -84,25 +101,19 @@ export async function POST(req: NextRequest) {
       const { getSwapWalletReserve } = await import('@/lib/swap/executor');
       const reserve = await getSwapWalletReserve(toToken);
       if (reserve < quote.outputAmount) {
-        await createSwapRecord({
-          id: inboundTxHash,
-          walletAddress, routeId, fromToken, toToken,
-          inputAmount: quote.inputAmount, outputAmount: quote.outputAmount, fee: quote.fee,
-          inboundTxHash, status: 'failed', failureReason: `Insufficient ${toToken} reserve at settlement time`,
+        await updateSwapRecord(inboundTxHash, {
+          status: 'failed',
+          failureReason: `Insufficient ${toToken} reserve at settlement time`,
         });
-        return NextResponse.json({ error: `Swap reserve became insufficient before settlement. Your ${fromToken} deposit is recorded as pending support case: ${inboundTxHash}` }, { status: 503 });
+        return NextResponse.json({ error: `Swap reserve became insufficient before settlement. Your ${fromToken} deposit is recorded against ${inboundTxHash}.` }, { status: 503 });
       }
     } catch (err) {
+      await updateSwapRecord(inboundTxHash, { status: 'failed', failureReason: 'Unable to verify swap liquidity before settlement' });
       void obs.warn('swap', 'Reserve recheck failed before settlement', { inboundTxHash, error: (err as Error).message }, walletAddress);
       return NextResponse.json({ error: 'Unable to verify swap liquidity before settlement. No outbound transfer was attempted.' }, { status: 503 });
     }
 
-    await createSwapRecord({
-      id: inboundTxHash,
-      walletAddress, routeId, fromToken, toToken,
-      inputAmount: quote.inputAmount, outputAmount: quote.outputAmount, fee: quote.fee,
-      inboundTxHash, status: 'dispatching',
-    });
+    await updateSwapRecord(inboundTxHash, { status: 'dispatching' });
 
     const dispatch = await dispatchSwapOutput(walletAddress, toToken, quote.outputAmount);
     if (!dispatch.success) {
@@ -161,7 +172,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const e = err as Error;
-    void obs.error('swap', 'Swap execute error', { error: e.message });
+    if (inboundTxHash && walletAddress) {
+      await updateSwapRecord(inboundTxHash, { status: 'failed', failureReason: e.message });
+    }
+    void obs.error('swap', 'Swap execute error', { error: e.message, inboundTxHash }, walletAddress || undefined);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

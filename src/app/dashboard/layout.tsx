@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
   LayoutDashboard, ArrowUpRight, History,
-  Settings, ChevronLeft, Bot,
+  Settings, ChevronLeft,
   Building2, ArrowLeftRight, GitMerge, Shield,
   Coins, Menu, X, FolderOpen, Activity,
   MessageCircle, Heart, Zap, BookOpen,
@@ -24,7 +24,7 @@ const ConnectButton = dynamic(
   { ssr: false }
 );
 
-/* ── Navigation groups — strict hackathon information architecture ── */
+/* ── Navigation groups — mirrors the four ARCTIS operating systems ── */
 const NAV_GROUPS = [
   {
     label: 'Overview',
@@ -37,9 +37,7 @@ const NAV_GROUPS = [
   {
     label: 'AI OS',
     items: [
-      { label: 'AI Workspace', href: '/ai',      icon: Bot },
-      { label: 'Agents',       href: '/agents',  icon: Zap },
-      { label: 'Copilot',      href: '/copilot', icon: MessageCircle },
+      { label: 'Copilot', href: '/copilot', icon: MessageCircle },
     ],
   },
   {
@@ -55,6 +53,12 @@ const NAV_GROUPS = [
     items: [
       { label: 'Workspace', href: '/workspace', icon: FolderOpen },
       { label: 'Knowledge', href: '/knowledge', icon: BookOpen },
+    ],
+  },
+  {
+    label: 'Economic Agent OS',
+    items: [
+      { label: 'Agents', href: '/agents', icon: Zap },
     ],
   },
   {
@@ -86,19 +90,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  /* Fetch pending agent proposals for sidebar badge */
   useEffect(() => {
-    if (!address) return;
+    if (!address) {
+      setPendingCount(0);
+      return;
+    }
     fetch(`/api/agents/proposals?wallet=${address}`)
       .then((r) => r.json())
       .then((d) => setPendingCount((d.proposals ?? []).length))
-      .catch(() => {});
+      .catch(() => setPendingCount(0));
   }, [address]);
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === href : pathname.startsWith(href);
 
-  /* Current page label for the header breadcrumb */
   const currentLabel = (() => {
     for (const group of NAV_GROUPS) {
       for (const item of group.items) {
@@ -108,11 +113,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return 'ARCTIS';
   })();
 
-  /* ── Shared sidebar content ──────────────────────────────── */
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-
-      {/* Logo */}
       <div className={cn(
         'flex items-center gap-3 border-b border-black/[0.06] dark:border-white/[0.06] flex-shrink-0 transition-all duration-300',
         sidebarCollapsed ? 'px-3 py-4 justify-center' : 'px-4 py-4',
@@ -128,7 +130,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}
       </div>
 
-      {/* Wrong chain alert */}
       {isConnected && !isCorrectChain && (
         <button
           onClick={switchToArc}
@@ -148,8 +149,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </button>
       )}
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+      <nav aria-label="ARCTIS navigation" className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             {!sidebarCollapsed && (
@@ -206,7 +206,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         ))}
       </nav>
 
-      {/* USDC + Credits footcard */}
       {!sidebarCollapsed && isConnected && (
         <div className="mx-3 mb-3 p-3.5 glass-card space-y-2.5">
           <div className="flex items-center justify-between">
@@ -236,7 +235,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Collapse toggle — desktop only */}
       <button
         onClick={toggleSidebar}
         aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -251,7 +249,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-surface-50 flex">
       <CommandPalette />
 
-      {/* ── Desktop sidebar ──────────────────────────────────── */}
       <aside className={cn(
         'hidden md:flex fixed left-0 top-0 h-full z-40 flex-col bg-surface-100 border-r border-black/[0.06] dark:border-white/[0.06] transition-all duration-300',
         sidebarCollapsed ? 'w-[60px]' : 'w-[220px]',
@@ -259,7 +256,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <SidebarContent />
       </aside>
 
-      {/* ── Mobile drawer ────────────────────────────────────── */}
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div
@@ -279,16 +275,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* ── Main content ─────────────────────────────────────── */}
       <div className={cn(
         'flex-1 flex flex-col transition-all duration-300',
         sidebarCollapsed ? 'md:ml-[60px]' : 'md:ml-[220px]',
       )}>
-
-        {/* Header */}
         <header className="sticky top-0 z-30 flex items-center gap-4 px-4 sm:px-6 h-14 bg-surface-50/90 backdrop-blur-xl border-b border-black/[0.06] dark:border-white/[0.06]">
-
-          {/* Mobile menu trigger */}
           <button
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
@@ -297,7 +288,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Breadcrumb */}
           <div className="hidden sm:flex items-center gap-1.5 text-sm text-surface-600">
             <span className="text-surface-500 text-xs font-semibold">ARCTIS</span>
             <ChevronRight className="w-3 h-3 text-surface-700" />
@@ -305,7 +295,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="sm:hidden text-surface-950 font-semibold text-sm">{currentLabel}</div>
 
-          {/* Command Palette trigger */}
           <button
             onClick={() => setCommandPaletteOpen(true)}
             aria-label="Open command palette"
@@ -316,18 +305,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <kbd className="text-[10px] border border-black/[0.1] dark:border-white/[0.1] rounded px-1 py-0.5 ml-1">⌘K</kbd>
           </button>
 
-          {/* Right cluster */}
           <div className="flex items-center gap-2 ml-auto">
-            {/* Arc Testnet badge */}
             {isConnected && (
-              <div className={cn(
-                'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                isCorrectChain
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 cursor-pointer hover:bg-amber-500/15',
-              )}
-              onClick={!isCorrectChain ? switchToArc : undefined}
-              role={!isCorrectChain ? 'button' : undefined}
+              <div
+                className={cn(
+                  'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  isCorrectChain
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 cursor-pointer hover:bg-amber-500/15',
+                )}
+                onClick={!isCorrectChain ? switchToArc : undefined}
+                role={!isCorrectChain ? 'button' : undefined}
               >
                 <span className={cn('w-1.5 h-1.5 rounded-full', isCorrectChain ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse')} />
                 {isCorrectChain ? 'Arc Testnet' : 'Switch Network'}
@@ -337,9 +325,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-
       </div>
     </div>
   );

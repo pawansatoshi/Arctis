@@ -39,15 +39,15 @@ The root repository should not accumulate timestamped ZIP snapshots or source-co
 
 ## Backup policy
 
-Before a substantial documentation/architecture refresh, freeze the current application state in a dedicated Git branch. The 2026-08-13 pre-documentation-refresh application state is identified by commit:
+Before a substantial documentation/architecture refresh, freeze the current application state in a dedicated Git branch. The 2026-08-13 pre-documentation-refresh application state is frozen at:
 
 `c103f598be8c8d71e21b8939ae1c011b25eb49a4`
 
-Intended recovery branch:
+Recovery branch:
 
-`backup/pre-documentation-refresh-2026-08-13`
+`backup/working-2026-08-13`
 
-The backup point is an engineering recovery reference, not a second product specification.
+That branch now points to the pre-documentation-refresh application state. The backup point is an engineering recovery reference, not a second product specification.
 
 ## Maintenance rule
 

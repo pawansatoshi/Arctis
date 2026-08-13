@@ -114,11 +114,12 @@ contract ARCTISAgentEscrow {
         emit JobReleased(jobId, job.provider, job.amount);
     }
 
+    /// @notice Refunds only after the job deadline unless it has already been released/disputed.
     function refund(uint256 jobId) external whenNotPaused {
         Job storage job = jobs[jobId];
         if (msg.sender != job.payer) revert NotPayer();
         if (job.status != Status.Funded && job.status != Status.Submitted) revert InvalidState();
-        if (job.status == Status.Submitted && block.timestamp <= job.deadline) revert InvalidState();
+        if (block.timestamp <= job.deadline) revert InvalidState();
         job.status = Status.Refunded;
         _safeTransfer(job.token, job.payer, job.amount);
         emit JobRefunded(jobId, job.payer, job.amount);

@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read=(p)=>fs.readFileSync(p,'utf8');
+const voice=read('src/lib/transaction/voice.ts');
+const transfer=read('src/app/transfer/page.tsx');
+const bridge=read('src/app/bridge/page.tsx');
+const history=read('src/components/agent/ModeTabs.tsx');
+assert.match(voice,/network_required/); assert.match(voice,/wallet_approval/); assert.match(voice,/submitted/); assert.match(voice,/confirmed/); assert.match(voice,/failed/); assert.match(voice,/hi-IN/); assert.match(voice,/en-US/);
+assert.match(transfer,/useTransfer\('manual'\)/); assert.match(transfer,/useTransfer\('agent'\)/); assert.match(transfer,/useRecipientValidation/); assert.match(transfer,/TransactionConfirmationModal/);
+assert.match(bridge,/sessions/); assert.match(bridge,/ArrowDownUp/); assert.match(bridge,/verifyChain/); assert.match(bridge,/Switch Network/); assert.match(bridge,/TransactionConfirmationModal/);
+const filters=[...history.matchAll(/\['all','confirmed','pending','failed'\]/g)]; assert.equal(filters.length,1,'history must expose exactly one canonical status filter set');
+console.log('transaction regression checks passed');

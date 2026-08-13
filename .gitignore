@@ -3,6 +3,11 @@
 /.pnp
 .pnp.js
 
+# Solidity / Foundry
+/contracts/out/
+/contracts/cache/
+/lib/
+
 # Testing
 /coverage
 

@@ -9,6 +9,23 @@ interface Vm {
     function warp(uint256 newTimestamp) external;
 }
 
+contract TreasuryNonOwnerCaller {
+    function registerAgent(address treasury, bytes32 agentId) external {
+        ARCTISAgentTreasury(treasury).registerAgent(agentId);
+    }
+
+    function propose(
+        address treasury,
+        bytes32 agentId,
+        address token,
+        address recipient,
+        uint256 amount,
+        uint64 deadline
+    ) external returns (bytes32) {
+        return ARCTISAgentTreasury(treasury).propose(agentId, token, recipient, amount, deadline);
+    }
+}
+
 contract ARCTISAgentTreasuryTest is Assert {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -43,15 +60,17 @@ contract ARCTISAgentTreasuryTest is Assert {
     }
 
     function testOwnerOnlyBoundary() external {
-        address attacker = address(0xCAFE);
-        (bool ok,) = attacker.call(
-            abi.encodeWithSelector(treasury.registerAgent.selector, bytes32(uint256(2)))
-        );
-        _assertTrue(ok, "sanity call failed unexpectedly");
+        TreasuryNonOwnerCaller attacker = new TreasuryNonOwnerCaller();
 
-        (bool proposalOk,) = attacker.call(
+        (bool registerOk,) = address(attacker).call(
+            abi.encodeWithSelector(attacker.registerAgent.selector, address(treasury), bytes32(uint256(2)))
+        );
+        _assertTrue(!registerOk, "non-owner registered agent");
+
+        (bool proposalOk,) = address(attacker).call(
             abi.encodeWithSelector(
-                treasury.propose.selector,
+                attacker.propose.selector,
+                address(treasury),
                 AGENT,
                 address(token),
                 address(0xBEEF),

@@ -6,9 +6,15 @@ These steps are for **Arc Testnet only**. Do not use a mainnet key or meaningful
 
 The new contracts are not connected to existing ARCTIS Transfer, Swap or Bridge flows. Deploying them does not change those routes.
 
-## Step 1 — Use a dedicated Arc Testnet deployment wallet
+## Step 1 — Deployment wallet
 
-Use a wallet you control and fund only with Arc Testnet gas/test assets.
+The current ARCTIS testnet owner/deployer wallet is:
+
+```text
+0xb467F683764593316fAEbB0709127E90791Fe47F
+```
+
+Use only Arc Testnet gas/test assets.
 
 Never paste the private key into GitHub, this chat, the repository, or `NEXT_PUBLIC_*` environment variables.
 
@@ -33,7 +39,7 @@ The repository pins Solidity `0.8.24` in `foundry.toml`.
 
 ## Step 4 — Run tests
 
-Before deployment, add/run the contract unit and security tests:
+Before deployment:
 
 ```bash
 forge test -vvv
@@ -41,18 +47,21 @@ forge test -vvv
 
 Deployment must stop if tests fail.
 
+The repository must not claim a successful test run until the command has actually been executed in a Foundry environment.
+
 ## Step 5 — Treasury constructor
 
-`ARCTISAgentTreasury` requires:
+V1 Treasury requires **only `initialOwner`**.
+
+For the current testnet deployment:
 
 ```text
-initialOwner
-initialRelayer
+initialOwner = 0xb467F683764593316fAEbB0709127E90791Fe47F
 ```
 
-For the first isolated testnet deployment, `initialOwner` can be the owner's Arc Testnet wallet. Prefer a separate dedicated relayer wallet for `initialRelayer`.
+There is intentionally **no separate relayer in V1**. The owner's wallet is the proposal, approval and governance boundary. The Economic Agent prepares intent/quote offchain; the owner submits and explicitly approves the onchain action.
 
-The relayer can propose bounded actions but cannot approve, withdraw or change policy.
+A future relayer can be introduced only when there is a concrete automation requirement and a separate security model has been reviewed.
 
 ## Step 6 — Deploy Treasury
 
@@ -61,13 +70,11 @@ After setting your RPC URL and deployment key in your local shell only:
 ```bash
 export ARC_TESTNET_RPC_URL="<Arc Testnet RPC>"
 export DEPLOYER_PRIVATE_KEY="<DO NOT COMMIT>"
-export OWNER_ADDRESS="<owner wallet>"
-export RELAYER_ADDRESS="<relayer wallet>"
 
 forge create contracts/ARCTISAgentTreasury.sol:ARCTISAgentTreasury \
   --rpc-url "$ARC_TESTNET_RPC_URL" \
   --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --constructor-args "$OWNER_ADDRESS" "$RELAYER_ADDRESS"
+  --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
 ```
 
 Record the resulting contract address and deployment transaction hash.
@@ -94,13 +101,9 @@ After verification, the owner wallet should configure, in this order:
 
 ## Step 9 — Treasury test transaction
 
-Use the dedicated relayer to create a small proposal.
+The owner wallet creates a small proposal, explicitly approves it, then executes it.
 
-Then the owner wallet must explicitly approve it.
-
-Then execute it.
-
-Verify all three transactions/events and the final recipient balance.
+Verify all transactions/events and the final recipient balance.
 
 Also test:
 
@@ -121,7 +124,7 @@ Only after Treasury passes its isolated test:
 forge create contracts/ARCTISAgentEscrow.sol:ARCTISAgentEscrow \
   --rpc-url "$ARC_TESTNET_RPC_URL" \
   --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --constructor-args "$OWNER_ADDRESS"
+  --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
 ```
 
 Verify the Escrow source on ArcScan using the same compiler settings.
@@ -137,7 +140,7 @@ createJob → fund → submit → release
 Then separately test:
 
 ```text
-createJob → fund → refund
+createJob → fund → refund after deadline
 createJob → fund → submit → dispute → owner resolve
 expired job behavior
 pause behavior

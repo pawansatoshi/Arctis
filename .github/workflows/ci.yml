@@ -28,3 +28,8 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: arctis-ci-build-only
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: arctis-ci
+          OPENROUTER_API_KEY: arctis-ci-build-only
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: arctis-ci-build-only

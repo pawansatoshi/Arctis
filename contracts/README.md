@@ -2,6 +2,12 @@
 
 This directory contains the first ARCTIS-owned programmable-money contracts.
 
+## Start here for continuation
+
+- [`../docs/SMART_CONTRACT_CONTINUATION.md`](../docs/SMART_CONTRACT_CONTINUATION.md) — canonical smart-contract roadmap, security gates and new-chat continuation protocol.
+- [`../docs/ONCHAIN_AGENT_FLOW.svg`](../docs/ONCHAIN_AGENT_FLOW.svg) — educational animated architecture showing the agent, policy, human approval, Treasury and Escrow flows.
+- [`../ONCHAIN_AGENT_ARCHITECTURE.md`](../ONCHAIN_AGENT_ARCHITECTURE.md) — detailed architecture and boundaries.
+
 ## Contracts
 
 ### `ARCTISAgentTreasury.sol`

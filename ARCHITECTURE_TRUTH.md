@@ -17,6 +17,12 @@ Passport, Membership, Credits and Treasury support these pillars as platform/fin
 
 The primary dashboard navigation groups **Agents under AI OS** and money movement under **DeFi OS**. This is information architecture; it does not remove Economic Agent OS as a safety/product pillar.
 
+The dashboard also exposes an **Explore ARCTIS** discovery layer so first-time users can reach Membership, Passport, Move USDC, Economic Agents, Treasury, Knowledge and Copilot without first opening the navigation drawer.
+
+The intended product story is:
+
+`Identity → Membership → Money → Knowledge → Agents → controlled economic action`
+
 ## 2. AI OS truth
 
 ### Current personas
@@ -50,7 +56,7 @@ Transfer/Swap/Bridge natural-language intent is parsed into a structured proposa
 
 The intended financial pipeline is:
 
-`intent → deterministic parse → proposal → route/recipient validation → live quote/preflight → human review → wallet approval → execution`
+`intent → deterministic parse → proposal → route/recipient validation → live quote/preflight → human review → wallet approval → execution → confirmation → history/proof`
 
 Source: `src/lib/ai/intent/` and the relevant route/page handlers.
 
@@ -73,6 +79,8 @@ The user's wallet signs the transaction. Server routes coordinate/verify/record 
 
 Passport recipients can be resolved using the canonical Passport resolver. Manual Transfer and Economic Agent recipient entry share the same validation path.
 
+Transaction UX distinguishes wallet approval from blockchain confirmation. After wallet submission, the user should see a persistent animated **Processing/Confirming** state until the transaction receipt is resolved; final green success is reserved for confirmed execution.
+
 ### Swap
 
 ARCTIS has two configured swap surfaces:
@@ -91,6 +99,8 @@ The Swap UI explicitly displays:
 - route-unavailable state.
 
 `cirBTC` is not currently exposed in the ARCTIS Swap UI by product choice, even though Arc Testnet/Circle may support it at the infrastructure level.
+
+Transaction lifecycle target: `wallet approval → submitted → processing/confirming → receipt → success/failed`.
 
 Source: `src/app/swap/page.tsx`, `src/lib/swap/circle.ts`, `src/app/api/swap/`.
 
@@ -115,6 +125,8 @@ Before wallet approval the bridge obtains a live quote and surfaces:
 - gas fee where returned;
 - **estimated receive**.
 
+Bridge UX must distinguish source submission from final bridge completion; processing remains visible while the relevant operation is awaiting confirmation/completion.
+
 Source: `src/app/bridge/page.tsx`, `src/lib/contracts.ts`, `src/lib/bridge/`, `src/app/api/bridge/`.
 
 ## 5. Economic Agent OS truth
@@ -136,7 +148,11 @@ Human review
    ↓
 Wallet approval
    ↓
-Execute
+Transaction submitted
+   ↓
+Processing / confirmation
+   ↓
+Confirmed / failed
    ↓
 Persist execution / report / ledger
 ```
@@ -146,6 +162,8 @@ The approval boundary is enforced in the agent/service/execution path, not only 
 Economic Agent recipient entry uses `useRecipientValidation`, the same canonical validation path used by Manual Transfer. `.arc` Passport identifiers therefore resolve/validate while typing.
 
 Agents do not receive a hidden user private key and do not silently sign user-wallet Transfer/Swap/Bridge transactions.
+
+The Economic Agent **Running/Processing** state is intended to remain active until the underlying transaction confirmation boundary is reached. Once confirmed, the existing green success presentation and transaction hash remain the terminal success state.
 
 ## 6. Passport identity truth
 
@@ -165,6 +183,8 @@ Photo handling is a profile feature, not a transaction authorization mechanism.
 Canonical billing source: `src/config/billing.ts`.
 
 Membership entitlements and credit balances are persisted separately. Treasury is an observer/accounting surface and is not a hidden transaction executor.
+
+Membership is intentionally surfaced in the dashboard discovery layer as a core product capability rather than being discoverable only through the navigation drawer.
 
 ## 8. Asset truth
 
@@ -215,6 +235,8 @@ See `DATABASE.md` for schema/index details.
 
 `/api/activity` is the shared aggregation source for user-facing activity data. **History** is the canonical user-facing historical surface.
 
+Transaction UI state and History are separate concerns: the live confirmation state communicates the current operation, while History provides the durable historical record.
+
 Do not introduce competing transaction/history stores without an explicit architecture decision.
 
 ## 11. Navigation truth
@@ -249,6 +271,8 @@ Platform
   Feedback
 ```
 
+Dashboard discovery additionally surfaces Membership, Passport, Move USDC, Economic Agents, Treasury, Knowledge and Copilot as direct entry points.
+
 Command Palette and secondary navigation should use the same terminology.
 
 ## 12. Internationalization truth
@@ -274,6 +298,8 @@ User wallet / Circle App Kit signing
    ↓
 Onchain settlement
    ↓
+Receipt confirmation
+   ↓
 Persistence / explorer / history
 ```
 
@@ -285,11 +311,31 @@ Important testnet limitation: not every mutating API route currently has the sam
 
 Framer Motion is used for product transitions and interaction feedback. Animation communicates state/hierarchy rather than decorative motion.
 
+Transaction processing animation is functional state feedback: a subtle pulse/spinner communicates that an onchain operation has been submitted and is awaiting confirmation. It must not imply success before a receipt is confirmed. Reduced-motion preferences should be respected.
+
 The repository architecture illustration (`docs/architecture-flow.svg`) is a self-contained SVG/CSS animation. Dashed animated paths represent control/data flow; pulsing nodes represent active hand-offs; the layers show product pillars → orchestration/policy → persistence/AI routing/Arc + Circle rails.
 
 The animation is intentionally dependency-free so GitHub visitors can understand the architecture without executing the application.
 
-## 15. Configuration sources of truth
+## 15. Onchain application-layer foundation
+
+The repository includes an initial Solidity foundation for future ARCTIS Economic Agent capabilities:
+
+- `ARCTISAgentTreasury.sol` — bounded application-layer treasury design for agent-controlled actions under explicit policy/authorization.
+- `ARCTISAgentEscrow.sol` — application-layer escrow design for controlled economic jobs/payment flows.
+
+These are **ARCTIS-owned application contracts**, distinct from Arc/Circle infrastructure contracts such as USDC/CCTP.
+
+Current documentation status is intentionally conservative:
+
+- scaffold/design: documented;
+- deployment: **not claimed until verified on Arc Testnet**;
+- audit: **not performed**;
+- production integration: **not claimed**.
+
+The existing Transfer/Swap/Bridge rails remain the canonical live transaction surfaces until these contracts pass compile, tests, deployment and verification gates.
+
+## 16. Configuration sources of truth
 
 - AI personas → `src/config/ai.ts`
 - Billing → `src/config/billing.ts`
@@ -302,7 +348,7 @@ The animation is intentionally dependency-free so GitHub visitors can understand
 
 Never duplicate mutable configuration values in documentation or UI when they can be derived from code.
 
-## 16. Product claims policy
+## 17. Product claims policy
 
 ARCTIS should use precise language:
 
@@ -313,5 +359,6 @@ ARCTIS should use precise language:
 - **Production-ready/mainnet** — do not claim while the product remains testnet-stage.
 - **Autonomous wallet custody** — do not claim.
 - **Official tARC token** — do not claim.
+- **Treasury/Escrow deployed** — do not claim until the contracts are actually deployed and verified.
 
-The repository is intentionally explicit about the difference between implemented, configured, route-dependent and future capabilities.
+The repository is intentionally explicit about the difference between implemented, configured, route-dependent, scaffolded and future capabilities.

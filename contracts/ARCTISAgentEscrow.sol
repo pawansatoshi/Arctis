@@ -40,6 +40,8 @@ contract ARCTISAgentEscrow {
     error InvalidAmount();
     error InvalidDeadline();
     error InvalidState();
+    error InvalidJobHash();
+    error InvalidTokenContract();
     error PausedState();
     error TransferFailed();
 
@@ -78,7 +80,9 @@ contract ARCTISAgentEscrow {
         uint64 deadline
     ) external whenNotPaused returns (uint256 jobId) {
         if (provider == address(0) || token == address(0)) revert InvalidAddress();
+        if (token.code.length == 0) revert InvalidTokenContract();
         if (provider == msg.sender || amount == 0) revert InvalidAmount();
+        if (jobHash == bytes32(0)) revert InvalidJobHash();
         if (deadline <= block.timestamp) revert InvalidDeadline();
 
         jobId = nextJobId++;

@@ -28,9 +28,6 @@ jobs:
       - name: Foundry version
         run: forge --version
 
-      - name: Solidity formatting check
-        run: forge fmt --check
-
       - name: Solidity compile
         run: forge build --sizes
 

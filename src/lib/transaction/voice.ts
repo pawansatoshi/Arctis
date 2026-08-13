@@ -31,7 +31,18 @@ function getLocale(): TransactionVoiceLocale {
 }
 
 export function announceTransactionState(state: TransactionVoiceState): void {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+  if (typeof window === 'undefined') return;
+
+  // The UI lifecycle is deliberately independent from speech preferences.
+  // This event lets the global overlay distinguish wallet approval from the
+  // post-wallet processing phase even when the wallet/App Kit owns the modal.
+  try {
+    window.dispatchEvent(new CustomEvent('arctis:transaction-lifecycle', {
+      detail: { state },
+    }));
+  } catch {}
+
+  if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
   try {
     const prefs = localStorage.getItem('arctis:preferences:v1');
     if (prefs && JSON.parse(prefs).voiceEnabled === false) return;

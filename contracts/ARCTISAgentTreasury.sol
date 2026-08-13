@@ -32,7 +32,6 @@ contract ARCTISAgentTreasury {
     }
 
     address public immutable owner;
-    address public relayer;
     bool public paused;
 
     mapping(bytes32 => Policy) public policies;
@@ -45,7 +44,6 @@ contract ARCTISAgentTreasury {
     event AgentRevoked(bytes32 indexed agentId);
     event PolicyUpdated(bytes32 indexed agentId, uint256 maxPerTransaction, uint256 maxDaily, bool active);
     event TokenPolicyUpdated(address indexed token, bool allowed);
-    event RelayerUpdated(address indexed relayer);
     event Deposit(address indexed token, address indexed from, uint256 amount);
     event Withdrawal(address indexed token, address indexed to, uint256 amount);
     event ActionProposed(bytes32 indexed actionHash, bytes32 indexed agentId, address indexed token, address recipient, uint256 amount, uint256 nonce, uint64 deadline);
@@ -56,7 +54,6 @@ contract ARCTISAgentTreasury {
     event Unpaused();
 
     error NotOwner();
-    error NotRelayer();
     error ZeroAddress();
     error PausedState();
     error InvalidAgent();
@@ -73,20 +70,14 @@ contract ARCTISAgentTreasury {
         _;
     }
 
-    modifier onlyRelayer() {
-        if (msg.sender != relayer) revert NotRelayer();
-        _;
-    }
-
     modifier whenNotPaused() {
         if (paused) revert PausedState();
         _;
     }
 
-    constructor(address initialOwner, address initialRelayer) {
-        if (initialOwner == address(0) || initialRelayer == address(0)) revert ZeroAddress();
+    constructor(address initialOwner) {
+        if (initialOwner == address(0)) revert ZeroAddress();
         owner = initialOwner;
-        relayer = initialRelayer;
     }
 
     function registerAgent(bytes32 agentId) external onlyOwner {
@@ -122,12 +113,6 @@ contract ARCTISAgentTreasury {
         emit TokenPolicyUpdated(token, allowed);
     }
 
-    function setRelayer(address newRelayer) external onlyOwner {
-        if (newRelayer == address(0)) revert ZeroAddress();
-        relayer = newRelayer;
-        emit RelayerUpdated(newRelayer);
-    }
-
     function pause() external onlyOwner {
         paused = true;
         emit Paused();
@@ -150,10 +135,12 @@ contract ARCTISAgentTreasury {
         emit Withdrawal(token, to, amount);
     }
 
-    /// @notice Creates a bounded transfer action. Only the configured relayer can propose.
-    /// @dev The relayer is an orchestration identity, not the user's wallet key.
+    /// @notice Creates a bounded transfer proposal for an agent action.
+    /// @dev V1 deliberately has no separate relayer: the owner's wallet is the proposal,
+    ///      approval and governance boundary. The agent prepares the proposal off-chain;
+    ///      the owner submits and then explicitly approves it on-chain.
     function propose(bytes32 agentId, address token, address recipient, uint256 amount, uint64 deadline)
-        external onlyRelayer whenNotPaused returns (bytes32 actionHash)
+        external onlyOwner whenNotPaused returns (bytes32 actionHash)
     {
         Policy storage policy = policies[agentId];
         if (!registeredAgents[agentId] || !policy.active) revert InvalidAgent();

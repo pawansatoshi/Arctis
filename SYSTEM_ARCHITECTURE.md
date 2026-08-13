@@ -29,10 +29,10 @@ This document describes the implementation architecture on `main`. For product c
 
 ### Core boundary
 
-- Browser UI can request work and display results.
+- Browser UI requests work and displays state.
 - Server routes validate, coordinate and persist.
-- Firebase Admin SDK is server-side persistence infrastructure.
-- AI model selection stays server-side.
+- Firebase Admin SDK remains server-side persistence infrastructure.
+- AI model selection remains server-side.
 - User-controlled money movement ends at the wallet/App Kit signing boundary.
 
 ## 2. Product pillars
@@ -41,7 +41,7 @@ This document describes the implementation architecture on `main`. For product c
 
 - `/ai` — AI Workspace.
 - `/copilot` — contextual Copilot.
-- `/agents` — agent configuration/execution surface.
+- `/agents` — Economic Agent surface.
 - 12 persona definitions in `src/config/ai.ts`.
 - Automatic backend model routing in `src/lib/ai/router/`.
 
@@ -52,7 +52,7 @@ This document describes the implementation architecture on `main`. For product c
 - `/api/sessions`
 - `/api/prompts`
 
-Current knowledge context is application-data based. It is not a full document RAG stack.
+Current knowledge context is application-data based, not a full document-RAG stack.
 
 ### DeFi OS
 
@@ -63,29 +63,35 @@ Current knowledge context is application-data based. It is not a full document R
 - `/api/swap`
 - `/api/bridge`
 
-Transfer is user-signed. Swap is configured OTC settlement. Bridge uses Circle App Kit and the repository's CCTP route/policy configuration.
+Transfer is user-signed. Swap combines ARCTIS OTC settlement with the configured Circle Swap surface. Bridge uses Circle App Kit and CCTP route/policy configuration.
 
 ### Economic Agent OS
 
-Agent safety boundary:
+The runtime state machine is:
 
 ```text
-Prepare / Propose
-       ↓
-Review
-       ↓
-Human approval
-       ↓
+Intent
+  ↓
+Proposal
+  ↓
+Recipient / route validation
+  ↓
+Live quote + preflight
+  ↓
+Expected receive
+  ↓
+Human review
+  ↓
+Wallet approval
+  ↓
 Execute
-       ↓
-Persist execution + report + ledger
+  ↓
+Persist execution / report / ledger
 ```
 
-The executor/service layer enforces this boundary; the UI is not the only guard.
+The quote/approval gate is important: an agent proposal does not itself authorize a wallet transaction.
 
 ## 3. AI routing
-
-The routing pipeline is:
 
 ```text
 request
@@ -112,14 +118,16 @@ deterministic intent parser
   ↓
 action proposal
   ↓
-user confirmation
+route / recipient validation
   ↓
 existing Transfer / Swap / Bridge page
+  ↓
+quote + preflight
   ↓
 wallet/App Kit signing
 ```
 
-This separation is deliberate. An LLM is not trusted to invent a financial amount, token pair, destination address or execution transaction.
+An LLM is not trusted to invent a financial amount, token pair, destination address or execution transaction.
 
 ### Current routing limitation
 
@@ -130,37 +138,62 @@ Health state and the model registry cache are process-local. Multi-instance shar
 ### Transfer
 
 ```text
-UI → validation → wallet write → onchain confirmation → record
+UI → recipient validation → preflight → wallet write → onchain confirmation → record
 ```
 
-The server does not sign the user's transaction.
+Passport `.arc` recipients and direct wallet addresses are normalized through the shared recipient-validation path.
 
 ### OTC Swap
 
 ```text
-quote → reserve check → user inbound transfer → server verifies inbound
+live quote → reserve/route check → human review
+      → wallet inbound transfer → server verifies inbound
       → Swap Wallet counterparty transfer → record both legs
 ```
 
 The Swap Wallet is a separate counterparty wallet. This is not an AMM.
 
+### Circle Swap surface
+
+```text
+pair selection
+    ↓
+live Circle quote
+    ↓
+estimated receive displayed
+    ↓
+route available?
+  ├─ no → explicit route-unavailable state; no wallet tx
+  └─ yes → human review → wallet/App Kit execution
+```
+
+EURC is exposed as the last Circle asset in the ARCTIS dropdown. `cirBTC` is intentionally not exposed in the current product UI.
+
 ### Bridge
 
 ```text
-source-chain preflight
+source-chain selection
       ↓
-Circle App Kit / Viem adapter
+source balance + native gas preflight
       ↓
-CCTP burn / forwarding lifecycle
+Circle App Kit estimateBridge
+      ↓
+provider + forwarding + gas fees
+      ↓
+estimated receive
+      ↓
+human review
+      ↓
+Circle App Kit bridge
       ↓
 result extraction + history persistence
 ```
 
-Configured testnet chain metadata currently covers Arc Testnet, Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia. Availability is still constrained by the bridge policy and returned route configuration.
+Configured testnet metadata currently covers Arc Testnet, Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia. Availability remains constrained by bridge policy and current route configuration.
 
-## 5. Five-part proof model
+## 5. Proof model
 
-Where an operation requires the full proof standard, completion means the system has the relevant combination of:
+Where an operation requires the full proof standard, completion uses the relevant combination of:
 
 1. Confirmed onchain transaction.
 2. Explorer transaction reference.
@@ -168,9 +201,23 @@ Where an operation requires the full proof standard, completion means the system
 4. Transaction/operation ledger record.
 5. Treasury/accounting record when applicable.
 
-The exact record path differs by operation. Documentation should not imply that every operation uses an identical persistence sequence.
+The exact persistence path differs by operation.
 
-## 6. Persistence
+## 6. Passport identity
+
+Passport is a wallet-linked profile and `.arc` resolution layer.
+
+Current owner flow includes:
+
+- create/update profile;
+- optional profile photo during creation;
+- later photo add/change/remove;
+- public username resolution;
+- owner return navigation to ARCTIS Home.
+
+The same canonical Passport recipient resolver is used by Manual Transfer and Economic Agent recipient validation.
+
+## 7. Persistence
 
 Firestore access is server-mediated through Firebase Admin SDK.
 
@@ -198,7 +245,7 @@ rate_limits
 
 See [`DATABASE.md`](./DATABASE.md) for schema/index details.
 
-## 7. Security pipeline
+## 8. Security pipeline
 
 Mutating server routes should follow the cheapest-to-most-expensive validation order where applicable:
 
@@ -216,11 +263,11 @@ business logic
 persistence
 ```
 
-The repository has stronger cryptographic wallet verification on some routes than others. This is explicitly documented rather than hidden.
+The repository has stronger cryptographic wallet verification on some routes than others. This is documented rather than hidden.
 
 See [`SECURITY.md`](./SECURITY.md).
 
-## 8. Central configuration
+## 9. Central configuration
 
 | Concern | Source |
 |---|---|
@@ -228,15 +275,14 @@ See [`SECURITY.md`](./SECURITY.md).
 | Billing | `src/config/billing.ts` |
 | Assets | `src/config/assets.ts` |
 | Network/contracts | `src/lib/contracts.ts` |
+| Circle Swap pair logic | `src/lib/swap/circle.ts` |
 | Bridge policy | `src/lib/bridge/policy.ts` |
 | AI routing | `src/lib/ai/router/` |
 | Product context | `src/lib/ai/copilot/product-context.ts` |
 
 Avoid copying these values into pages or documentation.
 
-## 9. UI architecture
-
-The current shell is organized around the product information architecture:
+## 10. UI architecture
 
 ```text
 Overview
@@ -266,22 +312,27 @@ Platform
   Feedback
 ```
 
-The command palette should mirror these names. Activity remains an internal aggregation concept/API rather than a primary navigation pillar.
-
-## 10. Internationalization
-
-`src/lib/i18n/` provides a persisted locale selector for 10 languages and RTL handling for Arabic. Product copy should use the translation layer rather than duplicating language-specific strings across pages.
+The command palette mirrors these names. Activity remains an internal aggregation/API concept rather than a primary navigation pillar.
 
 ## 11. Animation and interaction
 
-Framer Motion is used for product-level transitions and interaction feedback. Animation should communicate state or hierarchy rather than become decorative noise. The architecture illustration in `docs/architecture-flow.svg` is intentionally lightweight and self-contained so the repository landing page can explain the system without an external animation service.
+Framer Motion is used for product transitions and interaction feedback. Animation is state/hierarchy-oriented rather than decorative.
 
-## 12. Known implementation boundaries
+`docs/architecture-flow.svg` is a dependency-free SVG/CSS animation. Animated dashed paths communicate control/data flow; pulsing nodes communicate active hand-offs; the layered layout maps directly to the runtime architecture.
+
+This makes the architecture legible to GitHub reviewers without requiring the application to run.
+
+## 12. Internationalization
+
+`src/lib/i18n/` provides a persisted locale selector for 10 languages and RTL handling for Arabic.
+
+## 13. Known implementation boundaries
 
 - Testnet only.
 - Not independently security audited.
 - AI model health is process-local.
 - Knowledge OS is not full RAG/document ingestion.
 - Some mutating routes need stronger wallet-proof enforcement before mainnet.
-- Bridge and swap require real testnet operational funding/configuration for meaningful end-to-end validation.
+- Bridge and Circle Swap depend on current testnet operational routes/liquidity/policy.
+- OTC Swap requires a funded counterparty wallet for meaningful end-to-end settlement.
 - Mainnet contract placeholders must not be treated as production configuration.

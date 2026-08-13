@@ -1,157 +1,26 @@
 'use client';
-
-import { useState, useCallback, useRef } from 'react';
-import { useWaitForTransactionReceipt, useAccount } from 'wagmi';
+import { useState,useCallback,useRef } from 'react';
+import { useWaitForTransactionReceipt,useAccount } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
-import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
-import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_URL } from '@/lib/contracts';
+import { createPublicClient,formatEther,formatUnits,http,parseUnits } from 'viem';
+import { PRIMARY_CONTRACT,PRIMARY_DECIMALS,ERC20_ABI,CHAIN_ID,RPC_URL } from '@/lib/contracts';
 import { useAppStore } from '@/lib/store';
-import { parseTransactionError, generateId } from '@/lib/utils';
+import { parseTransactionError,generateId } from '@/lib/utils';
+import { announceTransactionState } from '@/lib/transaction/voice';
 import toast from 'react-hot-toast';
 import type { TransactionRecord } from '@/types';
-
-interface TransferParams { to: string; amount: string; note?: string; }
-
-function isPassportRecipient(value: string): boolean {
-  const v = value.trim().toLowerCase();
-  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\.arc)?$/.test(v);
-}
-
-async function resolveTransferRecipient(value: string): Promise<string> {
-  const recipient = value.trim();
-  if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
-  if (!isPassportRecipient(recipient)) throw new Error('Enter a valid wallet address or Passport ID');
-  const username = recipient.toLowerCase().endsWith('.arc') ? recipient.slice(0, -4) : recipient;
-  const response = await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);
-  let data: { walletAddress?: string; error?: string } = {};
-  try { data = await response.json(); } catch { /* explicit error below */ }
-  if (!response.ok || !data.walletAddress) throw new Error(data.error || `Passport not found: ${recipient}`);
-  if (!/^0x[a-fA-F0-9]{40}$/.test(data.walletAddress)) throw new Error('Passport resolved to an invalid wallet address');
-  return data.walletAddress;
-}
-
-async function preflightTransfer(address: `0x${string}`, amount: string) {
-  const client = createPublicClient({ transport: http(RPC_URL) });
-  const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
-  const [nativeBalance, gasPrice, usdcBalance] = await Promise.all([
-    client.getBalance({ address }),
-    client.getGasPrice(),
-    client.readContract({ address: PRIMARY_CONTRACT, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
-  ]);
-  if (usdcBalance < requiredUsdc) {
-    throw new Error(`Insufficient USDC. You have ${formatUnits(usdcBalance, PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`);
-  }
-  const requiredNativeGas = gasPrice * 100_000n * 2n;
-  if (nativeBalance < requiredNativeGas) {
-    throw new Error(`Insufficient ARC for network fees. You need approximately ${formatEther(requiredNativeGas)} ARC to submit this transfer. No USDC was sent.`);
-  }
-}
-
-async function createTransferRecord(payload: { walletAddress: string; toAddress: string; amount: string; amountFormatted: string; token: TransactionRecord['token']; note?: string; mode?: TransactionRecord['mode'] }): Promise<string | null> {
-  try {
-    const res = await fetch('/api/transfer/record', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { id?: string };
-    return data.id ?? null;
-  } catch { return null; }
-}
-
-function patchTransferRecord(payload: { docId?: string | null; status: TransactionRecord['status']; txHash?: string; log?: { level: 'info' | 'error'; message: string; data?: Record<string, unknown>; walletAddress?: string } }): void {
-  void fetch('/api/transfer/record', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => { /* non-critical */ });
-}
-
-export function useTransfer() {
-  const { address, connector } = useAccount();
-  const { addTransaction, updateTransaction } = useAppStore();
-  const [isPending, setIsPending] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
-  const firestoreIdRef = useRef<string | null>(null);
-  const localIdRef = useRef<string | null>(null);
-
-  const { isLoading: isConfirming, isSuccess: receiptSuccess, isError: receiptError } = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
-
-  if (receiptSuccess && txHash && localIdRef.current && !isSuccess) {
-    setIsSuccess(true);
-    setIsPending(false);
-    updateTransaction(localIdRef.current, { status: 'confirmed', txHash });
-    patchTransferRecord({ docId: firestoreIdRef.current, status: 'confirmed', txHash, log: { level: 'info', message: 'Transfer confirmed', data: { hash: txHash }, walletAddress: address } });
-    toast.dismiss(txHash);
-    toast.success('Transfer confirmed on Arc!');
-  }
-
-  if (receiptError && txHash && localIdRef.current && !isSuccess) {
-    setIsPending(false);
-    updateTransaction(localIdRef.current, { status: 'failed', txHash });
-    if (firestoreIdRef.current) patchTransferRecord({ docId: firestoreIdRef.current, status: 'failed', txHash });
-    toast.dismiss(txHash);
-    toast.error('Transaction failed on-chain');
-  }
-
-  const transfer = useCallback(async ({ to, amount, note }: TransferParams) => {
-    if (!address || !connector) { setError('Wallet not connected'); return; }
-    if (isPending) return;
-    setError(null);
-    setIsSuccess(false);
-    setTxHash(undefined);
-    setIsPending(true);
-
-    const localId = generateId();
-    localIdRef.current = localId;
-
-    try {
-      const resolvedTo = await resolveTransferRecipient(to);
-      await preflightTransfer(address, amount);
-      const mode: TransactionRecord['mode'] = typeof window !== 'undefined' && window.sessionStorage.getItem('arctis-transfer-mode') === 'agent' ? 'agent' : 'manual';
-
-      const amountBigInt = parseUnits(amount, PRIMARY_DECIMALS);
-      addTransaction({ id: localId, walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, status: 'pending', token: 'USDC', chainId: CHAIN_ID, createdAt: new Date().toISOString(), note, mode, type: 'send' });
-      toast.loading('Confirm in wallet…', { id: localId });
-
-      let docId: string | null = null;
-      try {
-        docId = await Promise.race([
-          createTransferRecord({ walletAddress: address, toAddress: resolvedTo, amount: amountBigInt.toString(), amountFormatted: amount, token: 'USDC', note, mode }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
-        ]);
-        if (docId) firestoreIdRef.current = docId;
-      } catch { /* non-critical */ }
-
-      const provider = await connector.getProvider();
-      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
-      const kit = new AppKit();
-      const sendParams = { from: { adapter, chain: 'Arc_Testnet' as const }, to: resolvedTo, amount, token: 'USDC' as const };
-      await kit.estimateSend(sendParams);
-      const result = await kit.send(sendParams);
-      const hash = result.txHash as `0x${string}`;
-      if (!hash || !/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error('Arc App Kit returned no valid transaction hash');
-
-      setTxHash(hash);
-      updateTransaction(localId, { txHash: hash });
-      if (docId) patchTransferRecord({ docId, status: 'pending', txHash: hash });
-      toast.dismiss(localId);
-      toast.loading('Waiting for confirmation…', { id: hash });
-    } catch (err) {
-      const msg = parseTransactionError(err);
-      setError(msg);
-      setIsPending(false);
-      updateTransaction(localId, { status: 'failed' });
-      toast.dismiss(localId);
-      toast.error(msg);
-      patchTransferRecord({ docId: firestoreIdRef.current, status: 'failed', log: { level: 'error', message: 'Transfer failed', data: { error: msg }, walletAddress: address } });
-    }
-  }, [address, connector, addTransaction, updateTransaction, isPending]);
-
-  const reset = useCallback(() => {
-    setIsPending(false);
-    setIsSuccess(false);
-    setError(null);
-    setTxHash(undefined);
-    firestoreIdRef.current = null;
-    localIdRef.current = null;
-  }, []);
-
-  return { transfer, isPending, isConfirming, isSuccess, isError: !!error, error, txHash: txHash ?? null, reset };
+interface TransferParams{to:string;amount:string;note?:string}
+const EVM=/^0x[a-fA-F0-9]{40}$/; const PASSPORT=/^[a-z0-9_-]{3,32}(?:\.arc)?$/i;
+async function resolveRecipient(value:string){const v=value.trim();if(EVM.test(v))return v;if(!PASSPORT.test(v))throw new Error('Recipient is not a valid Arc-compatible EVM address or .arc Passport.');const username=v.toLowerCase().replace(/\.arc$/,'');announceTransactionState('preflight');const r=await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);let d:{walletAddress?:string;error?:string}={};try{d=await r.json()}catch{}if(!r.ok||!d.walletAddress)throw new Error(d.error||`Passport ${username}.arc is unavailable.`);if(!EVM.test(d.walletAddress))throw new Error('Passport resolution returned an invalid wallet address.');return d.walletAddress;}
+async function preflight(address:`0x${string}`,amount:string){const c=createPublicClient({transport:http(RPC_URL)});const req=parseUnits(amount,PRIMARY_DECIMALS);const[native,gas,usdc]=await Promise.all([c.getBalance({address}),c.getGasPrice(),c.readContract({address:PRIMARY_CONTRACT,abi:ERC20_ABI,functionName:'balanceOf',args:[address]})]);if(usdc<req)throw new Error(`Insufficient USDC. You have ${formatUnits(usdc,PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`);const needed=gas*100_000n*2n;if(native<needed)throw new Error(`Insufficient ARC for network fees. Approximately ${formatEther(needed)} ARC is required. No USDC was sent.`)}
+async function record(payload:Record<string,unknown>){try{const r=await fetch('/api/transfer/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)return null;return ((await r.json()) as{id?:string}).id??null}catch{return null}}
+function patch(payload:Record<string,unknown>){void fetch('/api/transfer/record',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{})}
+export function useTransfer(mode:TransactionRecord['mode']='manual'){
+ const{address,connector}=useAccount();const{addTransaction,updateTransaction}=useAppStore();const[isPending,setPending]=useState(false),[isSuccess,setSuccess]=useState(false),[error,setError]=useState<string|null>(null),[txHash,setTxHash]=useState<`0x${string}`>();const localId=useRef<string|null>(null),docId=useRef<string|null>(null);
+ const{isLoading:isConfirming,isSuccess:receiptSuccess,isError:receiptError}=useWaitForTransactionReceipt({hash:txHash,query:{enabled:!!txHash}});
+ if(receiptSuccess&&txHash&&localId.current&&!isSuccess){setSuccess(true);setPending(false);updateTransaction(localId.current,{status:'confirmed',txHash});patch({docId:docId.current,status:'confirmed',txHash});toast.dismiss(txHash);toast.success('Transfer confirmed on Arc');announceTransactionState('confirmed');}
+ if(receiptError&&txHash&&localId.current&&!isSuccess){setPending(false);updateTransaction(localId.current,{status:'failed',txHash});patch({docId:docId.current,status:'failed',txHash});toast.dismiss(txHash);toast.error('Transaction failed on-chain');announceTransactionState('failed');}
+ const transfer=useCallback(async({to,amount,note}:TransferParams)=>{if(!address||!connector){setError('Wallet not connected');return}if(isPending)return;setError(null);setSuccess(false);setTxHash(undefined);setPending(true);const id=generateId();localId.current=id;try{announceTransactionState('preflight');const resolved=await resolveRecipient(to);await preflight(address,amount);addTransaction({id,walletAddress:address,toAddress:resolved,amount:parseUnits(amount,PRIMARY_DECIMALS).toString(),amountFormatted:amount,status:'pending',token:'USDC',chainId:CHAIN_ID,createdAt:new Date().toISOString(),note,mode,type:'send'});const d=await record({walletAddress:address,toAddress:resolved,amount:parseUnits(amount,PRIMARY_DECIMALS).toString(),amountFormatted:amount,token:'USDC',note,mode});docId.current=d;announceTransactionState('wallet_approval');const provider=await connector.getProvider();const adapter=await createViemAdapterFromProvider({provider:provider as never});const kit=new AppKit();const result=await kit.send({from:{adapter,chain:'Arc_Testnet' as const},to:resolved,amount,token:'USDC' as const});const hash=result.txHash as `0x${string}`;if(!EVM.test(hash)||hash.length!==66)throw new Error('Arc App Kit returned no valid transaction hash');setTxHash(hash);updateTransaction(id,{txHash:hash});patch({docId:d,status:'pending',txHash:hash});toast.success('Transaction submitted');announceTransactionState('submitted');announceTransactionState('pending');}catch(e){const msg=parseTransactionError(e);setError(msg);setPending(false);updateTransaction(id,{status:'failed'});patch({docId:docId.current,status:'failed',log:{level:'error',message:'Transfer failed',data:{error:msg},walletAddress:address}});toast.error(msg);announceTransactionState('failed');}},[address,connector,addTransaction,updateTransaction,isPending,mode]);
+ const reset=useCallback(()=>{setPending(false);setSuccess(false);setError(null);setTxHash(undefined);localId.current=null;docId.current=null},[]);return{transfer,isPending,isConfirming,isSuccess,isError:!!error,error,txHash:txHash??null,reset};
 }

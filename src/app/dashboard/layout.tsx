@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import CommandPalette from '@/components/ui/CommandPalette';
 import AppOrientation from '@/components/ui/AppOrientation';
+import ArctisDiscovery from '@/components/dashboard/ArctisDiscovery';
 import { useAppStore } from '@/lib/store';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
@@ -337,7 +338,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          {pathname === '/dashboard' && <AppOrientation />}
+          {pathname === '/dashboard' && (
+            <>
+              <AppOrientation />
+              <ArctisDiscovery />
+            </>
+          )}
           {children}
         </main>
       </div>

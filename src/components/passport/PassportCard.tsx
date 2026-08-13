@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Copy, Check, ArrowUpRight, Globe, Share2, QrCode, Zap, Camera, Loader2 } from 'lucide-react';
+import { CheckCircle2, Copy, Check, ArrowUpRight, Globe, Share2, QrCode, Zap, Camera, Loader2, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import toast from 'react-hot-toast';
@@ -82,6 +83,7 @@ export function PassportCard({ username, walletAddress, displayName, bio, avatar
         <div className="flex justify-center py-1"><QRPlaceholder username={username} /></div>
         <div className="grid grid-cols-2 gap-2 pt-1"><button onClick={onSend} className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all"><ArrowUpRight className="w-4 h-4" />Send</button><button onClick={handleShare} className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold bg-surface-300 hover:bg-surface-400 text-surface-950 transition-all"><Share2 className="w-4 h-4" />Share</button></div>
         {isOwner && onEdit && <button onClick={onEdit} className="w-full py-2.5 rounded-xl text-surface-600 hover:text-surface-800 text-xs font-medium transition-colors hover:bg-surface-300/50">Edit Profile</button>}
+        {isOwner && <Link href="/dashboard" className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-surface-700 hover:text-surface-950 text-xs font-medium transition-colors hover:bg-surface-300/60 border border-black/[0.06] dark:border-white/[0.06]" aria-label="Back to ARCTIS home"><Home className="w-3.5 h-3.5" />Back to ARCTIS Home</Link>}
       </div>
     </div>
     <div className="flex items-center justify-center gap-4 mt-4"><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /><span className="text-surface-600 text-xs">Arc Testnet · Chain 5042002</span></div></div>

@@ -67,7 +67,8 @@ export async function getSwapWalletReserve(token: SwapToken): Promise<number> {
 /**
  * Dispatches the output token from the swap wallet to the user.
  * This is the OTC settlement leg — real on-chain transfer, real
- * reserves, no simulation.
+ * reserves, no simulation. The API does not report success until
+ * the output transfer has a successful on-chain receipt.
  */
 export async function dispatchSwapOutput(
   toAddress: string,
@@ -75,7 +76,7 @@ export async function dispatchSwapOutput(
   amount: number
 ): Promise<DispatchResult> {
   try {
-    const { walletClient } = getClients();
+    const { walletClient, publicClient } = getClients();
     const amountRaw = parseUnits(amount.toFixed(TOKEN_DECIMALS[token]), TOKEN_DECIMALS[token]);
 
     const hash = await walletClient.writeContract({
@@ -86,6 +87,11 @@ export async function dispatchSwapOutput(
       chain: arcTestnet,
       account: walletClient.account!,
     });
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') {
+      return { success: false, txHash: hash, reason: 'Swap output transaction reverted on-chain.' };
+    }
 
     return { success: true, txHash: hash };
   } catch (err) {

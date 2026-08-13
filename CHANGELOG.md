@@ -2,7 +2,25 @@
 
 This changelog records meaningful product and architecture changes. Git history remains the detailed implementation history.
 
-## 2026-08-13 — Transaction UX, Agent safety and Passport hardening
+## 2026-08-13 — Product discovery, transaction UX and onchain foundation
+
+### Dashboard / product discovery
+
+- Added an **Explore ARCTIS** discovery layer to the dashboard so first-time users can discover the product's core surfaces without opening the navigation drawer.
+- Promoted **Membership** to a visible dashboard entry point rather than relying only on Finance navigation.
+- Added direct discovery cards for Passport, Move USDC, Economic Agents, Treasury, Knowledge and Copilot.
+- Preserved the existing first-run orientation while making the broader ARCTIS use-case graph visible: **Identity → Membership → Money → Knowledge → Agents → controlled economic action**.
+- Kept the dashboard responsive for mobile and desktop layouts.
+
+### Transaction UX / confirmation state
+
+- Standardized the intended transaction lifecycle across Manual Transfer, Swap, Bridge and Economic Agent flows:
+  `wallet approval → submitted → processing/confirming → confirmed/failed`.
+- Added a shared transaction-state overlay/lifecycle presentation so the user receives immediate **Processing** feedback after wallet submission instead of seeing an approval state appear to remain stuck.
+- Preserved the existing green confirmed state and transaction-hash presentation after receipt confirmation.
+- Kept the semantic distinction between **submitted transaction hash** and **confirmed onchain receipt**; a hash alone must not be presented as final success.
+- Economic Agent running state is intended to remain active until the underlying transaction confirmation boundary is reached.
+- Added reduced-motion consideration for animated processing feedback.
 
 ### Economic Agent
 
@@ -32,6 +50,12 @@ This changelog records meaningful product and architecture changes. Git history 
 - Added profile-photo support during Passport creation.
 - Added later photo add/change/remove support for existing Passports.
 - Added owner navigation back to ARCTIS Home from Passport.
+
+### Onchain foundation
+
+- Added the initial Solidity application-layer foundation for future ARCTIS Economic Agent capabilities, including Treasury and Escrow contract scaffolding.
+- Documented the intended separation between ARCTIS application contracts and Circle/Arc infrastructure contracts.
+- These contracts are **not claimed as deployed, audited or production-connected** until compilation, tests, Arc Testnet deployment and explorer verification are completed.
 
 ## 2026-08-13 — Repository evaluator refresh
 

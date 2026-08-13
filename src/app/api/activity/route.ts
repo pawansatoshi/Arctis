@@ -25,7 +25,7 @@ function historyStatus(status: string | undefined): string | undefined {
  * different activity types separate (for example a swap and its underlying
  * transfer may legitimately share a transaction hash).
  */
-export function dedupeActivityItems(items: ActivityItem[]): ActivityItem[] {
+function dedupeActivityItems(items: ActivityItem[]): ActivityItem[] {
   const seen = new Set<string>();
   const result: ActivityItem[] = [];
 

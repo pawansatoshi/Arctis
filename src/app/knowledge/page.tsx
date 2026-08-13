@@ -52,14 +52,14 @@ export default function KnowledgePage() {
   };
 
   return (
-    <div className="max-w-5xl space-y-7">
+    <div className="page-container max-w-5xl space-y-7">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
         className="flex items-start justify-between gap-4"
       >
-        <div>
+        <div className="min-w-0">
           <span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Knowledge OS</span>
           <h1 className="text-2xl font-bold text-surface-950 tracking-tight mt-1">Knowledge</h1>
           <p className="text-surface-600 text-sm mt-1 max-w-xl">

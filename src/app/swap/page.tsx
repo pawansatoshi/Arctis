@@ -19,9 +19,9 @@ import { tryAcquireExecution, releaseExecution } from '@/lib/transaction/executi
 import { formatRelative } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-type SwapToken = 'USDC' | 'tUSDC' | 'tARC' | 'EURC' | 'cirBTC';
-const TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC', 'EURC', 'cirBTC'];
-const DEC: Record<SwapToken, number> = { USDC: 6, EURC: 6, tUSDC: 6, tARC: 18, cirBTC: 8 };
+type SwapToken = 'USDC' | 'tUSDC' | 'tARC' | 'EURC';
+const TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC', 'EURC'];
+const DEC: Record<SwapToken, number> = { USDC: 6, EURC: 6, tUSDC: 6, tARC: 18 };
 const OTC: Partial<Record<SwapToken, `0x${string}`>> = {
   USDC: CONTRACTS.USDC as `0x${string}`,
   tUSDC: CONTRACTS.tUSDC as `0x${string}`,
@@ -45,7 +45,7 @@ const empty: Session = { from: 'USDC', to: 'tUSDC', amount: '', quote: null, ste
 function otcPair(a: SwapToken, b: SwapToken) { return OTC_TOKENS.includes(a) && OTC_TOKENS.includes(b); }
 function formatAmount(value: number, token: SwapToken) {
   if (!Number.isFinite(value)) return '—';
-  const digits = token === 'tARC' ? 8 : token === 'cirBTC' ? 8 : 6;
+  const digits = token === 'tARC' ? 8 : 6;
   return value.toFixed(digits).replace(/\.?0+$/, '');
 }
 async function preflight(token: SwapToken, amount: string, address: `0x${string}`) {
@@ -94,7 +94,7 @@ function SwapPageInner() {
     setMode('agent');
     setSessions(prev => ({ ...prev, agent: { ...prev.agent, from: (pendingAction.fromToken as SwapToken) ?? prev.agent.from, to: (pendingAction.toToken as SwapToken) ?? prev.agent.to, amount: pendingAction.amount, quote: null, step: 'idle', executing: false, error: undefined } }));
     setPendingAction(null);
-    toast.success('Pre-filled from ARCTIS AI — quote will be checked before wallet approval');
+    toast.success('Pre-filled from ARCTIS AI — live quote will be required before wallet approval');
   }, [pendingAction, setPendingAction]);
 
   useEffect(() => {
@@ -167,7 +167,6 @@ function SwapPageInner() {
         const provider = await connector.getProvider();
         const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
         const kit = new AppKit();
-        // Re-quote immediately before wallet approval. This protects against a stale agent quote.
         const e = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100 } });
         const freshOutput = Number(e.estimatedOutput.amount);
         setS({ quote: { ...q.quote, output: freshOutput }, step: 'sending' }, target);
@@ -206,8 +205,6 @@ function SwapPageInner() {
     } finally { releaseExecution(lockKey); }
   }, [isConnected, address, connector, chainId, writeContractAsync, getAuthHeaders, save, setS]);
 
-  // Agent approval means the user approved the proposal. It does NOT mean the wallet may be opened yet.
-  // The wallet approval is gated by the quote state: proposal -> live quote -> wallet approval -> execution.
   const agentExecute = useCallback(async (p: import('@/lib/store').PendingFinancialAction) => {
     if (!p.amount || !p.fromToken || !p.toToken) throw new Error('Swap proposal is incomplete.');
     const from = p.fromToken as SwapToken; const to = p.toToken as SwapToken;
@@ -215,9 +212,6 @@ function SwapPageInner() {
     setMode('agent');
     setSessions(prev => ({ ...prev, agent: { ...prev.agent, from, to, amount: p.amount, quote: null, step: 'idle', executing: false, error: undefined } }));
   }, []);
-  useEffect(() => {
-    if (mode === 'agent' && sessions.agent.quote?.available && sessions.agent.step === 'idle' && !sessions.agent.executing) void execute('agent');
-  }, [mode, sessions.agent.quote, sessions.agent.step, sessions.agent.executing, execute]);
 
   const close = () => {
     setModal(false);
@@ -230,7 +224,8 @@ function SwapPageInner() {
     {mode === 'agent' ? <div className="mt-4 space-y-3">
       <EconomicAgentPanel action="swap" onExecute={agentExecute} executionStatus={s.executing ? 'executing' : s.step === 'completed' ? 'success' : s.step === 'error' ? 'failed' : 'idle'} executionError={s.error} executionTxHash={s.outbound ?? s.txHash ?? null} />
       {s.step === 'estimating' && <div className="glass-card p-4 text-center text-xs text-surface-500"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live quote before wallet approval…</div>}
-      {s.quote && <QuoteCard quote={s.quote} from={s.from} to={s.to} title={s.executing ? 'Approved quote / execution' : 'Quote ready — wallet approval follows'} />}
+      {s.quote && <QuoteCard quote={s.quote} from={s.from} to={s.to} title={s.executing ? 'Approved quote / execution' : 'Quote ready — review before wallet approval'} />}
+      {s.quote?.available && !s.executing && s.step === 'idle' && <button onClick={() => void execute('agent')} disabled={!isConnected || chainId !== 5042002} className="btn-primary w-full py-3.5 disabled:opacity-40">Review quote & approve in wallet</button>}
       {!s.quote && s.error && <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2"><AlertCircle className="w-4 h-4" />{s.error}</div>}
     </div> : showHistory ? <div className="space-y-2 mt-4">{history.length === 0 ? <div className="glass-card p-8 text-center text-sm text-surface-600">No swaps found.</div> : history.map(x => <div key={String(x.id ?? x.inboundTxHash)} className="glass-card p-4"><div className="flex justify-between"><span className="text-sm font-semibold">{String(x.inputAmount)} {String(x.fromToken)} → {String(x.outputAmount)} {String(x.toToken)}</span><span className="text-xs text-emerald-600">{String(x.status)} · {String(x.mode ?? 'manual')}</span></div><p className="text-xs text-surface-500 mt-1">{formatRelative(String(x.createdAt))}</p></div>)}</div> : <div className="space-y-4 mt-4">
       <div className="glass-card p-5 space-y-4"><div><label className="text-surface-600 text-xs font-medium">FROM</label><select value={s.from} onChange={e => setS({ from: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{TOKENS.map(t => <option key={t}>{t}</option>)}</select></div>
@@ -239,7 +234,7 @@ function SwapPageInner() {
       <div><label className="text-surface-600 text-xs font-medium">Amount</label><input value={s.amount} onChange={e => setS({ amount: e.target.value, quote: null, error: undefined })} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base mt-1" /></div></div>
       <div className="min-h-[120px] flex items-start">{s.quote ? <QuoteCard quote={s.quote} from={s.from} to={s.to} /> : s.error ? <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2 w-full"><AlertCircle className="w-4 h-4" />{s.error}</div> : s.step === 'estimating' ? <div className="w-full text-center text-xs text-surface-500 pt-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live quote…</div> : <div className="w-full min-h-[90px]" />}</div>
       <div className="min-h-[58px] flex items-center"><button onClick={() => void execute('manual')} disabled={!isConnected || chainId !== 5042002 || !s.quote?.available || s.executing || isSwitching} className="btn-primary w-full py-3.5 disabled:opacity-40">{s.executing ? 'Confirm in wallet…' : 'Review & Swap'}</button></div>
-      <div className="rounded-xl border border-violet-500/15 bg-violet-500/[.04] p-3 text-xs text-surface-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-violet-600" />Preflight → quote → wallet approval → on-chain confirmation.</div>
+      <div className="rounded-xl border border-violet-500/15 bg-violet-500/[.04] p-3 text-xs text-surface-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-violet-600" />Preflight → quote → human approval → wallet approval → on-chain confirmation.</div>
     </div>}
     <TransactionConfirmationModal open={modal} data={{ status: modalSession.step === 'error' ? 'failed' : 'confirmed', amount: `${modalSession.amount} ${modalSession.from} → ${formatAmount(modalSession.quote?.output ?? 0, modalSession.to)} ${modalSession.to}`, route: `${modalSession.from} → ${modalSession.to}`, network: 'Arc Testnet', txHash: modalSession.outbound ?? modalSession.txHash, explorerUrl: (modalSession.outbound ?? modalSession.txHash) ? txUrl((modalSession.outbound ?? modalSession.txHash) as `0x${string}`) : undefined, detail: 'Verified on-chain when confirmed.' }} onClose={close} onNew={close} />
   </div>;

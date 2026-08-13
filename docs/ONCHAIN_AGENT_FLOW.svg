@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">ARCTIS Onchain Agent Flow</title>
+  <desc id="desc">Educational animated architecture showing agent intent, policy, human approval, Treasury execution, and Escrow job lifecycle while existing Transfer, Swap and Bridge rails remain isolated.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0"/><stop offset="1" stop-color="#eef4ff"/></linearGradient>
+    <style>
+      .box{fill:white;stroke:#172033;stroke-width:2;rx:18}.title{font:700 25px sans-serif;fill:#111827}.label{font:600 18px sans-serif;fill:#334155}.small{font:500 15px sans-serif;fill:#64748b}.path{fill:none;stroke:#2563eb;stroke-width:5;stroke-linecap:round;stroke-dasharray:12 12;animation:flow 1.6s linear infinite}.safe{fill:none;stroke:#16a34a;stroke-width:4;stroke-linecap:round;stroke-dasharray:9 12;animation:flow 2s linear infinite}.muted{fill:none;stroke:#94a3b8;stroke-width:3;stroke-dasharray:7 9}.dot{fill:#2563eb;animation:pulse 1.6s ease-in-out infinite}.shield{fill:#ecfdf5;stroke:#16a34a;stroke-width:2}.note{font:700 16px sans-serif;fill:#166534}@keyframes flow{to{stroke-dashoffset:-48}}@keyframes pulse{0%,100%{r:5;opacity:.5}50%{r:9;opacity:1}}
+    </style>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <text x="600" y="48" text-anchor="middle" class="title" font-size="34">ARCTIS · Onchain Agent Architecture</text>
+  <text x="600" y="78" text-anchor="middle" class="small">Educational flow · testnet-stage · human approval remains the authorization boundary</text>
+
+  <rect x="55" y="120" width="220" height="110" class="box"/>
+  <text x="165" y="157" text-anchor="middle" class="title">Agent Intent</text>
+  <text x="165" y="188" text-anchor="middle" class="small">natural-language goal</text>
+  <text x="165" y="211" text-anchor="middle" class="small">proposal + context</text>
+
+  <rect x="340" y="120" width="220" height="110" class="box"/>
+  <text x="450" y="157" text-anchor="middle" class="title">Policy / Quote</text>
+  <text x="450" y="188" text-anchor="middle" class="small">limits · token · recipient</text>
+  <text x="450" y="211" text-anchor="middle" class="small">preflight · deadline</text>
+
+  <rect x="625" y="120" width="220" height="110" class="shield"/>
+  <text x="735" y="157" text-anchor="middle" class="title">Human Approval</text>
+  <text x="735" y="188" text-anchor="middle" class="note">wallet authorization</text>
+  <text x="735" y="211" text-anchor="middle" class="small">proposal ≠ authorization</text>
+
+  <rect x="910" y="120" width="235" height="110" class="box"/>
+  <text x="1027" y="157" text-anchor="middle" class="title">Agent Treasury</text>
+  <text x="1027" y="188" text-anchor="middle" class="small">bounded transfer</text>
+  <text x="1027" y="211" text-anchor="middle" class="small">limits · nonce · replay safety</text>
+
+  <path d="M275 175H340" class="path"/><path d="M560 175H625" class="path"/><path d="M845 175H910" class="safe"/>
+  <circle cx="307" cy="175" r="6" class="dot"/><circle cx="592" cy="175" r="6" class="dot"/><circle cx="878" cy="175" r="6" class="dot"/>
+
+  <text x="600" y="290" text-anchor="middle" class="title">Existing Rails Stay Isolated</text>
+  <rect x="55" y="320" width="300" height="90" class="box"/>
+  <text x="205" y="356" text-anchor="middle" class="label">Manual Transfer</text><text x="205" y="383" text-anchor="middle" class="small">user wallet → recipient</text>
+  <rect x="450" y="320" width="300" height="90" class="box"/>
+  <text x="600" y="356" text-anchor="middle" class="label">Circle Swap</text><text x="600" y="383" text-anchor="middle" class="small">existing Circle / ARCTIS rail</text>
+  <rect x="845" y="320" width="300" height="90" class="box"/>
+  <text x="995" y="356" text-anchor="middle" class="label">CCTP Bridge</text><text x="995" y="383" text-anchor="middle" class="small">Circle settlement rail</text>
+  <path d="M1027 230V320" class="muted"/><path d="M735 230V320" class="muted"/><path d="M450 230V320" class="muted"/>
+
+  <text x="600" y="465" text-anchor="middle" class="title">Optional Agent Escrow</text>
+  <rect x="120" y="500" width="200" height="100" class="box"/><text x="220" y="537" text-anchor="middle" class="label">Fund</text><text x="220" y="566" text-anchor="middle" class="small">payer locks token</text>
+  <rect x="365" y="500" width="200" height="100" class="box"/><text x="465" y="537" text-anchor="middle" class="label">Submit</text><text x="465" y="566" text-anchor="middle" class="small">provider proves work</text>
+  <rect x="610" y="500" width="200" height="100" class="box"/><text x="710" y="537" text-anchor="middle" class="label">Release / Dispute</text><text x="710" y="566" text-anchor="middle" class="small">payer-controlled V1</text>
+  <rect x="855" y="500" width="200" height="100" class="box"/><text x="955" y="537" text-anchor="middle" class="label">Refund / Release</text><text x="955" y="566" text-anchor="middle" class="small">final economic state</text>
+  <path d="M320 550H365" class="path"/><path d="M565 550H610" class="path"/><path d="M810 550H855" class="path"/>
+
+  <rect x="155" y="650" width="890" height="55" rx="27" fill="#ecfdf5" stroke="#16a34a" stroke-width="2"/>
+  <text x="600" y="685" text-anchor="middle" class="note">No mainnet claims · no meaningful funds · integrate only after compile → tests → review → Arc Testnet → verification</text>
+</svg>

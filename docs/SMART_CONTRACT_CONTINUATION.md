@@ -1,6 +1,6 @@
 # ARCTIS Smart Contract Continuation Blueprint
 
-**Purpose:** this is the canonical continuation document for future contributors/AI sessions working on the ARCTIS onchain layer.
+**Purpose:** canonical continuation document for future contributors/AI sessions working on the ARCTIS onchain layer.
 
 ## Current state — 2026-08-13
 
@@ -13,6 +13,14 @@ Current ARCTIS-owned application contracts:
 3. `tUSDC` and `tARC` remain existing ARCTIS OTC test assets.
 
 Arc Native USDC, EURC, Circle Swap and CCTP are infrastructure / third-party rails and must not be represented as ARCTIS-owned contracts.
+
+## Owner / treasury wallet for V1
+
+The current intended Arc Testnet owner, deployer and human approval wallet is:
+
+`0xb467F683764593316fAEbB0709127E90791Fe47F`
+
+This address is public onchain information. **No private key, seed phrase or signing secret belongs in GitHub or this documentation.**
 
 ## Non-negotiable architecture boundary
 
@@ -52,16 +60,21 @@ ARCTISAgentEscrow
 
 Integration is **additive, parallel and feature-flagged** until independent testnet verification is complete.
 
-## Treasury V1 — intended security model
+## Treasury V1 — owner-only proposer model
 
-The treasury is deliberately transfer-only.
+For the first testnet/hackathon version, ARCTIS deliberately has **no separate relayer wallet**.
 
-### Roles
+The same user-controlled treasury wallet is the:
 
-- **Owner:** final human governance/approval authority for the testnet deployment.
-- **Relayer:** orchestration identity that can create proposals but cannot approve them.
-- **Agent ID:** logical agent identity represented by `bytes32`; it does not own funds.
-- **Executor:** any address may execute an already-approved action.
+- deployer;
+- owner;
+- proposal submitter;
+- human approval authority;
+- governance boundary.
+
+The agent does **not** hold the Treasury key. It prepares intent, quote and policy information offchain. The owner submits the exact onchain proposal and then explicitly approves it.
+
+This minimizes key-management complexity and attack surface for V1. A separate relayer can be introduced later only when there is a concrete automation requirement.
 
 ### Policy controls
 
@@ -83,8 +96,17 @@ Every agent action must be constrained by:
 ### State machine
 
 ```text
-PROPOSED → APPROVED → EXECUTED
-     └──────────────→ REJECTED
+AGENT INTENT / QUOTE
+        ↓
+OWNER SUBMITS PROPOSAL
+        ↓
+     PROPOSED
+        ↓
+OWNER APPROVES / REJECTS
+      ↙       ↘
+ APPROVED    REJECTED
+    ↓
+ EXECUTED
 ```
 
 Expired actions cannot execute.
@@ -139,14 +161,12 @@ Use established OpenZeppelin patterns/dependencies where appropriate rather than
 
 ### Phase 3 — Arc Testnet deployment
 
-Deploy only with a dedicated test wallet.
+Deploy only with the dedicated test wallet above and use only testnet assets.
 
 Record in a deployment manifest:
 
 - chain ID;
-- deployer address;
-- owner address;
-- relayer address;
+- deployer/owner address;
 - contract address;
 - constructor parameters;
 - deployment transaction hash;

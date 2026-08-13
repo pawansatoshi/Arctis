@@ -2,7 +2,7 @@
   <img src="./public/icons/logo.svg" alt="ARCTIS" width="84" height="84" />
   <h1>ARCTIS</h1>
   <p><strong>Programmable money for humans and AI agents.</strong></p>
-  <p>AI · Knowledge · Stablecoins · Economic Agents · Identity</p>
+  <p>AI · Knowledge · Stablecoins · Economic Agents · Identity · Membership</p>
   <p><strong>Built on Arc Testnet</strong> · wallet-controlled · live public testnet build</p>
 </div>
 
@@ -10,7 +10,7 @@
 
 ## What is ARCTIS?
 
-ARCTIS is an **AI operating environment for programmable money** built on Arc Testnet. It combines AI assistance, bounded knowledge context, stablecoin operations, human-readable identity and Economic Agents in one product.
+ARCTIS is an **AI operating environment for programmable money** built on Arc Testnet. It combines AI assistance, bounded knowledge context, stablecoin operations, human-readable identity, membership and Economic Agents in one product.
 
 The core thesis is not "AI with a wallet". It is a controlled execution pipeline:
 
@@ -26,6 +26,10 @@ Live quote + preflight
 Human review
         ↓
 Wallet approval
+        ↓
+Transaction submitted
+        ↓
+Processing / confirmation
         ↓
 Onchain execution
         ↓
@@ -67,9 +71,19 @@ Agents can interpret financial intent, create a proposal, validate the recipient
 
 The safety boundary is:
 
-`Propose → Review → Approve → Execute`
+`Propose → Review → Approve → Execute → Confirm`
 
 Agents do not receive a hidden user private key and do not silently sign user-wallet transactions.
+
+### Supporting platform surfaces
+
+**Passport** provides wallet-linked identity and `.arc` profiles. **Membership** provides account entitlements and credits. **Treasury** provides financial/accounting visibility. These are not isolated utilities; they support the broader ARCTIS economic workflow.
+
+The dashboard now exposes these capabilities directly through an **Explore ARCTIS** discovery layer so new users can understand the product without opening the navigation drawer.
+
+The intended product story is:
+
+**Identity → Membership → Money → Knowledge → Agents → controlled economic action**
 
 ---
 
@@ -100,6 +114,7 @@ Detailed reviewer walkthrough: [`docs/README-EVALUATION.md`](./docs/README-EVALU
 - `.arc` Passport recipients resolve to wallet addresses.
 - Manual and Economic Agent recipient entry share the same live Passport validation path.
 - Balance/gas preflight before execution.
+- After wallet submission, the user-facing lifecycle distinguishes **Processing/Confirming** from final confirmation.
 
 ### Swap
 
@@ -109,6 +124,7 @@ Detailed reviewer walkthrough: [`docs/README-EVALUATION.md`](./docs/README-EVALU
 - Explicit **Estimated receive** amount.
 - Explicit route-unavailable state; no wallet transaction is started when a Circle route cannot be obtained.
 - `cirBTC` is intentionally not exposed in the ARCTIS Swap UI.
+- Transaction lifecycle is designed as wallet approval → submitted → processing/confirming → receipt → success/failed.
 
 ### Bridge
 
@@ -119,6 +135,31 @@ Detailed reviewer walkthrough: [`docs/README-EVALUATION.md`](./docs/README-EVALU
 - Provider, forwarding and gas fee display where returned.
 - Explicit **Estimated receive** amount.
 - Agent Bridge uses quote → review → wallet approval rather than automatic approval after proposal creation.
+- Processing remains visible while the relevant bridge operation is awaiting confirmation/completion.
+
+### Economic Agent transaction UX
+
+The same human-approval and confirmation semantics apply to Manual and Economic Agent flows:
+
+```text
+Proposal
+   ↓
+Quote / preflight
+   ↓
+Human approval
+   ↓
+Wallet confirmation
+   ↓
+Transaction submitted
+   ↓
+⟳ Processing / Confirming
+   ↓
+✓ Confirmed
+   ↓
+Transaction hash / explorer details
+```
+
+A submitted transaction hash is not treated as final success. The green terminal state is reserved for confirmed execution.
 
 ### Passport
 
@@ -127,13 +168,25 @@ Detailed reviewer walkthrough: [`docs/README-EVALUATION.md`](./docs/README-EVALU
 - Existing Passports can later add/change/remove the photo.
 - Owner Passport view has a direct return path to ARCTIS Home.
 
-### Platform
+### Membership & Finance
 
-- Dashboard, History, AI OS, DeFi OS, Knowledge OS, Finance and Platform navigation.
-- Membership, Credits and Treasury surfaces.
-- Command palette and first-run orientation.
-- Responsive/mobile UX and accessibility improvements.
-- 10-language locale selector with Arabic RTL support.
+- Membership and Credits are first-class product surfaces.
+- Membership is directly discoverable from the dashboard instead of being hidden only in navigation.
+- Treasury provides finance/accounting visibility and does not silently execute wallet transactions.
+
+### Dashboard discovery
+
+The dashboard provides direct entry points for:
+
+1. **Membership** — account access and entitlements.
+2. **Passport** — onchain identity/profile.
+3. **Move USDC** — Transfer, Swap and Bridge.
+4. **Economic Agents** — controlled agent execution with human approval.
+5. **Treasury** — programmable-money/accounting visibility.
+6. **Knowledge** — workspaces and bounded context.
+7. **Copilot** — understand and operate ARCTIS.
+
+This is deliberately designed as a product-discovery layer rather than a collection of promotional buttons.
 
 ---
 
@@ -165,6 +218,15 @@ Canonical configuration:
 
 These are testnet/application addresses, not mainnet deployments or official Arc-issued tokens.
 
+### ARCTIS application-contract foundation
+
+The repository also contains an initial Solidity foundation for future Economic Agent capabilities:
+
+- `ARCTISAgentTreasury.sol`
+- `ARCTISAgentEscrow.sol`
+
+These are **ARCTIS application-layer contracts**, not Circle/Arc infrastructure contracts. They are currently documented as design/scaffold work and are **not claimed as deployed, audited or production-connected** until the compile → test → Arc Testnet deploy → ArcScan verification gates are completed.
+
 ---
 
 ## Data and security model
@@ -184,10 +246,24 @@ User wallet / Circle App Kit signing
    ↓
 Onchain settlement
    ↓
+Receipt confirmation
+   ↓
 Persistence / explorer / history
 ```
 
 Financial intent parsing is deliberately deterministic. The LLM is not trusted to invent a transaction amount, token pair, destination or signing operation.
+
+### Transaction-state principle
+
+ARCTIS distinguishes:
+
+- **Wallet approval** — the user authorizes/signs the transaction.
+- **Submitted** — a transaction hash exists.
+- **Processing/Confirming** — the hash exists but final receipt/operation completion has not yet been established.
+- **Confirmed** — successful receipt/operation completion has been established.
+- **Failed** — the transaction or relevant operation failed.
+
+The processing animation is functional feedback, not a success indicator. Reduced-motion preferences should be respected.
 
 ---
 
@@ -203,8 +279,10 @@ ARCTIS is a **testnet-stage build**.
 - Bridge and Circle Swap availability depends on live testnet routes/liquidity/policy.
 - OTC Swap requires a funded counterparty wallet for meaningful end-to-end settlement.
 - tARC is an ARCTIS test asset, not an official Arc token.
+- Treasury/Escrow Solidity contracts are scaffolded application-layer work until independently compiled, tested, deployed and verified.
+- Vercel production deployment is dependent on the current account/build-rate environment; a deployment marked `READY` is required before claiming that the latest Git commit is live in production.
 
-These boundaries are documented deliberately so reviewers can distinguish implemented capability from route-dependent infrastructure and future hardening.
+These boundaries are documented deliberately so reviewers can distinguish implemented capability from route-dependent infrastructure, scaffolded work and future hardening.
 
 ---
 
@@ -219,6 +297,7 @@ src/app/                 product pages + API routes
 src/components/          reusable UI + agent components
 src/config/              AI, assets, billing configuration
 src/lib/                 auth, AI, chain, bridge, swap, persistence
+contracts/               ARCTIS application-layer Solidity foundation
 
 docs/architecture-flow.svg     animated architecture overview
 docs/README-EVALUATION.md      reviewer / judge walkthrough
@@ -242,6 +321,8 @@ npm run architecture-truth
 npm run build
 npm run dev
 ```
+
+For the Solidity application foundation, use the documented contract-specific toolchain/instructions under `contracts/` before any testnet deployment.
 
 A successful static build is not a substitute for live Arc Testnet verification.
 

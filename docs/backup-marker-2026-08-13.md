@@ -1,7 +1,8 @@
 # ARCTIS backup marker — 2026-08-13
 
-The repository has a dedicated Git backup branch named `backup/pre-documentation-refresh-2026-08-13` pointing at the last verified application state before the documentation/evaluator refresh.
+The pre-documentation-refresh application state is frozen at:
 
-Backup commit: `c103f598be8c8d71e21b8939ae1c011b25eb49a4`
+- **Commit:** `c103f598be8c8d71e21b8939ae1c011b25eb49a4`
+- **Recovery branch:** `backup/working-2026-08-13`
 
-This marker exists only to make the freeze point obvious to maintainers. Git history and the backup branch are the recovery mechanism; no source-code snapshot is duplicated here.
+That branch points to the verified application state immediately before the evaluator-facing documentation refresh. Git history remains the recovery mechanism; this file is only a pointer.

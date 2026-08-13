@@ -19,7 +19,7 @@ V1 provides:
 - owner-controlled agent registration and revocation;
 - per-agent per-transaction and daily spending limits;
 - explicit token allowlisting;
-- a dedicated relayer for proposal creation;
+- owner-only proposal creation in V1;
 - deterministic action hashes containing contract, chain, agent, token, recipient, amount, deadline and nonce;
 - mandatory owner approval before execution;
 - replay protection through per-agent nonces and one-time proposal state;
@@ -27,6 +27,8 @@ V1 provides:
 - emergency pause;
 - owner-only withdrawal;
 - event-based execution/audit trail.
+
+**Important:** V1 deliberately has no separate relayer key. The owner-controlled wallet submits and approves proposals. A separate relayer may be introduced later only when there is a concrete automation requirement.
 
 **Important:** V1 is deliberately transfer-only. ARCTIS Circle Swap and CCTP Bridge remain on their existing rails and are not routed through this contract.
 

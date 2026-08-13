@@ -3,15 +3,14 @@ pragma solidity ^0.8.24;
 
 /// @title ARCTIS Agent Treasury
 /// @notice Testnet-stage policy vault for bounded AI-agent economic actions.
-/// @dev Deliberately independent from existing ARCTIS Transfer/Swap/Bridge rails.
-///      This contract is NOT audited and must not be used with meaningful funds.
+/// @dev V1 is intentionally transfer-only: swap/bridge execution remains on existing
+///      Circle/ARCTIS rails. This contract is NOT audited and must not hold meaningful funds.
 contract ARCTISAgentTreasury {
     struct Policy {
         uint256 maxPerTransaction;
         uint256 maxDaily;
         uint256 dailySpent;
         uint64 dailyBucket;
-        bool requireHumanApproval;
         bool active;
     }
 
@@ -20,7 +19,6 @@ contract ARCTISAgentTreasury {
         address token;
         address recipient;
         uint256 amount;
-        uint256 minReceive;
         uint64 deadline;
         uint256 nonce;
     }
@@ -45,7 +43,7 @@ contract ARCTISAgentTreasury {
 
     event AgentRegistered(bytes32 indexed agentId);
     event AgentRevoked(bytes32 indexed agentId);
-    event PolicyUpdated(bytes32 indexed agentId, uint256 maxPerTransaction, uint256 maxDaily, bool requireHumanApproval, bool active);
+    event PolicyUpdated(bytes32 indexed agentId, uint256 maxPerTransaction, uint256 maxDaily, bool active);
     event TokenPolicyUpdated(address indexed token, bool allowed);
     event RelayerUpdated(address indexed relayer);
     event Deposit(address indexed token, address indexed from, uint256 amount);
@@ -67,9 +65,7 @@ contract ARCTISAgentTreasury {
     error InvalidAmount();
     error InvalidDeadline();
     error PolicyViolation();
-    error ApprovalRequired();
     error InvalidAction();
-    error AlreadyFinalized();
     error TransferFailed();
 
     modifier onlyOwner() {
@@ -107,13 +103,7 @@ contract ARCTISAgentTreasury {
         emit AgentRevoked(agentId);
     }
 
-    function setPolicy(
-        bytes32 agentId,
-        uint256 maxPerTransaction,
-        uint256 maxDaily,
-        bool requireHumanApproval,
-        bool active
-    ) external onlyOwner {
+    function setPolicy(bytes32 agentId, uint256 maxPerTransaction, uint256 maxDaily, bool active) external onlyOwner {
         if (!registeredAgents[agentId]) revert InvalidAgent();
         if (maxPerTransaction == 0 || maxDaily == 0 || maxPerTransaction > maxDaily) revert PolicyViolation();
         policies[agentId] = Policy({
@@ -121,10 +111,9 @@ contract ARCTISAgentTreasury {
             maxDaily: maxDaily,
             dailySpent: 0,
             dailyBucket: uint64(block.timestamp / 1 days),
-            requireHumanApproval: requireHumanApproval,
             active: active
         });
-        emit PolicyUpdated(agentId, maxPerTransaction, maxDaily, requireHumanApproval, active);
+        emit PolicyUpdated(agentId, maxPerTransaction, maxDaily, active);
     }
 
     function setAllowedToken(address token, bool allowed) external onlyOwner {
@@ -161,16 +150,11 @@ contract ARCTISAgentTreasury {
         emit Withdrawal(token, to, amount);
     }
 
-    /// @notice Creates a bounded financial action. Only the configured relayer can propose.
-    /// @dev The relayer is an execution/orchestration identity, not the user's wallet key.
-    function propose(
-        bytes32 agentId,
-        address token,
-        address recipient,
-        uint256 amount,
-        uint256 minReceive,
-        uint64 deadline
-    ) external onlyRelayer whenNotPaused returns (bytes32 actionHash) {
+    /// @notice Creates a bounded transfer action. Only the configured relayer can propose.
+    /// @dev The relayer is an orchestration identity, not the user's wallet key.
+    function propose(bytes32 agentId, address token, address recipient, uint256 amount, uint64 deadline)
+        external onlyRelayer whenNotPaused returns (bytes32 actionHash)
+    {
         Policy storage policy = policies[agentId];
         if (!registeredAgents[agentId] || !policy.active) revert InvalidAgent();
         if (!allowedTokens[token]) revert InvalidToken();
@@ -191,28 +175,27 @@ contract ARCTISAgentTreasury {
             token: token,
             recipient: recipient,
             amount: amount,
-            minReceive: minReceive,
             deadline: deadline,
             nonce: nonce
         });
 
         actionHash = keccak256(abi.encode(
-            address(this),
-            block.chainid,
-            action.agentId,
-            action.token,
-            action.recipient,
-            action.amount,
-            action.minReceive,
-            action.deadline,
-            action.nonce
+            address(this), block.chainid, action.agentId, action.token,
+            action.recipient, action.amount, action.deadline, action.nonce
         ));
 
-        proposals[actionHash] = Proposal({action: action, actionHash: actionHash, approved: false, executed: false, rejected: false});
+        proposals[actionHash] = Proposal({
+            action: action,
+            actionHash: actionHash,
+            approved: false,
+            executed: false,
+            rejected: false
+        });
+
         emit ActionProposed(actionHash, agentId, token, recipient, amount, nonce, deadline);
     }
 
-    /// @notice Human owner approval. This is the explicit safety boundary for V1.
+    /// @notice Explicit human approval. V1 always requires this boundary.
     function approve(bytes32 actionHash) external onlyOwner whenNotPaused {
         Proposal storage proposal = proposals[actionHash];
         if (proposal.actionHash != actionHash || proposal.rejected || proposal.executed || proposal.approved) revert InvalidAction();
@@ -228,8 +211,7 @@ contract ARCTISAgentTreasury {
         emit ActionRejected(actionHash);
     }
 
-    /// @notice Executes an exact owner-approved action. Anyone may submit the transaction after approval.
-    /// @dev Permissionless submission avoids giving the relayer custody or execution authority.
+    /// @notice Executes the exact owner-approved action. Anyone may submit after approval.
     function execute(bytes32 actionHash) external whenNotPaused {
         Proposal storage proposal = proposals[actionHash];
         if (proposal.actionHash != actionHash || proposal.rejected || proposal.executed || !proposal.approved) revert InvalidAction();

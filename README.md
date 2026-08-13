@@ -1,8 +1,9 @@
 <div align="center">
   <img src="./public/icons/logo.svg" alt="ARCTIS" width="84" height="84" />
   <h1>ARCTIS</h1>
-  <p><strong>An AI operating environment for people, knowledge, agents and programmable money.</strong></p>
-  <p>Built on Arc Testnet · wallet-controlled · testnet stage</p>
+  <p><strong>Programmable money for humans and AI agents.</strong></p>
+  <p>AI · Knowledge · Stablecoins · Economic Agents · Identity</p>
+  <p><strong>Built on Arc Testnet</strong> · wallet-controlled · live public testnet build</p>
 
   <p>
     <img src="https://img.shields.io/badge/Next.js-14-black?logo=next.js" alt="Next.js 14" />
@@ -14,26 +15,80 @@
 
 ---
 
-## The idea
+## What is ARCTIS?
 
-ARCTIS brings four connected capabilities into one product surface:
+ARCTIS is an **AI operating environment for programmable money** built on Arc Testnet. It brings AI assistance, bounded knowledge context, stablecoin operations, human-readable identity and Economic Agents into one product surface.
 
-- **AI OS** — 12 task-oriented personas with automatic backend model routing.
-- **Knowledge OS** — workspaces, saved prompts, sessions, agents and report context.
-- **DeFi OS** — user-controlled transfers, an ARCTIS OTC swap layer, and cross-chain USDC bridging.
-- **Economic Agent OS** — budgeted agents with proposals, human approval, execution history and independent evaluation.
+The central idea is not an AI chatbot with a wallet. It is a controlled execution pipeline:
 
-The product deliberately hides provider/model complexity from the user. The user interacts with **ARCTIS AI**, not a model marketplace.
+```text
+Natural-language intent
+        ↓
+Deterministic interpretation / policy
+        ↓
+Proposal
+        ↓
+Live quote + preflight
+        ↓
+Human review
+        ↓
+Wallet approval
+        ↓
+Onchain execution
+        ↓
+History / proof / accounting
+```
 
-> **ARCTIS is built on Arc. Arc is infrastructure; ARCTIS is the product.**
+> **ARCTIS is the application layer. Arc is the settlement infrastructure.**
 
-## See the architecture
+## Live product
+
+- **Demo:** https://arctis-zeta.vercel.app
+- **Repository:** https://github.com/pawansatoshi/Arctis
+- **Network:** Arc Testnet (`5042002`)
+- **Primary payment/gas asset:** Arc Native USDC
+
+For an external reviewer, start with [`docs/README-EVALUATION.md`](./docs/README-EVALUATION.md). It contains a five-minute walkthrough and the intended evaluation path.
+
+---
+
+## Product architecture
+
+ARCTIS is organized into four connected operating-system pillars:
+
+### AI OS
+
+AI Workspace, Copilot and task-oriented personas. The backend model/provider is an implementation detail: ARCTIS routes requests through a server-side registry with health/latency-aware failover.
+
+### Knowledge OS
+
+Workspaces, sessions, saved prompts, user-owned agents and bounded report context. The current implementation is application-context based; it is **not** marketed as a full PDF/OCR/vector-RAG platform.
+
+### DeFi OS
+
+User-controlled Transfer, ARCTIS OTC Swap and Circle App Kit/CCTP Bridge flows. Quote, route, fee, balance and gas states are surfaced before execution.
+
+### Economic Agent OS
+
+Agents can interpret a financial task, create a proposal, obtain a live quote, wait for human approval, execute through the existing wallet flow and persist execution/report data.
+
+The mandatory boundary is:
+
+`Propose → Review → Approve → Execute`
+
+Agents do not receive a hidden user private key and do not silently sign user-wallet transactions.
+
+---
+
+## Architecture diagram
 
 <p align="center">
-  <img src="./docs/architecture-flow.svg" alt="Animated ARCTIS architecture diagram" width="100%" />
+  <img src="./docs/architecture-flow.svg" alt="Animated ARCTIS system architecture" width="100%" />
 </p>
 
-For the detailed implementation model, see [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md) and the canonical product facts in [`ARCHITECTURE_TRUTH.md`](./ARCHITECTURE_TRUTH.md).
+The diagram is intentionally self-contained SVG/CSS. Animated dashed paths communicate control/data flow between product pillars and the orchestration layer; pulsing nodes represent active hand-off points. It requires no external animation service and remains understandable as a static repository image.
+
+The detailed explanation is in [`docs/README-EVALUATION.md`](./docs/README-EVALUATION.md), while the authoritative runtime model is [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md).
 
 ### Architecture at a glance
 
@@ -44,202 +99,293 @@ flowchart TB
     P --> K[Knowledge OS]
     P --> D[DeFi OS]
     P --> A[Economic Agent OS]
+    P --> I[Passport Identity]
 
     AI --> R[Next.js API + orchestration]
     K --> R
     D --> R
     A --> R
+    I --> R
 
-    R --> F[(Firestore\nFirebase Admin SDK)]
-    R --> M[AI Router\nregistry + health failover]
+    R --> F[(Firestore / Firebase Admin)]
+    R --> M[AI Router / health failover]
     R --> C[Arc Testnet / Circle rails]
 
-    D --> W[User wallet signs transactions]
-    A --> G[Propose → Review → Approve → Execute]
-    AI --> I[Deterministic financial intent parser]
-    I --> W
+    A --> Q[Live quote + preflight]
+    Q --> H[Human approval boundary]
+    H --> W[Wallet / Circle App Kit signing]
 ```
 
-## What is actually implemented
+---
 
-### AI
+## What is implemented today
 
-- 12 personas: Study, Build, Analyze, Research, Generate, Treasury, Developer, Student, Teacher, Professor, Child and Engineering.
-- Automatic free-model discovery and health-ranked failover through the server-side AI router.
+### AI and Copilot
+
+- 12 task-oriented personas: Study, Build, Analyze, Research, Generate, Treasury, Developer, Student, Teacher, Professor, Child and Engineering.
+- Automatic backend model discovery and health-ranked failover.
 - Streaming and non-streaming responses.
-- Session persistence and saved prompts through server API routes.
-- Copilot context assembled from bounded, user-owned application data.
+- Persisted AI sessions and saved prompts.
+- Bounded Copilot context from implemented user-owned application data.
 - Voice input and markdown-capable AI surfaces.
-- Natural-language Transfer / Swap / Bridge intent can produce a **proposal**, but never signs or submits a transaction.
+- Deterministic financial intent parsing for Transfer, Swap and Bridge proposals.
 
-### Money and onchain operations
+### Money operations
 
-- **Transfer:** user wallet signs the transaction.
-- **Swap:** configured ARCTIS OTC settlement for the registered test assets; it is not an AMM.
-- **Bridge:** Circle App Kit integration with configured CCTP routes, source-chain preflight checks and bridge history.
-- **Proof-oriented records:** onchain transaction state is accompanied by explorer/activity/ledger/accounting records where the operation requires them.
-- **Treasury:** observer/accounting layer; it does not control the user's transaction flow.
+**Transfer**
 
-### Agents
+- User wallet remains the signing authority.
+- Passport usernames can be resolved to wallet addresses.
+- Preflight checks prevent obvious insufficient-balance/gas failures.
 
-The agent safety boundary is explicit:
+**Swap**
 
-`Propose → Review → Approve → Execute`
+- ARCTIS OTC settlement for `USDC`, `tUSDC` and `tARC`.
+- Circle Swap surface includes `EURC` as the **last asset in the ARCTIS dropdown**.
+- Circle pairs are quoted before approval; if the live route is unavailable, no wallet transaction is started.
+- Quote cards explicitly show **You pay**, fees where applicable and **Estimated receive**.
+- Agent Swap follows the same quote-before-approval boundary as manual Swap.
+- `cirBTC` is intentionally not exposed in the ARCTIS Swap UI at this stage.
 
-Agents have budgets, execution history, reports and evaluator support. They do **not** receive a hidden private key and do not silently sign the user's wallet transactions.
+**Bridge**
 
-### Identity and platform
+- Circle App Kit + Viem adapter.
+- Configured Arc Testnet, Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia metadata, subject to current bridge policy/routes.
+- Source-chain balance and native-gas preflight.
+- Live quote before approval.
+- Fee breakdown: provider, forwarding and gas where returned.
+- Explicit **Estimated receive** amount.
+- Agent Bridge follows quote → review → wallet approval rather than auto-approving after proposal creation.
 
-- Wallet-based Passport profiles and public username resolution.
-- Membership entitlements and credit balances.
-- Global command palette (`⌘K` / `Ctrl+K`).
-- Light/dark theme system.
+### Economic Agents
+
+The current agent state machine is deliberately explicit:
+
+```text
+Agent intent
+   ↓
+Proposal
+   ↓
+Recipient / route validation
+   ↓
+Live quote
+   ↓
+Expected receive shown
+   ↓
+Human review
+   ↓
+Wallet approval
+   ↓
+Execution
+   ↓
+History / report / ledger
+```
+
+Economic Agent recipient entry uses the same canonical Passport validation path as Manual Transfer, so `.arc` recipients are verified while typing rather than only at execution time.
+
+### Passport identity
+
+- Wallet-linked Passport profiles.
+- Public `.arc` username resolution.
+- Owner edit flow.
+- Profile photo can be added during Passport creation or later from the existing Passport.
+- Photo can be changed/removed without recreating the Passport.
+- Passport owner view includes a direct return path to ARCTIS Home.
+
+### Platform
+
+- Dashboard, History, AI OS, DeFi OS, Knowledge OS, Finance and Platform navigation.
+- Membership and Credits with persisted entitlement/ledger concepts.
+- Treasury observer/accounting surface.
+- Command palette.
 - First-run product orientation.
-- Responsive UI and accessibility improvements.
-- One-button locale selection with 10 languages: English, Hindi, Spanish, Portuguese, Chinese, Korean, Vietnamese, French, Swahili and Arabic, including RTL handling for Arabic.
+- Responsive/mobile UX and accessibility improvements.
+- 10-language locale selector with Arabic RTL handling.
+
+---
 
 ## Current network and assets
 
-**Current product stage: Arc Testnet.**
+**Stage: Arc Testnet.**
 
-| Asset / rail | Current role |
-|---|---|
-| Arc Native USDC | Primary payment and gas asset |
-| tUSDC | ARCTIS OTC test asset |
-| tARC | ARCTIS OTC test asset; not an official Arc native token |
-| CCTP routes | Configured testnet bridge routes through Circle tooling |
+| Asset / rail | Role | Current status |
+|---|---|---|
+| Arc Native USDC | Primary payment + gas asset | Active |
+| tUSDC | ARCTIS OTC test asset | Active |
+| tARC | ARCTIS OTC test asset; not an official Arc token | Active |
+| EURC | Circle Swap integration surface | Quote/route availability depends on current Circle/Arc Testnet conditions |
+| cirBTC | Circle-supported Arc Testnet asset, intentionally not exposed by ARCTIS UI | Not in ARCTIS Swap surface |
+| CCTP | Cross-chain USDC bridge rail | Configured testnet routes |
 
-Executable asset truth lives in [`src/config/assets.ts`](./src/config/assets.ts); network and contract truth lives in [`src/lib/contracts.ts`](./src/lib/contracts.ts).
+Executable asset truth is derived from `src/config/assets.ts` and the Swap-specific Circle registry in `src/lib/swap/circle.ts`. Network/contract truth lives in `src/lib/contracts.ts`.
 
-## What ARCTIS does **not** claim yet
+---
 
-This repository is intentionally honest about its stage.
+## Testnet contract references
 
-- It is **not a mainnet product**.
-- It is **not presented as security audited**.
-- Knowledge OS is not yet a full PDF/OCR/vector-RAG platform.
-- ARCTIS does not claim persistent cross-session personal memory beyond the implemented session/context systems.
-- Agent execution is not autonomous wallet spending.
-- tARC is not an official Arc token.
-- Bridge availability is limited to the routes actually configured in the repository.
-- Some production hardening and live end-to-end testnet verification remain deployment tasks.
+The current Arc Testnet configuration includes:
 
-The current limitations and implementation boundary are maintained in [`ARCHITECTURE_TRUTH.md`](./ARCHITECTURE_TRUTH.md).
+- **Arc Native USDC:** `0x3600000000000000000000000000000000000000`
+- **tUSDC:** `0x28E49B36C1c6fD16ad81aB152488f37C93b3D8CA`
+- **tARC:** `0xe66a11cb4b147F208e6d81B7540bfc83E1680c78`
+- **ARCTIS Memo contract:** `0x5294E9927c3306DcBaDb03fe70b92e01cCede505`
+
+These are testnet/application addresses. They must not be interpreted as mainnet deployments or official Arc-issued tokens.
+
+---
+
+## Data and persistence
+
+Firestore is accessed through the Firebase Admin SDK from server-side routes. Important domain collections include:
+
+```text
+transactions
+activity
+bridge_pending
+swap_records
+passports
+agents
+agent_executions
+agent_reports
+agent_ledger
+credit_balances
+credit_ledger
+memberships
+ai_sessions
+saved_prompts
+obs_logs
+rate_limits
+```
+
+`History` is the canonical user-facing historical surface; `/api/activity` is the aggregation layer behind relevant activity data.
+
+---
+
+## Security model
+
+The intended money boundary is:
+
+```text
+User intent
+   ↓
+Validation / policy
+   ↓
+Server coordination + verification
+   ↓
+User wallet / Circle App Kit signing
+   ↓
+Onchain settlement
+   ↓
+Persistence / explorer / history
+```
+
+Financial intent parsing is deliberately deterministic. The LLM can help understand intent, but it is not trusted to invent a transaction amount, token pair, destination or signing operation.
+
+Agent proposals do not equal authorization. Wallet approval remains the final user-controlled boundary.
+
+---
+
+## Current limitations — intentionally disclosed
+
+ARCTIS is a **testnet-stage build**.
+
+- It is not independently security audited.
+- It is not presented as mainnet-ready.
+- Some mutating routes still need stronger cryptographic wallet-proof enforcement before mainnet.
+- AI health/model-registry state is currently process-local.
+- Knowledge OS is not yet full document ingestion/vector RAG.
+- Bridge and Circle Swap route availability depends on current testnet infrastructure/liquidity/policy.
+- tARC is an ARCTIS test asset, not an official Arc token.
+- Mainnet contract placeholders are not production configuration.
+
+These limitations are documented deliberately so external reviewers can distinguish **implemented capability, configured capability and future hardening**.
+
+---
 
 ## Tech stack
 
 | Layer | Implementation |
 |---|---|
 | Web | Next.js 14 App Router + React 18 |
-| Language | TypeScript, strict mode |
+| Language | TypeScript strict |
 | UI | Tailwind CSS + Framer Motion + Lucide |
 | State | Zustand |
 | Wallet | Wagmi + Viem + RainbowKit |
-| Bridge | Circle App Kit + Viem adapter |
-| Database | Firebase Firestore via Firebase Admin SDK |
-| AI | Server-side OpenRouter adapter with automatic routing |
+| Circle | Circle App Kit + Viem adapter; CCTP bridge integration |
+| Database | Firebase Firestore + Firebase Admin SDK |
+| AI | Server-side OpenRouter adapter + automatic routing |
 | Charts | Recharts |
 | Email | Resend |
 | Network | Arc Testnet |
 
-## Repository structure
+---
+
+## Repository map
 
 ```text
-src/
-├── app/                  # product pages and Next.js API routes
-│   ├── dashboard/        # overview
-│   ├── ai/               # AI Workspace
-│   ├── copilot/          # contextual Copilot
-│   ├── agents/           # Economic Agent OS
-│   ├── workspace/        # Knowledge OS workspace
-│   ├── knowledge/        # Knowledge OS surface
-│   ├── transfer/         # user-controlled transfer
-│   ├── swap/             # ARCTIS OTC swap
-│   ├── bridge/           # Circle App Kit bridge flow
-│   ├── passport/         # wallet identity
-│   ├── history/          # canonical user history
-│   ├── treasury/         # observer/accounting surface
-│   ├── membership/       # membership entitlements
-│   ├── credits/          # credit balances and purchases
-│   └── api/              # server-side orchestration and persistence
-├── config/               # canonical AI, asset and billing configuration
-├── components/           # reusable UI and agent components
-├── lib/                  # domain services, routing, chain and Firebase logic
-└── types/                # shared TypeScript models
+src/app/                 product pages + API routes
+src/components/          reusable UI + agent components
+src/config/              AI, assets, billing configuration
+src/lib/                 domain services, auth, chain, bridge, swap, AI
+src/types/               shared TypeScript models
 
-docs/
-└── architecture-flow.svg # animated architecture overview
+docs/architecture-flow.svg     animated architecture overview
+docs/README-EVALUATION.md      external reviewer / judge walkthrough
+
+ARCHITECTURE_TRUTH.md           canonical capability truth
+SYSTEM_ARCHITECTURE.md          runtime architecture + security boundaries
+API_REFERENCE.md                API inventory
+DATABASE.md                     Firestore/data model
+DEPLOYMENT.md                   setup + deployment
+aSECURITY.md                    security posture
+CHANGELOG.md                    material product changes
 ```
 
-## Quick start
+---
 
-### Requirements
+## Local development
 
-- Node.js 22 recommended (Codespaces configuration uses Node 22).
+Requirements:
+
+- Node.js 22 recommended.
 - npm.
 - Firebase project with Firestore enabled.
 - WalletConnect project ID.
 - OpenRouter API key for AI routes.
-- A testnet wallet for Arc and any configured bridge source chain.
-
-### Run locally
+- Arc Testnet wallet and required testnet assets/gas.
 
 ```bash
 npm install
 cp .env.example .env.local
-# fill the required values in .env.local
+npm run type-check
+npm run architecture-truth
+npm run build
 npm run dev
 ```
 
 Open `http://localhost:3000`.
 
-### Verify before shipping
+A successful static build is not a substitute for live Arc Testnet verification.
 
-```bash
-npm run type-check
-npm run architecture-truth
-npm run build
-```
+---
 
-Do not interpret a successful static check as a substitute for live testnet verification.
+## Documentation authority
 
-## Documentation map
+- [`ARCHITECTURE_TRUTH.md`](./ARCHITECTURE_TRUTH.md) — canonical product/capability truth.
+- [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md) — runtime architecture and security boundaries.
+- [`API_REFERENCE.md`](./API_REFERENCE.md) — route inventory.
+- [`DATABASE.md`](./DATABASE.md) — persistence model.
+- [`DEPLOYMENT.md`](./DEPLOYMENT.md) — deployment setup.
+- [`SECURITY.md`](./SECURITY.md) — security posture.
+- [`CHANGELOG.md`](./CHANGELOG.md) — meaningful recent changes.
+- [`docs/README-EVALUATION.md`](./docs/README-EVALUATION.md) — external evaluator walkthrough.
 
-| File | Use it for |
-|---|---|
-| [`ARCHITECTURE_TRUTH.md`](./ARCHITECTURE_TRUTH.md) | Canonical product and capability truth |
-| [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md) | Detailed runtime architecture and security boundaries |
-| [`API_REFERENCE.md`](./API_REFERENCE.md) | API route inventory and contracts |
-| [`DATABASE.md`](./DATABASE.md) | Firestore collections and indexes |
-| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Local/testnet deployment setup |
-| [`SECURITY.md`](./SECURITY.md) | Security posture and reporting guidance |
-| [`ARC_BRAND_GUIDELINES.md`](./ARC_BRAND_GUIDELINES.md) | Approved Arc relationship and naming language |
-| [`CHANGELOG.md`](./CHANGELOG.md) | User-facing implementation changes |
-| [`DOCUMENTATION_STATUS.md`](./DOCUMENTATION_STATUS.md) | Documentation authority and maintenance rules |
-
-Historical submission/build material is intentionally kept out of the root documentation path. Git history remains the record of earlier iterations.
-
-## Development principles
-
-1. **One source of truth.** Product facts belong in configuration or canonical architecture docs, not scattered literals.
-2. **User controls money.** Server code may coordinate and verify; the user's wallet signs the transaction.
-3. **Deterministic where money is involved.** Financial intent parsing is deliberately constrained rather than delegated to an LLM.
-4. **Fail visibly.** Testnet limitations and operational dependencies should be surfaced, not hidden behind optimistic UI.
-5. **Prefer composition over duplication.** Shared activity/history, centralized contracts, centralized billing and shared domain services reduce drift.
-6. **Document the current system.** Historical plans do not override runtime behavior.
-
-## Status
-
-ARCTIS is an **active Arc Testnet project** under development. The codebase has moved substantially from its early prototype over the last several months; this README describes the current direction rather than a historical milestone.
-
-If you are evaluating the project, start with the live application, then read the architecture truth and security notes before treating any feature as production-ready.
+Code/configuration is authoritative when documentation and runtime behavior disagree.
 
 ## Arc relationship
 
-ARCTIS uses Arc as infrastructure and is built for Arc Testnet. This repository does not imply a partnership, endorsement or ownership relationship beyond the integration described in the code.
-
-Official Arc brand guidance: https://community.arc.io/public/blogs/arc-brand-guidelines-and-partner-toolkit-is-live-2026-07-16
+ARCTIS is built on Arc Testnet and uses configured Circle/Arc tooling. This repository does **not** imply an official Circle partnership, endorsement or ownership relationship unless separately confirmed by Circle.
 
 ## License
 
-No license file is currently included in this repository. Do not assume permission to reuse the code until a license is explicitly added.
+No license file is currently included. Do not assume permission to reuse the code until a license is explicitly added.

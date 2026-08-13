@@ -1,10 +1,11 @@
 // ============================================================
 // Circle App Kit Swap rail — Arc Testnet
 // ============================================================
-// Circle's current Arc Testnet Swap surface supports only these
-// three assets. Keep these separate from ARCTIS-owned OTC assets.
+// ARCTIS exposes the stablecoin swap route only for USDC and EURC.
+// cirBTC remains a Circle-supported Arc Testnet asset, but is intentionally
+// excluded from the ARCTIS Manual and Economic Agent swap surfaces.
 
-export const CIRCLE_SWAP_TOKENS = ['USDC', 'EURC', 'cirBTC'] as const;
+export const CIRCLE_SWAP_TOKENS = ['USDC', 'EURC'] as const;
 export type CircleSwapToken = typeof CIRCLE_SWAP_TOKENS[number];
 
 export function isCircleSwapToken(value?: string): value is CircleSwapToken {

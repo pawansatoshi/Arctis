@@ -2,6 +2,10 @@
 
 **Status: design + testnet implementation scaffold. Not deployed yet.**
 
+> Educational architecture animation: [`docs/ONCHAIN_AGENT_FLOW.svg`](./docs/ONCHAIN_AGENT_FLOW.svg)
+>
+> Continuation source of truth: [`docs/SMART_CONTRACT_CONTINUATION.md`](./docs/SMART_CONTRACT_CONTINUATION.md)
+
 This document defines the first ARCTIS-owned smart-contract layer. It is deliberately additive: existing Transfer, Swap and Bridge rails remain unchanged until these contracts are independently tested and explicitly integrated.
 
 ## 1. Why an onchain layer
@@ -25,16 +29,16 @@ ARCTIS currently targets **four application contracts total**:
 
 Arc Native USDC, EURC, CCTP and Circle Swap contracts are third-party/infrastructure assets and must never be presented as ARCTIS-owned deployments.
 
-## 3. Treasury V1
+## 3. Treasury V1 — owner-only proposal boundary
 
 `ARCTISAgentTreasury` is intentionally narrow.
 
 ### Roles
 
-- **Owner:** user's controlling/admin wallet for the testnet deployment.
-- **Relayer:** dedicated orchestration identity allowed to create proposals.
-- **Agent:** represented by a registered `bytes32 agentId`; it does not own the treasury.
-- **Executor:** anyone can submit an already-approved action, avoiding relayer custody.
+- **Owner:** user's controlling/admin wallet, proposal submitter and human approval authority.
+- **Agent:** represented by a registered `bytes32 agentId`; it does not own the treasury or receive a private key.
+- **Executor:** anyone can submit an already-approved action; execution does not grant Treasury authority.
+- **Separate relayer:** deliberately omitted from V1 to minimize key-management complexity. It can be added later if automation requires it.
 
 ### Policy
 
@@ -48,18 +52,18 @@ Each registered agent has:
 ### State machine
 
 ```text
-RELAYER PROPOSES
-      ↓
+AGENT INTENT / QUOTE
+        ↓
+OWNER PROPOSES
+        ↓
 POLICY CHECK
-      ↓
+        ↓
 PROPOSED
-      ↓
+        ↓
 OWNER APPROVES / REJECTS
-      ↓
-APPROVED
-      ↓
-ANYONE EXECUTES
-      ↓
+      ↙       ↘
+ APPROVED    REJECTED
+    ↓
 EXECUTED
 ```
 
@@ -122,7 +126,7 @@ CCTP BRIDGE
 source wallet ─────────────→ Circle CCTP
 
 OPTIONAL AGENT TREASURY
-agent proposal → policy → human approval → Treasury
+agent intent → quote → policy → owner approval → Treasury
 
 OPTIONAL AGENT ESCROW
 job → fund → work → submit → release/refund
@@ -139,7 +143,7 @@ The application may integrate these contracts only after:
 3. Replay, deadline, pause, revoke and spending-limit cases are tested.
 4. Token transfer failure behavior is tested.
 5. Deployment constructor parameters are reviewed.
-6. Contracts are deployed to Arc Testnet using a dedicated test wallet.
+6. Contracts are deployed to Arc Testnet using the dedicated test wallet.
 7. Sources are verified on ArcScan.
 8. A small testnet deposit/action/withdraw cycle succeeds.
 9. Existing ARCTIS Transfer/Swap/Bridge regression tests remain green.
@@ -150,17 +154,18 @@ The application may integrate these contracts only after:
 ### Treasury
 
 ```text
-initialOwner  = the owner's Arc Testnet wallet
-initialRelayer = a dedicated relayer/orchestration wallet
+initialOwner = 0xb467F683764593316fAEbB0709127E90791Fe47F
 ```
 
-Do not use the user's main wallet as an application relayer key. Do not commit either private key.
+V1 has no separate relayer constructor parameter.
 
 ### Escrow
 
 ```text
-initialOwner = the owner's Arc Testnet wallet
+initialOwner = 0xb467F683764593316fAEbB0709127E90791Fe47F
 ```
+
+Only public wallet addresses belong in repository documentation. Never store a private key or seed phrase.
 
 ## 8. Security posture
 

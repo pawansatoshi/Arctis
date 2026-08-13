@@ -1,21 +1,21 @@
 # ARCTIS — Architecture Truth
 
-**Status:** current implementation baseline on `main`.
+**Status:** current implementation baseline on `main` as of 2026-08-13.
 
-This is the canonical product/capability reference. If another document, UI label or historical report conflicts with this file or with runtime configuration, the code/configuration wins and the documentation should be corrected.
+This is the canonical product/capability reference. When documentation conflicts with runtime configuration, the code/configuration wins and the documentation must be corrected.
 
 ## 1. Product model
 
-ARCTIS is an AI operating environment built on Arc Testnet. It combines four product pillars:
+ARCTIS is a programmable-money operating environment built on Arc Testnet. It combines four product pillars:
 
 1. **AI OS** — AI Workspace, Copilot and task-oriented personas with automatic backend model routing.
-2. **Knowledge OS** — workspaces, saved prompts, sessions, agents and report context.
-3. **DeFi OS** — user-controlled transfers, configured ARCTIS OTC swaps and configured cross-chain USDC bridge flows.
-4. **Economic Agent OS** — budgeted agents, proposals, approval, execution history, reports and independent evaluation.
+2. **Knowledge OS** — workspaces, saved prompts, sessions, agents and bounded report context.
+3. **DeFi OS** — user-controlled transfers, ARCTIS OTC swaps and configured cross-chain USDC bridge flows.
+4. **Economic Agent OS** — budgeted agents, proposals, live quotes, human approval, execution history, reports and evaluation.
 
-Finance surfaces such as Membership, Credits and Treasury support these pillars. They are product surfaces, not additional operating-system pillars.
+Passport, Membership, Credits and Treasury support these pillars as platform/finance surfaces.
 
-The primary dashboard navigation currently groups **Agents under AI OS** and money movement under **DeFi OS**. This is an information-architecture choice; it does not remove the Economic Agent OS or its safety boundary.
+The primary dashboard navigation groups **Agents under AI OS** and money movement under **DeFi OS**. This is information architecture; it does not remove Economic Agent OS as a safety/product pillar.
 
 ## 2. AI OS truth
 
@@ -36,21 +36,23 @@ The current persona registry contains 12 modes:
 - Child
 - Engineering
 
-Source of truth: `src/config/ai.ts`.
+Source: `src/config/ai.ts`.
 
 ### Model routing
 
-Users do not select a backend model. The server-side router discovers the configured free-model pool, ranks candidates using health/latency state, and fails over when appropriate. Model/provider identity is intentionally an implementation detail.
+Users select a persona, not a backend model. The server-side router discovers the configured model pool, ranks candidates using health/latency state and fails over when appropriate.
 
-Source: `src/lib/ai/router/`, `src/lib/ai/registry/` and `src/lib/ai/providers/`.
-
-Current limitation: health state and model-registry cache are process-local. They reset on restart and are not shared between multiple server instances.
+Current limitation: model health and registry cache are process-local and reset on restart.
 
 ### Financial intent
 
-Transfer/Swap/Bridge natural-language intent is parsed deterministically. A recognized request creates a proposal/prefill path; it does not sign, submit or execute a transaction. The user completes the existing wallet flow.
+Transfer/Swap/Bridge natural-language intent is parsed into a structured proposal/prefill path. It does not sign or silently submit a transaction.
 
-Source: `src/lib/ai/intent/` and the AI route handlers.
+The intended financial pipeline is:
+
+`intent → deterministic parse → proposal → route/recipient validation → live quote/preflight → human review → wallet approval → execution`
+
+Source: `src/lib/ai/intent/` and the relevant route/page handlers.
 
 ## 3. Knowledge OS truth
 
@@ -61,81 +63,129 @@ Implemented context sources include:
 - user-owned agents
 - recent agent reports / bounded contextual data
 
-This is **not yet** a full document-ingestion or semantic-retrieval system.
-
-Do not describe current ARCTIS as having full PDF/OCR ingestion, vector database RAG, autonomous memory extraction or a dedicated persistent cross-session memory layer unless those capabilities are actually implemented and this file is updated.
+This is **not yet** a full PDF/OCR/vector-RAG platform. Do not claim autonomous persistent memory extraction or a dedicated cross-session memory system unless the implementation is added and this file is updated.
 
 ## 4. DeFi OS truth
 
 ### Transfer
 
-The user's wallet signs the onchain transaction. Server routes verify/record the operation where required; they do not hold the user's signing authority.
+The user's wallet signs the transaction. Server routes coordinate/verify/record operations where required but do not hold the user's signing authority.
+
+Passport recipients can be resolved using the canonical Passport resolver. Manual Transfer and Economic Agent recipient entry share the same validation path.
 
 ### Swap
 
-ARCTIS contains a configured OTC swap layer for the executable assets in `src/config/assets.ts`. The current implementation is a counterparty settlement model, not an AMM or DEX pool.
+ARCTIS has two configured swap surfaces:
+
+1. **ARCTIS OTC:** USDC ↔ tUSDC ↔ tARC using a counterparty settlement wallet. This is not an AMM or DEX pool.
+2. **Circle rail:** Circle-supported pair handling in the Swap UI, including **EURC**. EURC is deliberately the last asset in the ARCTIS dropdown.
+
+Circle quote handling is live and route-dependent. If the Circle route is unavailable, the UI surfaces the failure and does not start a wallet transaction.
+
+The Swap UI explicitly displays:
+
+- input amount;
+- fee where applicable;
+- estimated receive amount;
+- route/rail;
+- route-unavailable state.
+
+`cirBTC` is not currently exposed in the ARCTIS Swap UI by product choice, even though Arc Testnet/Circle may support it at the infrastructure level.
+
+Source: `src/app/swap/page.tsx`, `src/lib/swap/circle.ts`, `src/app/api/swap/`.
 
 ### Bridge
 
-The bridge UI integrates Circle App Kit with the Viem adapter. The repository contains configured testnet source/destination metadata for Arc Testnet, Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia, subject to the routes returned/enabled by the current bridge policy/API.
+The bridge uses Circle App Kit with a Viem adapter and configured CCTP testnet metadata.
 
-The bridge flow performs source-chain balance/gas preflight checks and uses the Circle App Kit lifecycle for execution/result handling. Do not describe unsupported chains, assets or mainnet availability.
+Configured metadata covers:
 
-Source: `src/app/bridge/page.tsx`, `src/lib/contracts.ts`, `src/lib/bridge/` and `src/app/api/bridge/`.
+- Arc Testnet
+- Ethereum Sepolia
+- Base Sepolia
+- Arbitrum Sepolia
+
+Actual availability is determined by bridge policy and the current route/environment.
+
+Before wallet approval the bridge obtains a live quote and surfaces:
+
+- amount sent;
+- provider fee;
+- forwarding fee;
+- gas fee where returned;
+- **estimated receive**.
+
+Source: `src/app/bridge/page.tsx`, `src/lib/contracts.ts`, `src/lib/bridge/`, `src/app/api/bridge/`.
 
 ## 5. Economic Agent OS truth
 
 The mandatory safety boundary is:
 
-`Propose → Review → Approve → Execute`
+```text
+Agent intent
+   ↓
+Proposal
+   ↓
+Recipient / route validation
+   ↓
+Live quote + preflight
+   ↓
+Expected receive shown
+   ↓
+Human review
+   ↓
+Wallet approval
+   ↓
+Execute
+   ↓
+Persist execution / report / ledger
+```
 
-Agents have configuration, budgets, execution history, reports and evaluator support. The approval boundary is enforced in the agent service/executor layer rather than being a visual-only UI convention.
+The approval boundary is enforced in the agent/service/execution path, not only as a UI convention.
 
-Agents do not receive a hidden user private key and do not silently sign the user's Transfer/Swap/Bridge wallet transactions.
+Economic Agent recipient entry uses `useRecipientValidation`, the same canonical validation path used by Manual Transfer. `.arc` Passport identifiers therefore resolve/validate while typing.
 
-Current agent templates include the seven core agent types plus template-based custom agents such as Market Intelligence and Shopping Advisor.
+Agents do not receive a hidden user private key and do not silently sign user-wallet Transfer/Swap/Bridge transactions.
 
-## 6. Membership and credits truth
+## 6. Passport identity truth
+
+Passport is a wallet-linked identity/profile layer with:
+
+- `.arc` username creation and public resolution;
+- owner profile editing;
+- profile photo add during creation;
+- profile photo add/change/remove after creation;
+- owner navigation back to ARCTIS Home;
+- wallet-linked public profile surface.
+
+Photo handling is a profile feature, not a transaction authorization mechanism.
+
+## 7. Membership, credits and finance
 
 Canonical billing source: `src/config/billing.ts`.
 
-### Memberships
+Membership entitlements and credit balances are persisted separately. Treasury is an observer/accounting surface and is not a hidden transaction executor.
 
-| Tier | Price | Monthly credits |
-|---|---:|---:|
-| Free | 0 USDC | 100 |
-| Student | 9 USDC | 1,000 |
-| Pro | 29 USDC | 5,000 |
-| Enterprise | 99 USDC | 25,000 |
+## 8. Asset truth
 
-### Top-ups
+### Arc/native and ARCTIS assets
 
-| Package | Price | Base | Bonus | Total |
-|---|---:|---:|---:|---:|
-| Starter | 10 USDC | 100 | 0 | 100 |
-| Value | 50 USDC | 600 | 100 | 700 |
-| Power | 100 USDC | 1,400 | 400 | 1,800 |
-| Pro | 250 USDC | 4,000 | 1,500 | 5,500 |
-
-Text generation currently costs **1 credit per 1,000 tokens**. Other operation costs are centralized in `OPERATION_COSTS`.
-
-Membership status and credit entitlements are separate persisted concepts and are surfaced in the product UI.
-
-## 7. Asset truth
-
-Canonical application registry: `src/config/assets.ts`.
-
-| Asset | Role | Executable |
+| Asset | Role | Status |
 |---|---|---|
-| USDC | Arc Native USDC; primary payment/gas asset | Yes |
-| tUSDC | ARCTIS OTC test asset | Yes |
-| tARC | ARCTIS OTC test asset; not an official Arc native token | Yes |
-| EURC | Circle-rail integration concept pending explicit configuration | No |
-| cirBTC | Circle-rail integration concept pending explicit configuration | No |
+| USDC | Arc Native USDC; primary payment/gas asset | Executable |
+| tUSDC | ARCTIS OTC test asset | Executable |
+| tARC | ARCTIS OTC test asset; not an official Arc token | Executable |
 
-Network/contract truth lives in `src/lib/contracts.ts`.
+### Circle Swap surface
 
-## 8. Data architecture
+| Asset | ARCTIS UI status | Note |
+|---|---|---|
+| EURC | Exposed | Last Circle asset in dropdown; live route/quote availability is environment-dependent |
+| cirBTC | Intentionally hidden | Not part of current ARCTIS Swap product surface |
+
+The Circle rail is maintained separately from the canonical OTC asset registry because Circle asset execution depends on the active Circle/App Kit integration and current Arc Testnet conditions.
+
+## 9. Data architecture
 
 The browser does not directly operate on sensitive Firestore collections. Server-side API routes use Firebase Admin SDK for persistence.
 
@@ -159,15 +209,15 @@ Primary collections include:
 - `obs_logs`
 - `rate_limits`
 
-See `DATABASE.md` for the current data reference.
+See `DATABASE.md` for schema/index details.
 
-## 9. Activity and History truth
+## 10. Activity and History truth
 
-`/api/activity` is the shared aggregation source for user-facing activity data. The current product treats **History** as the canonical historical surface; the Activity page is not part of the primary navigation architecture.
+`/api/activity` is the shared aggregation source for user-facing activity data. **History** is the canonical user-facing historical surface.
 
-Do not reintroduce separate, competing transaction/history data stores without an explicit architecture decision.
+Do not introduce competing transaction/history stores without an explicit architecture decision.
 
-## 10. Navigation truth
+## 11. Navigation truth
 
 Primary navigation:
 
@@ -199,19 +249,17 @@ Platform
   Feedback
 ```
 
-Command Palette and other secondary navigation should follow the same terminology.
+Command Palette and secondary navigation should use the same terminology.
 
-## 11. Internationalization truth
+## 12. Internationalization truth
 
-The product has a single locale selector with these supported languages:
+The product has one persisted locale selector with:
 
 English, Hindi, Spanish, Portuguese, Chinese, Korean, Vietnamese, French, Swahili and Arabic.
 
-Arabic includes RTL handling. Locale selection is persisted client-side.
+Arabic includes RTL handling.
 
-Source: `src/lib/i18n/` and the settings/language UI.
-
-## 12. Security boundary
+## 13. Security boundary
 
 The intended money-control boundary is:
 
@@ -222,37 +270,48 @@ Validation / policy
    ↓
 Server coordination + verification
    ↓
-User wallet / Circle App Kit signing flow
+User wallet / Circle App Kit signing
    ↓
 Onchain settlement
    ↓
 Persistence / explorer / history
 ```
 
-No server-side ARCTIS component should be described as possessing the user's wallet signing authority.
+No ARCTIS server component should be described as possessing the user's wallet signing authority.
 
-Important testnet limitation: not every mutating API route currently has the same cryptographic wallet-proof level. See `SECURITY.md` for the current route-level posture and remaining hardening work.
+Important testnet limitation: not every mutating API route currently has the same cryptographic wallet-proof level. See `SECURITY.md` for route-level posture and remaining hardening work.
 
-## 13. Configuration sources of truth
+## 14. Animation and interaction truth
 
-Never duplicate these facts in documentation or UI when they can be derived:
+Framer Motion is used for product transitions and interaction feedback. Animation communicates state/hierarchy rather than decorative motion.
+
+The repository architecture illustration (`docs/architecture-flow.svg`) is a self-contained SVG/CSS animation. Dashed animated paths represent control/data flow; pulsing nodes represent active hand-offs; the layers show product pillars → orchestration/policy → persistence/AI routing/Arc + Circle rails.
+
+The animation is intentionally dependency-free so GitHub visitors can understand the architecture without executing the application.
+
+## 15. Configuration sources of truth
 
 - AI personas → `src/config/ai.ts`
 - Billing → `src/config/billing.ts`
-- Assets → `src/config/assets.ts`
+- Arc/native executable assets → `src/config/assets.ts`
 - Network/contracts → `src/lib/contracts.ts`
+- Circle Swap pair logic → `src/lib/swap/circle.ts`
 - Bridge policy → `src/lib/bridge/policy.ts`
 - AI routing → `src/lib/ai/router/`
+- Product context → `src/lib/ai/copilot/product-context.ts`
 
-## 14. Product claims policy
+Never duplicate mutable configuration values in documentation or UI when they can be derived from code.
+
+## 16. Product claims policy
 
 ARCTIS should use precise language:
 
 - **Built on Arc** — yes.
-- **Arc Testnet** — yes when referring to the configured network.
-- **Official Arc/Circle partner** — do not claim unless formally approved.
+- **Arc Testnet** — yes for the configured network.
+- **Uses Circle tooling** — yes where the repository actually integrates Circle App Kit/CCTP.
+- **Official Circle/Arc partner** — do not claim unless formally approved.
 - **Production-ready/mainnet** — do not claim while the product remains testnet-stage.
-- **Autonomous wallet control** — do not claim.
+- **Autonomous wallet custody** — do not claim.
 - **Official tARC token** — do not claim.
 
-The Arc brand guidance states that the builder's brand should lead and Arc should be described as infrastructure. Keep ARCTIS visually and verbally distinct.
+The repository is intentionally explicit about the difference between implemented, configured, route-dependent and future capabilities.

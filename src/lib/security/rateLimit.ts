@@ -1,8 +1,6 @@
 // ============================================================
 // Rate Limiting — Phase 18: Production Hardening
 // Firestore-backed sliding window (Admin SDK, server-only).
-// Works correctly across serverless instances (in-memory counters
-// do not, since each cold start gets a fresh process).
 // ============================================================
 import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -16,17 +14,14 @@ export interface RateLimitResult {
 
 /**
  * Checks and increments a sliding-window rate limit counter.
- * @param key       Unique identifier — typically `${route}:${walletOrIp}`
- * @param maxCalls  Max calls allowed within the window
- * @param windowMs  Window duration in milliseconds
+ * Sensitive financial/agent routes fail closed if the limiter itself
+ * is unavailable; low-risk routes retain graceful degradation.
  */
-export async function checkRateLimit(
-  key: string,
-  maxCalls: number,
-  windowMs: number
-): Promise<RateLimitResult> {
+export async function checkRateLimit(key: string, maxCalls: number, windowMs: number): Promise<RateLimitResult> {
   const db = getAdminDb();
   const ref = db.collection('rate_limits').doc(key);
+  const reset = (start: number) => new Date(start + windowMs).toISOString();
+  const sensitive = /(^|:)(agentAction|swap|bridge|transfer|treasury)(:|$)/i.test(key);
 
   try {
     const snap = await ref.get();
@@ -34,39 +29,38 @@ export async function checkRateLimit(
 
     if (!snap.exists) {
       await ref.set({ count: 1, windowStart: now, updatedAt: FieldValue.serverTimestamp() });
-      return { allowed: true, remaining: maxCalls - 1, resetAt: new Date(now + windowMs).toISOString() };
+      return { allowed: true, remaining: Math.max(0, maxCalls - 1), resetAt: reset(now) };
     }
 
     const data = snap.data()!;
-    const windowStart = data.windowStart as number;
+    const windowStart = Number(data.windowStart);
     const elapsed = now - windowStart;
 
-    if (elapsed > windowMs) {
-      // Window expired — reset
+    if (!Number.isFinite(windowStart) || elapsed > windowMs) {
       await ref.set({ count: 1, windowStart: now, updatedAt: FieldValue.serverTimestamp() });
-      return { allowed: true, remaining: maxCalls - 1, resetAt: new Date(now + windowMs).toISOString() };
+      return { allowed: true, remaining: Math.max(0, maxCalls - 1), resetAt: reset(now) };
     }
 
-    const currentCount = (data.count as number) ?? 0;
-    if (currentCount >= maxCalls) {
-      return { allowed: false, remaining: 0, resetAt: new Date(windowStart + windowMs).toISOString() };
-    }
+    const currentCount = Number(data.count) || 0;
+    if (currentCount >= maxCalls) return { allowed: false, remaining: 0, resetAt: reset(windowStart) };
 
     await ref.set({ count: currentCount + 1, windowStart, updatedAt: FieldValue.serverTimestamp() });
-    return { allowed: true, remaining: maxCalls - currentCount - 1, resetAt: new Date(windowStart + windowMs).toISOString() };
+    return { allowed: true, remaining: Math.max(0, maxCalls - currentCount - 1), resetAt: reset(windowStart) };
   } catch {
-    // Fail open — a rate limiter outage must never take down the API.
-    // This is a deliberate trade-off: availability over strict enforcement
-    // during infrastructure failures.
+    // Availability is acceptable for low-risk reads, but not for sensitive
+    // financial/agent actions: an outage must not turn protection into
+    // unlimited access.
+    if (sensitive) {
+      return { allowed: false, remaining: 0, resetAt: new Date(Date.now() + windowMs).toISOString() };
+    }
     return { allowed: true, remaining: maxCalls, resetAt: new Date(Date.now() + windowMs).toISOString() };
   }
 }
 
-/** Standard rate limit tiers used across ARCTIS routes. */
 export const RATE_LIMITS = {
-  aiChat:      { maxCalls: 30, windowMs: 60_000 },       // 30/min
-  agentAction: { maxCalls: 10, windowMs: 60_000 },       // 10/min — financial actions, tighter
-  swap:        { maxCalls: 5,  windowMs: 60_000 },       // 5/min
-  bridge:      { maxCalls: 5,  windowMs: 60_000 },       // 5/min
-  passport:    { maxCalls: 5,  windowMs: 300_000 },      // 5/5min — claim/update is infrequent
+  aiChat:      { maxCalls: 30, windowMs: 60_000 },
+  agentAction: { maxCalls: 10, windowMs: 60_000 },
+  swap:        { maxCalls: 5, windowMs: 60_000 },
+  bridge:      { maxCalls: 5, windowMs: 60_000 },
+  passport:    { maxCalls: 5, windowMs: 300_000 },
 } as const;

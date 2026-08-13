@@ -1,5 +1,6 @@
 [profile.default]
 src = "contracts"
+test = "test"
 out = "contracts/out"
 libs = ["lib"]
 solc_version = "0.8.24"
@@ -10,3 +11,6 @@ via_ir = false
 [fmt]
 line_length = 120
 multiline_func_header = "all"
+
+[rpc_endpoints]
+arc_testnet = "${ARC_TESTNET_RPC_URL}"

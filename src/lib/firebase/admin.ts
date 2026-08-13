@@ -18,24 +18,31 @@ let db: Firestore | undefined;
 export function normalizePrivateKey(rawKey: string): string {
   let key = rawKey.trim();
 
-  // Support common secure deployment formats: quoted .env values, literal\n
-  // sequences, JSON-escaped newlines, and base64-encoded PEM content.
+  // Support common Vercel/.env formats: quoted values, JSON-encoded strings,
+  // escaped newlines, and base64-encoded PEM content.
   if ((key.startsWith('\"') && key.endsWith('\"')) || (key.startsWith("'") && key.endsWith("'"))) {
-    key = key.slice(1, -1);
+    try {
+      if (key.startsWith('\"')) key = JSON.parse(key) as string;
+      else key = key.slice(1, -1);
+    } catch {
+      key = key.slice(1, -1);
+    }
   }
 
   key = key.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
 
-  if (!key.includes('BEGIN PRIVATE KEY')) {
+  if (!key.includes('BEGIN PRIVATE KEY') && !key.includes('BEGIN RSA PRIVATE KEY')) {
     try {
       const decoded = Buffer.from(key, 'base64').toString('utf8').trim();
-      if (decoded.includes('BEGIN PRIVATE KEY')) key = decoded.replace(/\r\n/g, '\n');
+      if (decoded.includes('BEGIN PRIVATE KEY') || decoded.includes('BEGIN RSA PRIVATE KEY')) key = decoded.replace(/\r\n/g, '\n');
     } catch {
       // Keep original value; cert() will reject invalid material below.
     }
   }
 
-  if (!key.includes('-----BEGIN PRIVATE KEY-----') || !key.includes('-----END PRIVATE KEY-----')) {
+  const hasPkcs8 = key.includes('-----BEGIN PRIVATE KEY-----') && key.includes('-----END PRIVATE KEY-----');
+  const hasRsa = key.includes('-----BEGIN RSA PRIVATE KEY-----') && key.includes('-----END RSA PRIVATE KEY-----');
+  if (!hasPkcs8 && !hasRsa) {
     throw new Error('Firebase Admin SDK private key is not a valid PEM. Check FIREBASE_PRIVATE_KEY formatting.');
   }
 

@@ -4,17 +4,16 @@ import type { SwapToken } from '@/lib/swap/types';
 import { isCircleSwapPair } from '@/lib/swap/circle';
 import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
 
-const SWAP_TOKENS = ['USDC', 'tUSDC', 'tARC', 'EURC', 'cirBTC'] as const;
+const SWAP_TOKENS = ['USDC', 'tUSDC', 'tARC', 'EURC'] as const;
 type AgentSwapToken = typeof SWAP_TOKENS[number];
 const ADDRESS_RE = '0x[a-fA-F0-9]{40}';
 const PASSPORT_RE = '@?[a-z0-9_-]{3,20}(?:\\.arc)?';
 const AMOUNT_RE = '\\d+(?:\\.\\d+)?';
-const TOKEN_RE = '(usdc|tusdc|tarc|eurc|cirbtc|btc)';
+const TOKEN_RE = '(usdc|tusdc|tarc|eurc)';
 
 function normalizeSwapToken(raw?: string): AgentSwapToken | undefined {
   if (!raw) return undefined;
   const value = raw.toLowerCase();
-  if (value === 'btc') return 'cirBTC';
   return SWAP_TOKENS.find((t) => t.toLowerCase() === value);
 }
 
@@ -136,7 +135,6 @@ export function resolveClarification(pending: PendingFinancialAction, replyText:
 }
 
 export function clarificationQuestion(pending: PendingFinancialAction): string {
-  const chains = listSourceChainNames().join(', ');
   const prefix = pending.error ? `${pending.error}\n\n` : '';
   switch (pending.missing) {
     case 'full': return `${prefix}Please provide the missing details for this ${pending.action}.`;

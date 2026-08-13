@@ -28,7 +28,7 @@ export function buildCanonicalProductContext(): string {
 - Primary asset: Arc Native USDC; it is the primary payment/gas asset in the current ARCTIS testnet configuration.
 - Treasury: ${TREASURY_WALLET}
 - Executable ARCTIS assets: ${assets}
-- Circle-rail assets such as EURC/cirBTC are not claimed as executable here until their active contract configuration is verified.
+- Circle-rail assets are only described when their active contract/route configuration is present; do not invent unsupported assets or routes.
 - AI personas: ${modes} (${AI_MODES.length} total). Backend model selection is automatic; never expose or promise a particular model.
 - Text usage pricing: ${CREDITS_PER_1K_TOKENS} credit per 1,000 tokens. Non-text operation costs are defined in @/config/billing.
 - Memberships: ${memberships}

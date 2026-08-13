@@ -4,8 +4,8 @@ import { useState, useCallback, useRef } from 'react';
 import { useWaitForTransactionReceipt, useAccount } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
-import { createPublicClient, formatEther, formatUnits, http, parseUnits } from 'viem';
-import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_URL } from '@/lib/contracts';
+import { createPublicClient, fallback, formatUnits, http, parseUnits } from 'viem';
+import { PRIMARY_CONTRACT, PRIMARY_DECIMALS, ERC20_ABI, CHAIN_ID, RPC_FALLBACK_URLS } from '@/lib/contracts';
 import { useAppStore } from '@/lib/store';
 import { parseTransactionError, generateId } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -13,38 +13,65 @@ import type { TransactionRecord } from '@/types';
 
 interface TransferParams { to: string; amount: string; note?: string; }
 
+function normalizePassportRecipient(value: string): string {
+  return value.trim().replace(/^['"`]+|['"`]+$/g, '').replace(/^@/, '').toLowerCase();
+}
+
 function isPassportRecipient(value: string): boolean {
-  const v = value.trim().toLowerCase();
-  return !v.startsWith('0x') && /^[a-z0-9_-]+(?:\.arc)?$/.test(v);
+  const v = normalizePassportRecipient(value);
+  return !v.startsWith('0x') && /^[a-z0-9_-]{2,32}(?:\.arc)?$/.test(v);
 }
 
 async function resolveTransferRecipient(value: string): Promise<string> {
-  const recipient = value.trim();
+  const recipient = normalizePassportRecipient(value);
   if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
   if (!isPassportRecipient(recipient)) throw new Error('Enter a valid wallet address or Passport ID');
-  const username = recipient.toLowerCase().endsWith('.arc') ? recipient.slice(0, -4) : recipient;
+
+  const username = recipient.endsWith('.arc') ? recipient.slice(0, -4) : recipient;
   const response = await fetch(`/api/passport/resolve?username=${encodeURIComponent(username)}`);
   let data: { walletAddress?: string; error?: string } = {};
   try { data = await response.json(); } catch { /* explicit error below */ }
-  if (!response.ok || !data.walletAddress) throw new Error(data.error || `Passport not found: ${recipient}`);
+  if (!response.ok || !data.walletAddress) throw new Error(data.error || `Passport not found: ${username}.arc`);
   if (!/^0x[a-fA-F0-9]{40}$/.test(data.walletAddress)) throw new Error('Passport resolved to an invalid wallet address');
   return data.walletAddress;
 }
 
-async function preflightTransfer(address: `0x${string}`, amount: string) {
-  const client = createPublicClient({ transport: http(RPC_URL) });
+/**
+ * Arc uses USDC as its native gas asset. Arc documents the ERC-20 USDC
+ * interface as the recommended balance/transfer interface; the native
+ * representation is the same underlying balance at 18 decimals.
+ */
+async function preflightTransfer(address: `0x${string}`, to: `0x${string}`, amount: string) {
+  const client = createPublicClient({ transport: fallback(RPC_FALLBACK_URLS.map((url) => http(url))) });
   const requiredUsdc = parseUnits(amount, PRIMARY_DECIMALS);
-  const [nativeBalance, gasPrice, usdcBalance] = await Promise.all([
-    client.getBalance({ address }),
-    client.getGasPrice(),
+  const [usdcBalance, gasPrice] = await Promise.all([
     client.readContract({ address: PRIMARY_CONTRACT, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
+    client.getGasPrice(),
   ]);
-  if (usdcBalance < requiredUsdc) {
-    throw new Error(`Insufficient USDC. You have ${formatUnits(usdcBalance, PRIMARY_DECIMALS)} USDC, but ${amount} USDC is required. No transaction was submitted.`);
+
+  let gasLimit = 100_000n;
+  try {
+    gasLimit = await client.estimateContractGas({
+      address: PRIMARY_CONTRACT,
+      abi: ERC20_ABI,
+      functionName: 'transfer',
+      args: [to, requiredUsdc],
+      account: address,
+    });
+  } catch {
+    // App Kit performs the authoritative estimate immediately before send.
   }
-  const requiredNativeGas = gasPrice * 100_000n * 2n;
-  if (nativeBalance < requiredNativeGas) {
-    throw new Error(`Insufficient ARC for network fees. You need approximately ${formatEther(requiredNativeGas)} ARC to submit this transfer. No USDC was sent.`);
+
+  const estimatedNativeGas = gasPrice * gasLimit;
+  const nativeScale = 10n ** 12n;
+  const gasFeeUsdc = (estimatedNativeGas + nativeScale - 1n) / nativeScale;
+  const requiredTotalUsdc = requiredUsdc + gasFeeUsdc;
+
+  if (usdcBalance < requiredTotalUsdc) {
+    const availableUsdc = formatUnits(usdcBalance, PRIMARY_DECIMALS);
+    const requiredDisplay = formatUnits(requiredUsdc, PRIMARY_DECIMALS);
+    const feeUsdc = formatUnits(gasFeeUsdc, PRIMARY_DECIMALS);
+    throw new Error(`Insufficient USDC for payment and network fee. Available: ${availableUsdc} USDC. Required: ${requiredDisplay} USDC + ~${feeUsdc} USDC network fee. No transaction was submitted.`);
   }
 }
 
@@ -103,7 +130,7 @@ export function useTransfer() {
 
     try {
       const resolvedTo = await resolveTransferRecipient(to);
-      await preflightTransfer(address, amount);
+      await preflightTransfer(address, resolvedTo as `0x${string}`, amount);
       const mode: TransactionRecord['mode'] = typeof window !== 'undefined' && window.sessionStorage.getItem('arctis-transfer-mode') === 'agent' ? 'agent' : 'manual';
 
       const amountBigInt = parseUnits(amount, PRIMARY_DECIMALS);

@@ -7,9 +7,13 @@ import { getSwapHistory } from '@/lib/swap/service';
 import { getBridgeHistory } from '@/lib/bridge/service';
 
 interface ActivityItem { id: string; type: string; title: string; description: string; timestamp: string; amount?: string; token?: string; status?: string; txHash?: string; explorerUrl?: string; credits?: number; meta?: Record<string, unknown>; }
+
+// Keep one canonical successful state across transfers, swaps and bridges.
+// Some records use "confirmed" while swap/agent records use "completed";
+// exposing both creates duplicate "Successful" filters in history UIs.
 function historyStatus(status: string | undefined): string | undefined {
   if (!status) return undefined;
-  if (status === 'completed' || status === 'confirmed') return status;
+  if (status === 'completed' || status === 'confirmed') return 'confirmed';
   if (status === 'failed' || status === 'timeout') return 'failed';
   return 'pending';
 }

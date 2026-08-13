@@ -1,27 +1,6 @@
 'use client';
-
 import { useCallback } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
-import { CHAIN_ID, RPC_URL, EXPLORER_URL } from '@/lib/contracts';
+import { CHAIN_ID } from '@/lib/contracts';
 import toast from 'react-hot-toast';
-
-export function useChainSwitch() {
-  const { chainId } = useAccount();
-  const { switchChainAsync, isPending } = useSwitchChain();
-  const isCorrectChain = chainId === CHAIN_ID;
-
-  const switchToArc = useCallback(async () => {
-    if (isCorrectChain) return true;
-    try {
-      await switchChainAsync({ chainId: CHAIN_ID });
-      toast.success('Switched to Arc Testnet');
-      return true;
-    } catch (err) {
-      const e = err as { message?: string };
-      toast.error(e.message?.includes('rejected') ? 'Chain switch rejected' : 'Failed to switch network');
-      return false;
-    }
-  }, [isCorrectChain, switchChainAsync]);
-
-  return { isCorrectChain, switchToArc, isSwitching: isPending, currentChainId: chainId, targetChainId: CHAIN_ID };
-}
+export function useChainSwitch(){const{chainId}=useAccount();const{switchChainAsync,isPending}=useSwitchChain();const isCorrectChain=chainId===CHAIN_ID;const switchToArc=useCallback(async()=>{if(isCorrectChain)return true;try{await switchChainAsync({chainId:CHAIN_ID});await new Promise(r=>setTimeout(r,250));const verified=window.ethereum?Number(await window.ethereum.request({method:'eth_chainId'}))===CHAIN_ID:undefined;if(verified!==true){toast.error('Network switch could not be verified');return false;}toast.success('Switched to Arc Testnet');return true}catch(err){const e=err as{message?:string};toast.error(e.message?.toLowerCase().includes('reject')?'Chain switch rejected':'Failed to switch network');return false}},[isCorrectChain,switchChainAsync]);return{isCorrectChain,switchToArc,isSwitching:isPending,currentChainId:chainId,targetChainId:CHAIN_ID};}

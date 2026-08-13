@@ -39,7 +39,7 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
   return (await getPassportByUsername(username)) !== null;
 }
 
-export async function createPassport(username: string, walletAddress: string, displayName?: string): Promise<void> {
+export async function createPassport(username: string, walletAddress: string, displayName?: string, avatarUrl?: string): Promise<void> {
   const db = getAdminDb();
   const usernameLower = username.toLowerCase();
   const walletLower = walletAddress.toLowerCase();
@@ -59,6 +59,7 @@ export async function createPassport(username: string, walletAddress: string, di
       username: usernameLower,
       walletAddress: walletLower,
       displayName: displayName?.trim() || null,
+      avatarUrl: avatarUrl?.trim() || null,
       verified: false,
       createdAt: FieldValue.serverTimestamp(),
     });

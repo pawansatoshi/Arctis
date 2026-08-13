@@ -19,24 +19,194 @@ import { tryAcquireExecution, releaseExecution } from '@/lib/transaction/executi
 import toast from 'react-hot-toast';
 
 type AppKitChain = 'Arc_Testnet' | 'Ethereum_Sepolia' | 'Base_Sepolia' | 'Arbitrum_Sepolia';
-interface BridgeChain { chain:string; chainId:number; domain:number; usdc:string; explorer:string; appKitChain:AppKitChain; enabled:boolean; }
-interface Quote { amount:number; providerFee:number; forwarderFee:number; gasFee:number; estimatedOutput:number; }
-interface Session { amount:string; source:BridgeChain|null; destination:BridgeChain|null; quote:Quote|null; step:'idle'|'estimating'|'executing'|'completed'|'error'; burn?:string; forward?:string; error?:string; executing:boolean; }
-const EMPTY:Session={amount:'',source:null,destination:null,quote:null,step:'idle',executing:false};
-const RPC:Record<number,string>={5042002:RPC_FALLBACK_URLS[0]??'https://rpc.testnet.arc.network',11155111:'https://ethereum-sepolia-rpc.publicnode.com',84532:'https://sepolia.base.org',421614:'https://sepolia-rollup.arbitrum.io/rpc'};
-const NATIVE:Record<number,string>={5042002:'ARC',11155111:'ETH',84532:'ETH',421614:'ETH'};
-const policy=getBridgePolicy();
-function fee(entries:unknown[],type:string){if(!Array.isArray(entries))return 0;const item=entries.find((e)=>typeof e==='object'&&e!==null&&(e as{type?:string}).type===type) as{amount?:string|number}|undefined;const n=Number(item?.amount??0);return Number.isFinite(n)?n:0;}
-async function actualChainId(){if(!window.ethereum)return null;const raw=await window.ethereum.request({method:'eth_chainId'});return typeof raw==='string'?parseInt(raw,16):Number(raw);}
-async function verifyChain(expected:number){return (await actualChainId())===expected;}
-async function preflight(source:BridgeChain,address:string,amount:string){const client=createPublicClient({transport:http(RPC[source.chainId])});const required=parseUnits(amount,6);const[native,gas,balance]=await Promise.all([client.getBalance({address:address as `0x${string}`}),client.getGasPrice(),client.readContract({address:source.usdc as `0x${string}`,abi:ERC20_ABI,functionName:'balanceOf',args:[address as `0x${string}`]})]);if(balance<required)throw new Error(`Insufficient USDC on ${source.chain}. No USDC will be burned.`);if(native<gas*300_000n*2n)throw new Error(`Insufficient ${NATIVE[source.chainId]??'native gas'} on ${source.chain}. No USDC will be burned.`);}
-function BridgePageInner(){const searchParams=useSearchParams();const{isConnected,address,chainId,connector}=useAccount();const{switchChainAsync,isPending:isSwitching}=useSwitchChain();const{pendingAction,setPendingAction}=useAppStore();const[chains,setChains]=useState<BridgeChain[]>([]);const[sessions,setSessions]=useState<{manual:Session;agent:Session}>({manual:{...EMPTY},agent:{...EMPTY}});const sessionsRef=useRef(sessions);const quoteSeq=useRef<{manual:number;agent:number}>({manual:0,agent:0});const[mode,setMode]=useState<ExecutionMode>('manual');const[showHistory,setShowHistory]=useState(false);const[history,setHistory]=useState<Array<Record<string,unknown>>>([]);const[modalOpen,setModalOpen]=useState(false);const[modalMode,setModalMode]=useState<ExecutionMode>('manual');const session=sessions[mode];const modalSession=sessions[modalMode];const patch=useCallback((modeKey:ExecutionMode,updates:Partial<Session>)=>setSessions(prev=>({...prev,[modeKey]:{...prev[modeKey],...updates}})),[]);useEffect(()=>{sessionsRef.current=sessions},[sessions]);
-useEffect(()=>{if(searchParams.get('mode')==='agent')setMode('agent');},[searchParams]);useEffect(()=>{fetch('/api/bridge').then(r=>r.json()).then((data:{chains?:BridgeChain[]})=>{const available=(data.chains??[]).filter(c=>c.enabled);setChains(available);const source=available.find(c=>c.chainId===5042002)??available[0]??null;const destination=available.find(c=>c.chainId===84532)??available.find(c=>c.chainId!==5042002)??null;setSessions(prev=>({manual:{...prev.manual,source:prev.manual.source??source,destination:prev.manual.destination??destination},agent:{...prev.agent,source:prev.agent.source??source,destination:prev.agent.destination??destination}}));}).catch(()=>toast.error('Unable to load bridge networks'));},[]);useEffect(()=>{if(pendingAction?.action!=='bridge')return;setMode('agent');setSessions(prev=>({...prev,agent:{...prev.agent,amount:pendingAction.amount,source:chains.find(c=>c.chainId===pendingAction.sourceChainId)??prev.agent.source,destination:chains.find(c=>c.chainId===pendingAction.destinationChainId)??prev.agent.destination}}));setPendingAction(null);},[pendingAction,chains,setPendingAction]);useEffect(()=>{if(!showHistory||!address)return;Promise.all([fetch(`/api/bridge/history?wallet=${address}&limit=100`).then(r=>r.json()).catch(()=>({bridges:[]})),Promise.resolve(localStorage.getItem(`arctis-bridge-history:${address.toLowerCase()}`)).then(raw=>raw?JSON.parse(raw):[]).catch(()=>[])]).then(([remote,local])=>{const all=[...(remote.bridges??[]),...(local??[])];setHistory(Array.from(new Map(all.map((x:Record<string,unknown>)=>[String(x.burnTxHash),x] as const)).values()));});},[showHistory,address]);
-const loadQuote=useCallback(async(target:ExecutionMode)=>{const q=sessionsRef.current[target];const amount=Number(q.amount);const seq=++quoteSeq.current[target];if(q.executing||!q.source||!q.destination||!address||!connector||!Number.isFinite(amount)||amount<0.000001||amount>1000||q.source.chainId===q.destination.chainId||chainId!==q.source.chainId){if(!q.executing)patch(target,{quote:null});return;}patch(target,{step:'estimating',error:undefined});try{const provider=await connector.getProvider();const adapter=await createViemAdapterFromProvider({provider:provider as never});const kit=new AppKit();const params={from:{adapter,chain:q.source.appKitChain},to:{recipientAddress:address,chain:q.destination.appKitChain,useForwarder:true},amount:amount.toFixed(6)} as const;const result=await kit.estimateBridge(params);const fees=(result as{fees?:unknown[]}).fees??[];const gas=(result as{gasFees?:unknown[]}).gasFees??[];const providerFee=fee(fees,'provider');const forwarderFee=fee(fees,'forwarder');const gasFee=fee(gas,'gasFee')||fee(fees,'gasFee');if(quoteSeq.current[target]!==seq||sessionsRef.current[target].executing)return;patch(target,{quote:{amount,providerFee,forwarderFee,gasFee,estimatedOutput:Math.max(0,amount-providerFee-forwarderFee-gasFee)},step:'idle'});}catch(error){if(quoteSeq.current[target]!==seq||sessionsRef.current[target].executing)return;patch(target,{quote:null,step:'error',error:error instanceof Error?error.message:'Live bridge quote unavailable.'});}},[address,connector,chainId,patch]);useEffect(()=>{const timer=window.setTimeout(()=>void loadQuote(mode),350);return()=>window.clearTimeout(timer);},[loadQuote,mode,session.amount,session.source?.chainId,session.destination?.chainId]);
-const switchToSource=useCallback(async(target:ExecutionMode)=>{const source=sessionsRef.current[target].source;if(!source)return false;try{announceTransactionState('network_required');announceTransactionState('switching_network');await switchChainAsync({chainId:source.chainId});if(!(await verifyChain(source.chainId)))throw new Error('Wallet switch could not be verified.');announceTransactionState('network_switched');return true;}catch(error){patch(target,{step:'error',error:error instanceof Error?error.message:'Network switch failed.'});toast.error('Network switch could not be verified');return false;}},[switchChainAsync,patch]);
-const execute=useCallback(async(target:ExecutionMode)=>{const q=sessionsRef.current[target];const amount=Number(q.amount);if(!q.source||!q.destination||!address||!connector||!q.quote?.amount||!Number.isFinite(amount)||q.executing)return;const lockKey=`bridge:${address.toLowerCase()}:${target}:${q.source.chainId}:${q.destination.chainId}:${q.amount}`;if(!tryAcquireExecution(lockKey))return;patch(target,{step:'executing',executing:true,error:undefined});try{if(!(await verifyChain(q.source.chainId))&&!(await switchToSource(target)))throw new Error(`Wallet is not on ${q.source.chain}.`);await preflight(q.source,address,q.amount);const provider=await connector.getProvider();const adapter=await createViemAdapterFromProvider({provider:provider as never});const kit=new AppKit();const params={from:{adapter,chain:q.source.appKitChain},to:{recipientAddress:address,chain:q.destination.appKitChain,useForwarder:true},amount:amount.toFixed(6)} as const;const live=await kit.estimateBridge(params);const fees=(live as{fees?:unknown[]}).fees??[];const providerFee=fee(fees,'provider');const forwarderFee=fee(fees,'forwarder');if(amount<=providerFee+forwarderFee)throw new Error('Current Circle fees leave no transferable USDC amount.');announceTransactionState('wallet_approval');const result=await kit.bridge(params);const value=result as{state?:string;txHash?:string;forwardTxHash?:string;steps?:Array<{name?:string;txHash?:string}>};if(value.state&&value.state!=='success')throw new Error(`Circle bridge did not complete (${value.state}).`);const burn=value.txHash??value.steps?.find(x=>/burn|deposit/i.test(String(x.name)))?.txHash;if(!burn)throw new Error('No verifiable source transaction hash was returned.');const forward=value.forwardTxHash??value.steps?.find(x=>/forward|mint|receive|complete/i.test(String(x.name)))?.txHash;patch(target,{burn,forward,step:'completed',executing:false});announceTransactionState('submitted');announceTransactionState('processing');announceTransactionState('confirmed');setModalMode(target);setModalOpen(true);const record={burnTxHash:burn,forwardTxHash:forward,walletAddress:address,sourceChain:q.source.chain,destinationChain:q.destination.chain,sourceChainId:q.source.chainId,destinationChainId:q.destination.chainId,amount,status:'confirmed',mode:target,createdAt:new Date().toISOString()};void fetch('/api/bridge/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)}).catch(()=>{});try{const key=`arctis-bridge-history:${address.toLowerCase()}`;const old=JSON.parse(localStorage.getItem(key)||'[]');localStorage.setItem(key,JSON.stringify([record,...old.filter((x:Record<string,unknown>)=>String(x.burnTxHash)!==burn)].slice(0,100)));}catch{}}catch(error){patch(target,{step:'error',executing:false,error:error instanceof Error?error.message:'Bridge failed.'});announceTransactionState('failed');}finally{releaseExecution(lockKey);}},[address,connector,patch,switchToSource]);
-const agentExecute=useCallback(async(proposal:import('@/lib/store').PendingFinancialAction)=>{const source=chains.find(c=>c.chainId===proposal.sourceChainId)??sessionsRef.current.agent.source;const destination=chains.find(c=>c.chainId===proposal.destinationChainId)??sessionsRef.current.agent.destination;if(!source||!destination||!proposal.amount)throw new Error('Bridge proposal is incomplete.');if(!isConnected)throw new Error('Connect your wallet first.');setMode('agent');patch('agent',{source,destination,amount:proposal.amount,quote:null,step:'idle',executing:true,error:undefined});},[chains,isConnected,patch]);useEffect(()=>{if(mode==='agent'&&sessions.agent.executing&&sessions.agent.quote&&sessions.agent.step==='idle')void execute('agent');},[mode,sessions.agent.executing,sessions.agent.quote,sessions.agent.step,execute]);
-const reverse=()=>patch(mode,{source:session.destination,destination:session.source,quote:null,error:undefined});const closeModal=()=>{setModalOpen(false);patch(modalMode,{amount:'',quote:null,step:'idle',executing:false,burn:undefined,forward:undefined,error:undefined});};
-return <div className="page-container max-w-lg safe-bottom"><div className="flex items-center justify-between mb-6"><div><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span><h1 className="text-2xl font-bold mt-1">Bridge USDC</h1><p className="text-surface-600 text-sm mt-1">Circle CCTP V2 · Forwarding-first execution</p></div><button onClick={()=>setShowHistory(v=>!v)} className="btn-ghost p-2" aria-label="Bridge history"><History className="w-4 h-4"/></button></div><ModeTabs mode={mode} onChange={next=>{setMode(next);setModalOpen(false)}}/>{mode==='agent'?<EconomicAgentPanel action="bridge" onExecute={agentExecute} executionStatus={session.executing?'executing':session.step==='completed'?'success':session.step==='error'?'failed':'idle'} executionError={session.error} executionTxHash={session.forward??session.burn??null}/>:showHistory?<div className="mt-4 space-y-2">{history.length===0?<div className="glass-card p-8 text-center text-sm text-surface-600">No bridge transfers found.</div>:history.map(item=><div key={String(item.burnTxHash)} className="glass-card p-4"><div className="flex justify-between gap-3"><span className="text-sm font-semibold">{String(item.amount)} USDC · {String(item.sourceChain)} → ${String(item.destinationChain)}</span><span className="text-xs text-emerald-600">{String(item.status)} · {String(item.mode??'manual')}</span></div><p className="text-xs text-surface-500 mt-1">{formatRelative(String(item.createdAt))}</p></div>)}</div>:<div className="mt-4 space-y-4"><div className="glass-card p-5 space-y-4">{!isConnected?<div className="text-center p-8"><Wallet className="w-9 h-9 mx-auto mb-2 text-surface-500"/>Connect your wallet to bridge USDC.</div>:<><div><label className="text-surface-600 text-xs font-medium">FROM</label><div className="flex gap-2 mt-1"><button onClick={reverse} disabled={!session.destination} className="btn-ghost border"><ArrowDownUp className="w-4 h-4"/>Switch</button><select value={session.source?.chainId??''} onChange={e=>patch('manual',{source:chains.find(c=>c.chainId===Number(e.target.value))??null,quote:null,error:undefined})} className="input-base flex-1"><option value="">Select source</option>{chains.map(c=><option key={c.chainId} value={c.chainId}>{c.chain}</option>)}</select></div></div><div><label className="text-surface-600 text-xs font-medium">TO</label><select value={session.destination?.chainId??''} onChange={e=>patch('manual',{destination:chains.find(c=>c.chainId===Number(e.target.value))??null,quote:null,error:undefined})} className="input-base mt-1"><option value="">Select destination</option>{chains.filter(c=>c.chainId!==session.source?.chainId).map(c=><option key={c.chainId} value={c.chainId}>{c.chain}</option>)}</select></div><div><label className="text-surface-600 text-xs font-medium">Amount</label><input value={session.amount} onChange={e=>patch('manual',{amount:e.target.value,quote:null,error:undefined})} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base mt-1"/></div></>}</div><div className="rounded-xl border border-blue-500/15 bg-blue-500/[.04] p-4"><div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-blue-600"/><span className="text-sm font-semibold">{policy.label}</span></div><p className="text-xs text-surface-600 mt-1">{policy.explanation}</p></div>{isConnected&&session.source&&chainId!==session.source.chainId&&<div className="glass-card p-3 border-amber-500/20 bg-amber-500/5 text-sm text-amber-700">Wrong source network. <button onClick={()=>void switchToSource('manual')} disabled={isSwitching} className="btn-primary text-xs ml-2">{isSwitching?'Switching…':'Switch Network'}</button></div>}<div className="min-h-[118px] flex items-start">{session.quote?<div className="glass-card p-4 space-y-2 text-sm w-full"><div className="flex justify-between"><span>You send</span><span>{session.quote.amount.toFixed(6)} USDC</span></div><div className="flex justify-between"><span>Provider fee</span><span>{session.quote.providerFee.toFixed(6)} USDC</span></div><div className="flex justify-between"><span>Forwarding fee</span><span>{session.quote.forwarderFee.toFixed(6)} USDC</span></div><div className="flex justify-between font-semibold"><span>Estimated receive</span><span>{session.quote.estimatedOutput.toFixed(6)} USDC</span></div></div>:session.error?<div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2 w-full"><AlertCircle className="w-4 h-4"/>{session.error}</div>:session.step==='estimating'?<div className="w-full text-center text-xs text-surface-500 pt-5"><Loader2 className="w-4 h-4 animate-spin inline mr-1"/>Refreshing quote…</div>:<div className="w-full min-h-[90px]"/>}</div><div className="min-h-[58px] flex items-center"><button onClick={()=>void execute('manual')} disabled={!Number.isFinite(Number(session.amount))||Number(session.amount)<=0||!session.source||!session.destination||!session.quote||session.executing||isSwitching||chainId!==session.source?.chainId} className="btn-primary w-full py-3.5 disabled:opacity-40">{session.executing?'Confirm in wallet…':'Review & Bridge'}</button></div><p className="text-center text-xs text-surface-500">Preflight → live fee estimate → human approval → CCTP burn → Forwarding mint</p></div>}
-<TransactionConfirmationModal open={modalOpen} data={{status:modalSession.step==='error'?'failed':'confirmed',amount:`${modalSession.amount} USDC`,route:`${modalSession.source?.chain??''} → ${modalSession.destination?.chain??''}`,network:modalSession.destination?.chain,txHash:modalSession.forward??modalSession.burn,explorerUrl:modalSession.forward&&modalSession.destination?`${modalSession.destination.explorer}/tx/${modalSession.forward}`:modalSession.burn&&modalSession.source?`${modalSession.source.explorer}/tx/${modalSession.burn}`:undefined,detail:'Circle Forwarding handles destination processing.'}} onClose={closeModal} onNew={closeModal}/></div>}
-export default function BridgePage(){return <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">Loading…</div>}><BridgePageInner/></Suspense>}
+interface BridgeChain { chain: string; chainId: number; domain: number; usdc: string; explorer: string; appKitChain: AppKitChain; enabled: boolean; }
+interface Quote { amount: number; providerFee: number; forwarderFee: number; gasFee: number; estimatedOutput: number; }
+interface Session { amount: string; source: BridgeChain | null; destination: BridgeChain | null; quote: Quote | null; step: 'idle' | 'estimating' | 'executing' | 'completed' | 'error'; burn?: string; forward?: string; error?: string; executing: boolean; }
+const EMPTY: Session = { amount: '', source: null, destination: null, quote: null, step: 'idle', executing: false };
+const RPC: Record<number, string> = { 5042002: RPC_FALLBACK_URLS[0] ?? 'https://rpc.testnet.arc.network', 11155111: 'https://ethereum-sepolia-rpc.publicnode.com', 84532: 'https://sepolia.base.org', 421614: 'https://sepolia-rollup.arbitrum.io/rpc' };
+const NATIVE: Record<number, string> = { 5042002: 'ARC', 11155111: 'ETH', 84532: 'ETH', 421614: 'ETH' };
+const policy = getBridgePolicy();
+function fee(entries: unknown[], type: string) { if (!Array.isArray(entries)) return 0; const item = entries.find(e => typeof e === 'object' && e !== null && (e as { type?: string }).type === type) as { amount?: string | number } | undefined; const n = Number(item?.amount ?? 0); return Number.isFinite(n) ? n : 0; }
+function formatUSDC(value: number) { return Number.isFinite(value) ? value.toFixed(6).replace(/\.?0+$/, '') : '—'; }
+async function actualChainId() { if (!window.ethereum) return null; const raw = await window.ethereum.request({ method: 'eth_chainId' }); return typeof raw === 'string' ? parseInt(raw, 16) : Number(raw); }
+async function verifyChain(expected: number) { return (await actualChainId()) === expected; }
+async function preflight(source: BridgeChain, address: string, amount: string) { const client = createPublicClient({ transport: http(RPC[source.chainId]) }); const required = parseUnits(amount, 6); const [native, gas, balance] = await Promise.all([client.getBalance({ address: address as `0x${string}` }), client.getGasPrice(), client.readContract({ address: source.usdc as `0x${string}`, abi: ERC20_ABI, functionName: 'balanceOf', args: [address as `0x${string}`] })]); if (balance < required) throw new Error(`Insufficient USDC on ${source.chain}. No USDC will be burned.`); if (native < gas * 300_000n * 2n) throw new Error(`Insufficient ${NATIVE[source.chainId] ?? 'native gas'} on ${source.chain}. No USDC will be burned.`); }
+
+function BridgeQuoteCard({ quote, title = 'Live bridge quote' }: { quote: Quote; title?: string }) {
+  return <div className="glass-card p-4 space-y-2 text-sm w-full">
+    <div className="flex justify-between"><span className="text-surface-500">{title}</span><span className="font-semibold">Circle CCTP V2</span></div>
+    <div className="flex justify-between"><span>You send</span><span>{formatUSDC(quote.amount)} USDC</span></div>
+    <div className="flex justify-between"><span>Provider fee</span><span>{formatUSDC(quote.providerFee)} USDC</span></div>
+    <div className="flex justify-between"><span>Forwarding fee</span><span>{formatUSDC(quote.forwarderFee)} USDC</span></div>
+    {quote.gasFee > 0 && <div className="flex justify-between"><span>Gas fee</span><span>{formatUSDC(quote.gasFee)} USDC</span></div>}
+    <div className="flex justify-between font-semibold text-base"><span>Estimated receive</span><span>{formatUSDC(quote.estimatedOutput)} USDC</span></div>
+  </div>;
+}
+
+function BridgePageInner() {
+  const searchParams = useSearchParams();
+  const { isConnected, address, chainId, connector } = useAccount();
+  const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
+  const { pendingAction, setPendingAction } = useAppStore();
+  const [chains, setChains] = useState<BridgeChain[]>([]);
+  const [sessions, setSessions] = useState<{ manual: Session; agent: Session }>({ manual: { ...EMPTY }, agent: { ...EMPTY } });
+  const sessionsRef = useRef(sessions);
+  const quoteSeq = useRef<{ manual: number; agent: number }>({ manual: 0, agent: 0 });
+  const [mode, setMode] = useState<ExecutionMode>('manual');
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ExecutionMode>('manual');
+  const session = sessions[mode];
+  const modalSession = sessions[modalMode];
+  const patch = useCallback((modeKey: ExecutionMode, updates: Partial<Session>) => setSessions(prev => ({ ...prev, [modeKey]: { ...prev[modeKey], ...updates } })), []);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+
+  useEffect(() => { if (searchParams.get('mode') === 'agent') setMode('agent'); }, [searchParams]);
+  useEffect(() => {
+    fetch('/api/bridge').then(r => r.json()).then((data: { chains?: BridgeChain[] }) => {
+      const available = (data.chains ?? []).filter(c => c.enabled);
+      setChains(available);
+      const source = available.find(c => c.chainId === 5042002) ?? available[0] ?? null;
+      const destination = available.find(c => c.chainId === 84532) ?? available.find(c => c.chainId !== 5042002) ?? null;
+      setSessions(prev => ({ manual: { ...prev.manual, source: prev.manual.source ?? source, destination: prev.manual.destination ?? destination }, agent: { ...prev.agent, source: prev.agent.source ?? source, destination: prev.agent.destination ?? destination } }));
+    }).catch(() => toast.error('Unable to load bridge networks'));
+  }, []);
+  useEffect(() => {
+    if (pendingAction?.action !== 'bridge') return;
+    setMode('agent');
+    setSessions(prev => ({ ...prev, agent: { ...prev.agent, amount: pendingAction.amount, source: chains.find(c => c.chainId === pendingAction.sourceChainId) ?? prev.agent.source, destination: chains.find(c => c.chainId === pendingAction.destinationChainId) ?? prev.agent.destination, quote: null, step: 'idle', executing: false, error: undefined } }));
+    setPendingAction(null);
+  }, [pendingAction, chains, setPendingAction]);
+  useEffect(() => {
+    if (!showHistory || !address) return;
+    Promise.all([fetch(`/api/bridge/history?wallet=${address}&limit=100`).then(r => r.json()).catch(() => ({ bridges: [] })), Promise.resolve(localStorage.getItem(`arctis-bridge-history:${address.toLowerCase()}`)).then(raw => raw ? JSON.parse(raw) : []).catch(() => [])]).then(([remote, local]) => {
+      const all = [...(remote.bridges ?? []), ...(local ?? [])];
+      setHistory(Array.from(new Map(all.map((x: Record<string, unknown>) => [String(x.burnTxHash), x] as const)).values()));
+    });
+  }, [showHistory, address]);
+
+  const loadQuote = useCallback(async (target: ExecutionMode) => {
+    const q = sessionsRef.current[target];
+    const amount = Number(q.amount);
+    const seq = ++quoteSeq.current[target];
+    if (q.executing || !q.source || !q.destination || !address || !connector || !Number.isFinite(amount) || amount < 0.000001 || amount > 1000 || q.source.chainId === q.destination.chainId || chainId !== q.source.chainId) {
+      if (!q.executing) patch(target, { quote: null });
+      return;
+    }
+    patch(target, { step: 'estimating', error: undefined });
+    try {
+      const provider = await connector.getProvider();
+      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+      const kit = new AppKit();
+      const params = { from: { adapter, chain: q.source.appKitChain }, to: { recipientAddress: address, chain: q.destination.appKitChain, useForwarder: true }, amount: amount.toFixed(6) } as const;
+      const result = await kit.estimateBridge(params);
+      const fees = (result as { fees?: unknown[] }).fees ?? [];
+      const gas = (result as { gasFees?: unknown[] }).gasFees ?? [];
+      const providerFee = fee(fees, 'provider');
+      const forwarderFee = fee(fees, 'forwarder');
+      const gasFee = fee(gas, 'gasFee') || fee(fees, 'gasFee');
+      if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
+      patch(target, { quote: { amount, providerFee, forwarderFee, gasFee, estimatedOutput: Math.max(0, amount - providerFee - forwarderFee - gasFee) }, step: 'idle' });
+    } catch (error) {
+      if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
+      patch(target, { quote: null, step: 'error', error: error instanceof Error ? error.message : 'Live bridge quote unavailable.' });
+    }
+  }, [address, connector, chainId, patch]);
+  useEffect(() => { const timer = window.setTimeout(() => void loadQuote(mode), 350); return () => window.clearTimeout(timer); }, [loadQuote, mode, session.amount, session.source?.chainId, session.destination?.chainId]);
+
+  const switchToSource = useCallback(async (target: ExecutionMode) => {
+    const source = sessionsRef.current[target].source;
+    if (!source) return false;
+    try {
+      announceTransactionState('network_required'); announceTransactionState('switching_network');
+      await switchChainAsync({ chainId: source.chainId });
+      if (!(await verifyChain(source.chainId))) throw new Error('Wallet switch could not be verified.');
+      announceTransactionState('network_switched');
+      return true;
+    } catch (error) {
+      patch(target, { step: 'error', error: error instanceof Error ? error.message : 'Network switch failed.' });
+      toast.error('Network switch could not be verified');
+      return false;
+    }
+  }, [switchChainAsync, patch]);
+
+  const execute = useCallback(async (target: ExecutionMode) => {
+    const q = sessionsRef.current[target];
+    const amount = Number(q.amount);
+    if (!q.source || !q.destination || !address || !connector || !q.quote || !Number.isFinite(amount) || q.executing) return;
+    const lockKey = `bridge:${address.toLowerCase()}:${target}:${q.source.chainId}:${q.destination.chainId}:${q.amount}`;
+    if (!tryAcquireExecution(lockKey)) return;
+    patch(target, { step: 'executing', executing: true, error: undefined });
+    try {
+      if (!(await verifyChain(q.source.chainId)) && !(await switchToSource(target))) throw new Error(`Wallet is not on ${q.source.chain}.`);
+      await preflight(q.source, address, q.amount);
+      const provider = await connector.getProvider();
+      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+      const kit = new AppKit();
+      const params = { from: { adapter, chain: q.source.appKitChain }, to: { recipientAddress: address, chain: q.destination.appKitChain, useForwarder: true }, amount: amount.toFixed(6) } as const;
+      // Re-quote immediately before opening the wallet so the approval is always based on a fresh route.
+      const live = await kit.estimateBridge(params);
+      const fees = (live as { fees?: unknown[] }).fees ?? [];
+      const gas = (live as { gasFees?: unknown[] }).gasFees ?? [];
+      const providerFee = fee(fees, 'provider');
+      const forwarderFee = fee(fees, 'forwarder');
+      const gasFee = fee(gas, 'gasFee') || fee(fees, 'gasFee');
+      const freshQuote = { amount, providerFee, forwarderFee, gasFee, estimatedOutput: Math.max(0, amount - providerFee - forwarderFee - gasFee) };
+      if (freshQuote.estimatedOutput <= 0) throw new Error('Current Circle fees leave no transferable USDC amount.');
+      patch(target, { quote: freshQuote, step: 'executing' });
+      announceTransactionState('wallet_approval');
+      const result = await kit.bridge(params);
+      const value = result as { state?: string; txHash?: string; forwardTxHash?: string; steps?: Array<{ name?: string; txHash?: string }> };
+      if (value.state && value.state !== 'success') throw new Error(`Circle bridge did not complete (${value.state}).`);
+      const burn = value.txHash ?? value.steps?.find(x => /burn|deposit/i.test(String(x.name)))?.txHash;
+      if (!burn) throw new Error('No verifiable source transaction hash was returned.');
+      const forward = value.forwardTxHash ?? value.steps?.find(x => /forward|mint|receive|complete/i.test(String(x.name)))?.txHash;
+      patch(target, { burn, forward, step: 'completed', executing: false });
+      announceTransactionState('submitted'); announceTransactionState('processing'); announceTransactionState('confirmed');
+      setModalMode(target); setModalOpen(true);
+      const record = { burnTxHash: burn, forwardTxHash: forward, walletAddress: address, sourceChain: q.source.chain, destinationChain: q.destination.chain, sourceChainId: q.source.chainId, destinationChainId: q.destination.chainId, amount, estimatedOutput: freshQuote.estimatedOutput, providerFee, forwarderFee, gasFee, status: 'confirmed', mode: target, createdAt: new Date().toISOString() };
+      void fetch('/api/bridge/record', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) }).catch(() => {});
+      try { const key = `arctis-bridge-history:${address.toLowerCase()}`; const old = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify([record, ...old.filter((x: Record<string, unknown>) => String(x.burnTxHash) !== burn)].slice(0, 100))); } catch {}
+    } catch (error) {
+      patch(target, { step: 'error', executing: false, error: error instanceof Error ? error.message : 'Bridge failed.' });
+      announceTransactionState('failed');
+    } finally { releaseExecution(lockKey); }
+  }, [address, connector, patch, switchToSource]);
+
+  // Agent proposal approval only starts the quote phase. Wallet approval is impossible until a live quote exists.
+  const agentExecute = useCallback(async (proposal: import('@/lib/store').PendingFinancialAction) => {
+    const source = chains.find(c => c.chainId === proposal.sourceChainId) ?? sessionsRef.current.agent.source;
+    const destination = chains.find(c => c.chainId === proposal.destinationChainId) ?? sessionsRef.current.agent.destination;
+    if (!source || !destination || !proposal.amount) throw new Error('Bridge proposal is incomplete.');
+    if (!isConnected) throw new Error('Connect your wallet first.');
+    setMode('agent');
+    patch('agent', { source, destination, amount: proposal.amount, quote: null, step: 'idle', executing: false, error: undefined });
+  }, [chains, isConnected, patch]);
+  useEffect(() => {
+    if (mode === 'agent' && sessions.agent.quote && sessions.agent.step === 'idle' && !sessions.agent.executing) void execute('agent');
+  }, [mode, sessions.agent.quote, sessions.agent.step, sessions.agent.executing, execute]);
+
+  const reverse = () => patch(mode, { source: session.destination, destination: session.source, quote: null, error: undefined });
+  const closeModal = () => { setModalOpen(false); patch(modalMode, { amount: '', quote: null, step: 'idle', executing: false, burn: undefined, forward: undefined, error: undefined }); };
+
+  return <div className="page-container max-w-lg safe-bottom">
+    <div className="flex items-center justify-between mb-6"><div><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span><h1 className="text-2xl font-bold mt-1">Bridge USDC</h1><p className="text-surface-600 text-sm mt-1">Circle CCTP V2 · Forwarding-first execution</p></div><button onClick={() => setShowHistory(v => !v)} className="btn-ghost p-2" aria-label="Bridge history"><History className="w-4 h-4" /></button></div>
+    <ModeTabs mode={mode} onChange={next => { setMode(next); setModalOpen(false); }} />
+    {mode === 'agent' ? <div className="mt-4 space-y-3">
+      <EconomicAgentPanel action="bridge" onExecute={agentExecute} executionStatus={session.executing ? 'executing' : session.step === 'completed' ? 'success' : session.step === 'error' ? 'failed' : 'idle'} executionError={session.error} executionTxHash={session.forward ?? session.burn ?? null} />
+      {session.step === 'estimating' && <div className="glass-card p-4 text-center text-xs text-surface-500"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live bridge quote before wallet approval…</div>}
+      {session.quote && <BridgeQuoteCard quote={session.quote} title={session.executing ? 'Approved quote / execution' : 'Quote ready — wallet approval follows'} />}
+      {!session.quote && session.error && <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2"><AlertCircle className="w-4 h-4" />{session.error}</div>}
+    </div> : showHistory ? <div className="mt-4 space-y-2">{history.length === 0 ? <div className="glass-card p-8 text-center text-sm text-surface-600">No bridge transfers found.</div> : history.map(item => <div key={String(item.burnTxHash)} className="glass-card p-4"><div className="flex justify-between gap-3"><span className="text-sm font-semibold">{String(item.amount)} USDC · {String(item.sourceChain)} → {String(item.destinationChain)}</span><span className="text-xs text-emerald-600">{String(item.status)} · {String(item.mode ?? 'manual')}</span></div><p className="text-xs text-surface-500 mt-1">{formatRelative(String(item.createdAt))}</p></div>)}</div> : <div className="mt-4 space-y-4">
+      <div className="glass-card p-5 space-y-4">{!isConnected ? <div className="text-center p-8"><Wallet className="w-9 h-9 mx-auto mb-2 text-surface-500" />Connect your wallet to bridge USDC.</div> : <><div><label className="text-surface-600 text-xs font-medium">FROM</label><div className="flex gap-2 mt-1"><button onClick={reverse} disabled={!session.destination} className="btn-ghost border"><ArrowDownUp className="w-4 h-4" />Switch</button><select value={session.source?.chainId ?? ''} onChange={e => patch('manual', { source: chains.find(c => c.chainId === Number(e.target.value)) ?? null, quote: null, error: undefined })} className="input-base flex-1"><option value="">Select source</option>{chains.map(c => <option key={c.chainId} value={c.chainId}>{c.chain}</option>)}</select></div></div><div><label className="text-surface-600 text-xs font-medium">TO</label><select value={session.destination?.chainId ?? ''} onChange={e => patch('manual', { destination: chains.find(c => c.chainId === Number(e.target.value)) ?? null, quote: null, error: undefined })} className="input-base mt-1"><option value="">Select destination</option>{chains.filter(c => c.chainId !== session.source?.chainId).map(c => <option key={c.chainId}>{c.chain}</option>)}</select></div><div><label className="text-surface-600 text-xs font-medium">Amount</label><input value={session.amount} onChange={e => patch('manual', { amount: e.target.value, quote: null, error: undefined })} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base mt-1" /></div></>}</div>
+      <div className="rounded-xl border border-blue-500/15 bg-blue-500/[.04] p-4"><div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-blue-600" /><span className="text-sm font-semibold">{policy.label}</span></div><p className="text-xs text-surface-600 mt-1">{policy.explanation}</p></div>
+      {isConnected && session.source && chainId !== session.source.chainId && <div className="glass-card p-3 border-amber-500/20 bg-amber-500/5 text-sm text-amber-700">Wrong source network. <button onClick={() => void switchToSource('manual')} disabled={isSwitching} className="btn-primary text-xs ml-2">{isSwitching ? 'Switching…' : 'Switch Network'}</button></div>}
+      <div className="min-h-[118px] flex items-start">{session.quote ? <BridgeQuoteCard quote={session.quote} /> : session.error ? <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2 w-full"><AlertCircle className="w-4 h-4" />{session.error}</div> : session.step === 'estimating' ? <div className="w-full text-center text-xs text-surface-500 pt-5"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Refreshing quote…</div> : <div className="w-full min-h-[90px]" />}</div>
+      <div className="min-h-[58px] flex items-center"><button onClick={() => void execute('manual')} disabled={!Number.isFinite(Number(session.amount)) || Number(session.amount) <= 0 || !session.source || !session.destination || !session.quote || session.executing || isSwitching || chainId !== session.source?.chainId} className="btn-primary w-full py-3.5 disabled:opacity-40">{session.executing ? 'Confirm in wallet…' : 'Review & Bridge'}</button></div>
+      <p className="text-center text-xs text-surface-500">Preflight → live quote → human approval → wallet approval → CCTP burn → forwarding mint</p>
+    </div>}
+    <TransactionConfirmationModal open={modalOpen} data={{ status: modalSession.step === 'error' ? 'failed' : 'confirmed', amount: `${modalSession.amount} USDC → ${formatUSDC(modalSession.quote?.estimatedOutput ?? 0)} USDC`, route: `${modalSession.source?.chain ?? 'Source'} → ${modalSession.destination?.chain ?? 'Destination'}`, network: 'CCTP V2', txHash: modalSession.forward ?? modalSession.burn, explorerUrl: undefined, detail: 'Verified on-chain when confirmed.' }} onClose={closeModal} onNew={closeModal} />
+  </div>;
+}
+export default function BridgePage() { return <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">Loading…</div>}><BridgePageInner /></Suspense>; }

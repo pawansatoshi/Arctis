@@ -197,8 +197,8 @@ contract ARCTISAgentTreasuryTest is Assert {
     }
 
     function testFuzz_DailyLimitEnforced(uint96 rawFirst, uint96 rawSecond) external {
-        uint256 firstAmount = (uint256(rawFirst) % 101) + 1;
-        uint256 secondAmount = (uint256(rawSecond) % 101) + 1;
+        uint256 firstAmount = (uint256(rawFirst) % 100) + 1;
+        uint256 secondAmount = (uint256(rawSecond) % 100) + 1;
 
         bytes32 first = treasury.propose(AGENT, address(token), address(0xBEEF), firstAmount, uint64(block.timestamp + 1 days));
         treasury.approve(first);

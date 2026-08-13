@@ -111,6 +111,16 @@ OWNER APPROVES / REJECTS
 
 Expired actions cannot execute.
 
+### Treasury hardening already incorporated
+
+- Same-day spending is preserved when an owner updates an agent policy; changing limits cannot reset the accumulated daily spend bucket.
+- Token allowlisting requires a deployed contract address rather than an EOA.
+- Zero-value deposits/withdrawals and zero-address withdrawal targets are rejected explicitly.
+- Withdrawal is restricted to an allowlisted token.
+- The owner-only proposal/approval boundary remains explicit; no relayer key is required in V1.
+
+These changes are still subject to automated compile/test verification before deployment.
+
 ## Escrow V1 — intended economic model
 
 ```text
@@ -127,59 +137,75 @@ The complete task specification remains offchain. Only a cryptographic `jobHash`
 
 V1 deliberately uses **centralized testnet arbitration**. It must never be described as decentralized dispute resolution.
 
-## What to build next
+### Escrow hardening already incorporated
 
-### Phase 1 — correctness before integration
+- Payer refunds are deadline-gated; a funded/submitted job cannot be refunded before its deadline.
+- Terminal states remain one-way and cannot be reused.
+- Provider submission remains deadline-bound.
+- Dispute resolution remains owner-controlled for the testnet prototype and is explicitly documented as centralized arbitration.
 
-1. Compile with Solidity `0.8.24`.
-2. Add a proper Foundry test suite for Treasury and Escrow.
-3. Test every revert condition and state transition.
-4. Add replay, deadline, pause, revoke and spending-limit tests.
-5. Test ERC-20 success, false-return and revert behavior.
-6. Test zero-address and zero-value inputs.
-7. Add invariant/fuzz tests around treasury spending limits and escrow balances.
-8. Review event completeness and indexed fields.
+## Verification gates
 
-### Phase 2 — security hardening
+### Gate A — compiler/toolchain
 
-Before deployment, review at minimum:
+Use the repository Foundry configuration:
 
-- reentrancy assumptions around token calls;
-- checks-effects-interactions ordering;
-- daily bucket accounting;
-- proposal approval versus execution-time policy changes;
-- nonce uniqueness;
-- stale/expired proposals;
-- revoked agents;
-- token allowlist changes;
-- pause semantics;
-- owner withdrawal authority;
-- escrow dispute/refund edge cases;
-- malicious/non-standard ERC-20 behavior.
+- Solidity `0.8.24`;
+- optimizer enabled;
+- 200 optimizer runs;
+- `test/` as the Foundry test directory;
+- Arc Testnet RPC configured through `ARC_TESTNET_RPC_URL`.
 
-Use established OpenZeppelin patterns/dependencies where appropriate rather than hand-rolling security primitives.
+### Gate B — unit tests
 
-### Phase 3 — Arc Testnet deployment
+Treasury coverage must include:
 
-Deploy only with the dedicated test wallet above and use only testnet assets.
+- ownership and authorization;
+- agent registration/revocation;
+- policy limits and same-day accounting;
+- token allowlist;
+- proposal/approval/rejection;
+- deadline handling;
+- execution and replay protection;
+- pause behavior;
+- ERC-20 success, revert, false-return and empty-return behavior.
 
-Record in a deployment manifest:
+Escrow coverage must include:
 
-- chain ID;
-- deployer/owner address;
-- contract address;
-- constructor parameters;
-- deployment transaction hash;
-- verification URL;
-- deployment commit SHA.
+- creation/funding;
+- provider submission;
+- payer release;
+- deadline refund;
+- dispute and owner resolution;
+- pause behavior;
+- terminal-state replay;
+- ERC-20 transfer failure behavior.
 
-Then verify source on ArcScan and perform isolated test transactions.
+### Gate C — fuzz/invariants
 
-**Never commit a private key or secret.**
+At minimum prove that:
 
-### Phase 4 — application integration
+- an executed Treasury action cannot execute again;
+- Treasury execution never exceeds the configured daily policy;
+- revoked agents cannot execute;
+- expired actions cannot execute;
+- escrow terminal states cannot transition again;
+- escrow balance accounting does not release more than the funded amount.
 
-Only after the contract suite and isolated testnet flow are green:
+### Gate D — deployment
+
+Only after Gates A–C:
+
+1. Deploy to Arc Testnet with the dedicated owner wallet above.
+2. Record chain ID, deployment commit SHA and constructor parameters.
+3. Record deployment transaction hashes.
+4. Verify both contracts on ArcScan.
+5. Execute small isolated testnet flows.
+6. Preserve verified addresses in the deployment manifest.
+
+### Gate E — application integration
+
+Only after isolated onchain verification:
 
 ```text
 Agent proposal

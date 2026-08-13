@@ -58,6 +58,7 @@ contract ARCTISAgentTreasury {
     error PausedState();
     error InvalidAgent();
     error InvalidToken();
+    error InvalidTokenContract();
     error InvalidRecipient();
     error InvalidAmount();
     error InvalidDeadline();
@@ -97,11 +98,14 @@ contract ARCTISAgentTreasury {
     function setPolicy(bytes32 agentId, uint256 maxPerTransaction, uint256 maxDaily, bool active) external onlyOwner {
         if (!registeredAgents[agentId]) revert InvalidAgent();
         if (maxPerTransaction == 0 || maxDaily == 0 || maxPerTransaction > maxDaily) revert PolicyViolation();
+        Policy storage policy = policies[agentId];
+        uint64 currentBucket = uint64(block.timestamp / 1 days);
+        uint256 spent = policy.dailyBucket == currentBucket ? policy.dailySpent : 0;
         policies[agentId] = Policy({
             maxPerTransaction: maxPerTransaction,
             maxDaily: maxDaily,
-            dailySpent: 0,
-            dailyBucket: uint64(block.timestamp / 1 days),
+            dailySpent: spent,
+            dailyBucket: currentBucket,
             active: active
         });
         emit PolicyUpdated(agentId, maxPerTransaction, maxDaily, active);
@@ -109,6 +113,7 @@ contract ARCTISAgentTreasury {
 
     function setAllowedToken(address token, bool allowed) external onlyOwner {
         if (token == address(0)) revert ZeroAddress();
+        if (token.code.length == 0) revert InvalidTokenContract();
         allowedTokens[token] = allowed;
         emit TokenPolicyUpdated(token, allowed);
     }
@@ -124,13 +129,16 @@ contract ARCTISAgentTreasury {
     }
 
     function deposit(address token, uint256 amount) external whenNotPaused {
-        if (!allowedTokens[token] || amount == 0) revert InvalidToken();
+        if (!allowedTokens[token]) revert InvalidToken();
+        if (amount == 0) revert InvalidAmount();
         _safeTransferFrom(token, msg.sender, address(this), amount);
         emit Deposit(token, msg.sender, amount);
     }
 
     function withdraw(address token, address to, uint256 amount) external onlyOwner {
-        if (to == address(0) || amount == 0) revert InvalidAmount();
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
+        if (!allowedTokens[token]) revert InvalidToken();
         _safeTransfer(token, to, amount);
         emit Withdrawal(token, to, amount);
     }

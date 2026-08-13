@@ -14,6 +14,28 @@ function historyStatus(status: string | undefined): string | undefined {
   return 'pending';
 }
 
+/**
+ * A single on-chain transaction must produce one row per activity type.
+ * Duplicate records can otherwise appear when a transaction is persisted
+ * more than once in the backing history collection. We intentionally keep
+ * different activity types separate (for example a swap and its underlying
+ * transfer may legitimately share a transaction hash).
+ */
+export function dedupeActivityItems(items: ActivityItem[]): ActivityItem[] {
+  const seen = new Set<string>();
+  const result: ActivityItem[] = [];
+
+  for (const item of items) {
+    const txHash = item.txHash?.trim().toLowerCase();
+    const key = txHash ? `${item.type}:${txHash}` : `${item.type}:id:${item.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet');
   const limitCount = parseInt(req.nextUrl.searchParams.get('limit') ?? '50');
@@ -31,8 +53,10 @@ export async function GET(req: NextRequest) {
     for (const exec of agentExecs) items.push({ id: exec.id, type: 'agent_execution', title: `${exec.agentName} — ${exec.status}`, description: exec.task.slice(0, 80), timestamp: exec.startedAt, credits: exec.creditsConsumed, status: historyStatus(exec.status), meta: { agentType: exec.agentType, durationMs: exec.durationMs, reportId: exec.reportId, rawStatus: exec.status } });
     for (const swap of swapHistory) items.push({ id: swap.id, type: 'swap', title: `Swap ${swap.fromToken} → ${swap.toToken}`, description: `${swap.inputAmount} ${swap.fromToken} → ${swap.outputAmount} ${swap.toToken}`, timestamp: swap.createdAt, amount: `${swap.inputAmount} ${swap.fromToken}`, token: swap.fromToken, status: historyStatus(swap.status), txHash: swap.outboundTxHash ?? swap.inboundTxHash, meta: { rawStatus: swap.status, failureReason: swap.failureReason, fromToken: swap.fromToken, toToken: swap.toToken, inputAmount: swap.inputAmount, outputAmount: swap.outputAmount, inboundTxHash: swap.inboundTxHash, outboundTxHash: swap.outboundTxHash } });
     for (const bridge of bridgeHistory) items.push({ id: bridge.burnTxHash, type: 'bridge', title: `Bridge ${bridge.sourceChain} → ${bridge.destinationChain}`, description: `${bridge.amount} USDC · ${bridge.status}`, timestamp: bridge.createdAt, amount: `${bridge.amount} USDC`, token: 'USDC', status: historyStatus(bridge.status), txHash: bridge.forwardTxHash ?? bridge.burnTxHash, meta: { rawStatus: bridge.status, failureReason: bridge.failureReason, sourceChain: bridge.sourceChain, destinationChain: bridge.destinationChain, burnTxHash: bridge.burnTxHash, forwardTxHash: bridge.forwardTxHash } });
-    items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return NextResponse.json({ items: items.slice(0, limitCount), total: items.length });
+
+    const uniqueItems = dedupeActivityItems(items);
+    uniqueItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return NextResponse.json({ items: uniqueItems.slice(0, limitCount), total: uniqueItems.length });
   } catch (err) {
     const e = err as Error;
     return NextResponse.json({ error: e.message, items: [] }, { status: 500 });

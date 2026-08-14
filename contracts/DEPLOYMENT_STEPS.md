@@ -37,6 +37,10 @@ forge build
 
 The repository pins Solidity `0.8.24` in `foundry.toml`.
 
+**Canonical Treasury source:** `contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol`
+
+Do not compile or deploy the legacy `contracts/ARCTISAgentTreasury.sol` source. It is deprecated and should be removed from the repository to avoid deployment/source confusion.
+
 ## Step 4 — Run tests
 
 Before deployment:
@@ -51,7 +55,7 @@ The repository must not claim a successful test run until the command has actual
 
 ## Step 5 — Treasury constructor
 
-V1 Treasury requires **only `initialOwner`**.
+The canonical V1 Treasury requires **only `initialOwner`**.
 
 For the current testnet deployment:
 
@@ -65,13 +69,13 @@ A future relayer can be introduced only when there is a concrete automation requ
 
 ## Step 6 — Deploy Treasury
 
-After setting your RPC URL and deployment key in your local shell only:
+Deploy the **canonical Arc-USDC-compatible source**:
 
 ```bash
 export ARC_TESTNET_RPC_URL="<Arc Testnet RPC>"
 export DEPLOYER_PRIVATE_KEY="<DO NOT COMMIT>"
 
-forge create contracts/ARCTISAgentTreasury.sol:ARCTISAgentTreasury \
+forge create contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol:ARCTISAgentTreasury \
   --rpc-url "$ARC_TESTNET_RPC_URL" \
   --private-key "$DEPLOYER_PRIVATE_KEY" \
   --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
@@ -83,10 +87,17 @@ Record the resulting contract address and deployment transaction hash.
 
 Use ArcScan's contract verification flow with the exact compiler version/settings used by Foundry:
 
+- Source: `ARCTISAgentTreasury_ARC_USDC_FIX.sol`
 - Solidity: `0.8.24`
 - Optimizer: enabled
 - Optimizer runs: `200`
 - Via IR: disabled
+
+The canonical Arc USDC precompile is:
+
+```text
+0x3600000000000000000000000000000000000000
+```
 
 Do not claim the contract is verified until ArcScan confirms it.
 
@@ -98,6 +109,8 @@ After verification, the owner wallet should configure, in this order:
 2. `registerAgent(agentId)`
 3. `setPolicy(agentId, maxPerTransaction, maxDaily, true)`
 4. deposit a very small testnet amount
+
+For Arc USDC, use the canonical precompile address supported by the deployed source.
 
 ## Step 9 — Treasury test transaction
 

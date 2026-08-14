@@ -1,6 +1,6 @@
 # ARCTIS — Onchain Agent Architecture
 
-**Status: design + testnet implementation scaffold. Not deployed yet.**
+**Status: testnet-stage implementation; Treasury V1 has a testnet deployment under verification.**
 
 > Educational architecture animation: [`docs/ONCHAIN_AGENT_FLOW.svg`](./docs/ONCHAIN_AGENT_FLOW.svg)
 >
@@ -24,14 +24,14 @@ ARCTIS currently targets **four application contracts total**:
 |---|---|---|
 | tUSDC | Existing | ARCTIS OTC test asset |
 | tARC | Existing | ARCTIS OTC test asset |
-| ARCTISAgentTreasury | Scaffolded; not deployed | Bounded agent transfer policy vault |
+| ARCTISAgentTreasury_ARC_USDC_FIX.sol | Testnet deployed / under verification | Bounded agent transfer policy vault |
 | ARCTISAgentEscrow | Scaffolded; not deployed | Agent/service economic agreement primitive |
 
 Arc Native USDC, EURC, CCTP and Circle Swap contracts are third-party/infrastructure assets and must never be presented as ARCTIS-owned deployments.
 
 ## 3. Treasury V1 — owner-only proposal boundary
 
-`ARCTISAgentTreasury` is intentionally narrow.
+`ARCTISAgentTreasury_ARC_USDC_FIX.sol` is intentionally narrow.
 
 ### Roles
 
@@ -143,17 +143,20 @@ The application may integrate these contracts only after:
 3. Replay, deadline, pause, revoke and spending-limit cases are tested.
 4. Token transfer failure behavior is tested.
 5. Deployment constructor parameters are reviewed.
-6. Contracts are deployed to Arc Testnet using the dedicated test wallet.
+6. Arc Testnet deployment parameters and transaction are recorded.
 7. Sources are verified on ArcScan.
-8. A small testnet deposit/action/withdraw cycle succeeds.
+8. A small isolated testnet deposit/action/withdraw cycle succeeds.
 9. Existing ARCTIS Transfer/Swap/Bridge regression tests remain green.
 10. The feature is enabled behind an explicit application flag.
+
+The current Treasury testnet deployment is still undergoing isolated verification; it must not be described as production-ready or fully integrated until these gates are complete.
 
 ## 7. Deployment parameters
 
 ### Treasury
 
 ```text
+source = contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol
 initialOwner = 0xb467F683764593316fAEbB0709127E90791Fe47F
 ```
 
@@ -169,6 +172,6 @@ Only public wallet addresses belong in repository documentation. Never store a p
 
 ## 8. Security posture
 
-These contracts are **not audited**. They are a testnet engineering scaffold and must not hold meaningful funds.
+These contracts are **not audited**. They are a testnet engineering implementation and must not hold meaningful funds.
 
 Before mainnet consideration, use audited dependencies/patterns where practical, add comprehensive automated testing, conduct an independent security review, and review the custody/authorization model with the threat model for the final product.

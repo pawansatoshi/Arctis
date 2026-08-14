@@ -147,7 +147,9 @@ contract ARCTISAgentTreasury {
     function withdraw(address token, address to, uint256 amount) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert InvalidAmount();
-        if (!allowedTokens[token]) revert InvalidToken();
+        // Withdrawal is intentionally independent of the current token allowlist.
+        // Revoking a token must stop new deposits/proposals/execution, not lock
+        // already-held Treasury funds permanently.
         _safeTransfer(token, to, amount);
         emit Withdrawal(token, to, amount);
     }

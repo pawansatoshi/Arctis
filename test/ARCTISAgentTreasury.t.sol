@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "../contracts/ARCTISAgentTreasury.sol";
+import "../contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol";
 import "./MockERC20.sol";
 import "./Assert.sol";
 
@@ -186,7 +186,7 @@ contract ARCTISAgentTreasuryTest is Assert {
         _assertTrue(!executeOk, "execution worked while paused");
     }
 
-    function testWithdrawRequiresAllowlistedTokenAndPositiveAmount() external {
+    function testWithdrawRequiresPositiveAmount() external {
         (bool zeroAmountOk,) = address(treasury).call(
             abi.encodeWithSelector(treasury.withdraw.selector, address(token), address(this), uint256(0))
         );
@@ -194,6 +194,12 @@ contract ARCTISAgentTreasuryTest is Assert {
 
         treasury.withdraw(address(token), address(this), 10);
         _assertEq(token.balanceOf(address(this)), 10, "withdrawal amount mismatch");
+    }
+
+    function testRevokedTokenCanStillBeWithdrawn() external {
+        treasury.setAllowedToken(address(token), false);
+        treasury.withdraw(address(token), address(this), 10);
+        _assertEq(token.balanceOf(address(this)), 10, "revoked token withdrawal failed");
     }
 
     function testFuzz_DailyLimitEnforced(uint96 rawFirst, uint96 rawSecond) external {

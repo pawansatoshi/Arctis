@@ -2,15 +2,17 @@
 
 **Purpose:** canonical continuation document for future contributors/AI sessions working on the ARCTIS onchain layer.
 
-## Current state — 2026-08-13
+## Current state — 2026-08-14
 
-ARCTIS has a **testnet-stage Solidity scaffold**, not a production deployment.
+ARCTIS has a **testnet-stage Solidity implementation**. The Treasury V1 contract has a testnet deployment, but isolated verification and application integration are still in progress.
 
 Current ARCTIS-owned application contracts:
 
-1. `contracts/ARCTISAgentTreasury.sol` — bounded agent transfer policy vault.
+1. `contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol` — canonical bounded agent transfer policy vault.
 2. `contracts/ARCTISAgentEscrow.sol` — economic job / service escrow primitive.
 3. `tUSDC` and `tARC` remain existing ARCTIS OTC test assets.
+
+The legacy `contracts/ARCTISAgentTreasury.sol` file has been removed. Do not recreate or reference it.
 
 Arc Native USDC, EURC, Circle Swap and CCTP are infrastructure / third-party rails and must not be represented as ARCTIS-owned contracts.
 
@@ -116,10 +118,11 @@ Expired actions cannot execute.
 - Same-day spending is preserved when an owner updates an agent policy; changing limits cannot reset the accumulated daily spend bucket.
 - Token allowlisting requires a deployed contract address rather than an EOA.
 - Zero-value deposits/withdrawals and zero-address withdrawal targets are rejected explicitly.
-- Withdrawal is restricted to an allowlisted token.
+- New deposits and proposal/execution flows require the token to remain allowlisted.
+- **Owner withdrawal is not blocked by later token de-allowlisting**, so previously held Treasury funds cannot become permanently trapped merely because an asset was disabled.
 - The owner-only proposal/approval boundary remains explicit; no relayer key is required in V1.
 
-These changes are still subject to automated compile/test verification before deployment.
+These changes are subject to automated compile/test verification before the feature is considered fully integrated.
 
 ## Escrow V1 — intended economic model
 
@@ -168,7 +171,8 @@ Treasury coverage must include:
 - deadline handling;
 - execution and replay protection;
 - pause behavior;
-- ERC-20 success, revert, false-return and empty-return behavior.
+- ERC-20 success, revert, false-return and empty-return behavior;
+- withdrawal after token de-allowlisting.
 
 Escrow coverage must include:
 
@@ -194,14 +198,14 @@ At minimum prove that:
 
 ### Gate D — deployment
 
-Only after Gates A–C:
+The Treasury has a testnet deployment, but it remains under isolated verification. Before declaring the deployment final:
 
-1. Deploy to Arc Testnet with the dedicated owner wallet above.
-2. Record chain ID, deployment commit SHA and constructor parameters.
-3. Record deployment transaction hashes.
-4. Verify both contracts on ArcScan.
-5. Execute small isolated testnet flows.
-6. Preserve verified addresses in the deployment manifest.
+1. Record chain ID, deployment commit SHA and constructor parameters.
+2. Record deployment transaction hashes.
+3. Verify the canonical source on ArcScan.
+4. Execute small isolated testnet flows.
+5. Preserve the verified address in the deployment manifest.
+6. Resolve any transaction-level anomaly before application integration.
 
 ### Gate E — application integration
 
@@ -238,7 +242,7 @@ A new engineering session should read these files first:
 5. `docs/SMART_CONTRACT_CONTINUATION.md`
 6. `contracts/README.md`
 7. `contracts/DEPLOYMENT_STEPS.md`
-8. `contracts/ARCTISAgentTreasury.sol`
+8. `contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol`
 9. `contracts/ARCTISAgentEscrow.sol`
 10. `docs/ONCHAIN_AGENT_FLOW.svg`
 
@@ -252,4 +256,4 @@ Completion requires:
 
 `compile → unit tests → fuzz/invariants → security review → Arc Testnet deployment → source verification → isolated transactions → regression tests → feature-flagged integration → verified History/audit trail`
 
-Until that chain is complete, describe the contracts as **testnet-stage scaffolding** and never as audited, production-ready or deployed.
+Until that chain is complete, describe the contracts as **testnet-stage** and never as audited, production-ready or fully integrated.

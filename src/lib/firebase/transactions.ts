@@ -5,13 +5,17 @@ import type { TransactionRecord } from '@/types';
 
 const COL = 'transactions';
 
+function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
+}
+
 export async function saveTransaction(
   walletAddress: string,
   tx: Omit<TransactionRecord, 'id' | 'createdAt' | 'walletAddress'>
 ): Promise<string> {
   const db = getAdminDb();
   const ref = await db.collection(COL).add({
-    ...tx,
+    ...stripUndefined(tx as Record<string, unknown>),
     walletAddress: walletAddress.toLowerCase(),
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -26,7 +30,7 @@ export async function updateTransactionStatus(
   const db = getAdminDb();
   await db.collection(COL).doc(docId).update({
     status,
-    ...(txHash && { txHash }),
+    ...(txHash ? { txHash } : {}),
     updatedAt: FieldValue.serverTimestamp(),
   });
 }

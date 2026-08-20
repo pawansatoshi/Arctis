@@ -12,22 +12,24 @@ const ENV: NetworkEnv =
 const TESTNET = {
   chainId: 5042002,
   rpc: 'https://rpc.testnet.arc.network',
-  explorer: 'https://testnet.arcscan.app',           // ✅ CORRECTED
+  explorer: 'https://testnet.arcscan.app',
   networkName: 'Arc Testnet',
   contracts: {
     // Arc Native USDC — system precompile, primary payment asset
     USDC:  '0x3600000000000000000000000000000000000000',
     // Swap-layer assets (NOT used for payments)
-    tUSDC: '0x28E49B36C1c6fD16ad81aB152488f37C93b3D8CA',  // ✅ CORRECTED
-    tARC:  '0xe66a11cb4b147F208e6d81B7540bfc83E1680c78',  // ✅ CORRECTED
+    tUSDC: '0x28E49B36C1c6fD16ad81aB152488f37C93b3D8CA',
+    tARC:  '0xe66a11cb4b147F208e6d81B7540bfc83E1680c78',
+    // ARCTIS-owned Agent Treasury — deployed and source-verified on Arc Testnet.
+    AGENT_TREASURY: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
   },
   decimals: {
     USDC:  6,
     tUSDC: 6,
     tARC:  18,
   },
-  // Temporary testnet treasury wallet
-  treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',  // ✅ REAL WALLET
+  // Current testnet owner/deployer and normal ARCTIS payment treasury wallet.
+  treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',
 } as const;
 
 // ─── Arc Mainnet (future) ───────────────────────────────────
@@ -38,15 +40,16 @@ const MAINNET = {
   networkName: 'Arc Mainnet',
   contracts: {
     USDC:  '0x3600000000000000000000000000000000000000',
-    tUSDC: '0x0000000000000000000000000000000000000000', // set on mainnet launch
-    tARC:  '0x0000000000000000000000000000000000000000', // set on mainnet launch
+    tUSDC: '0x0000000000000000000000000000000000000000',
+    tARC:  '0x0000000000000000000000000000000000000000',
+    AGENT_TREASURY: '0x0000000000000000000000000000000000000000',
   },
   decimals: {
     USDC:  6,
     tUSDC: 6,
     tARC:  18,
   },
-  treasury: '0x0000000000000000000000000000000000000000', // set before mainnet
+  treasury: '0x0000000000000000000000000000000000000000',
 } as const;
 
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;
@@ -69,6 +72,7 @@ export const NETWORK_NAME    = NETWORK.networkName;
 export const CONTRACTS       = NETWORK.contracts;
 export const DECIMALS        = NETWORK.decimals;
 export const TREASURY_WALLET = NETWORK.treasury as `0x${string}`;
+export const AGENT_TREASURY  = NETWORK.contracts.AGENT_TREASURY as `0x${string}`;
 
 // Primary payment asset — Arc Native USDC
 export const PRIMARY_TOKEN    = 'USDC' as const;

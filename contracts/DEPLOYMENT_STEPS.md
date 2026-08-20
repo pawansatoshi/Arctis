@@ -4,7 +4,7 @@ These steps are for **Arc Testnet only**. Do not use a mainnet key or meaningful
 
 ## Step 0 — Current safety point
 
-The new contracts are not connected to existing ARCTIS Transfer, Swap or Bridge flows. Deploying them does not change those routes.
+The ARCTISAgentTreasury deployment is additive and does not replace the existing ARCTIS Transfer, Swap or Bridge routes. **Do not deploy or integrate Escrow as part of the current demo/H1 state.** Escrow remains a future optional contract until separately authorized and verified.
 
 ## Step 1 — Deployment wallet
 
@@ -13,6 +13,8 @@ The current ARCTIS testnet owner/deployer wallet is:
 ```text
 0xb467F683764593316fAEbB0709127E90791Fe47F
 ```
+
+This same wallet is currently configured as the normal ARCTIS payment/revenue treasury wallet. It is **not** the Agent Treasury contract address.
 
 Use only Arc Testnet gas/test assets.
 
@@ -39,11 +41,11 @@ The repository pins Solidity `0.8.24` in `foundry.toml`.
 
 **Canonical Treasury source:** `contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol`
 
-Do not compile or deploy the legacy `contracts/ARCTISAgentTreasury.sol` source. It is deprecated and should be removed from the repository to avoid deployment/source confusion.
+Do not compile or deploy the legacy `contracts/ARCTISAgentTreasury.sol` source. It is deprecated and should not be used for the current deployment.
 
 ## Step 4 — Run tests
 
-Before deployment:
+Before any future deployment:
 
 ```bash
 forge test -vvv
@@ -65,11 +67,9 @@ initialOwner = 0xb467F683764593316fAEbB0709127E90791Fe47F
 
 There is intentionally **no separate relayer in V1**. The owner's wallet is the proposal, approval and governance boundary. The Economic Agent prepares intent/quote offchain; the owner submits and explicitly approves the onchain action.
 
-A future relayer can be introduced only when there is a concrete automation requirement and a separate security model has been reviewed.
+## Step 6 — Verified Treasury deployment
 
-## Step 6 — Treasury deployment
-
-The canonical Treasury has now been deployed successfully on Arc Testnet.
+The canonical Treasury has been deployed successfully on Arc Testnet.
 
 ```text
 Contract: ARCTISAgentTreasury
@@ -79,18 +79,6 @@ ArcScan: https://testnet.arcscan.app/address/0xf28541094031BD34bA08Ae98982F4348C
 ```
 
 The deployment transaction succeeded at block `56815151`. The deployed source is verified on ArcScan as an exact match using Solidity `0.8.24`, optimizer enabled with 200 runs.
-
-For a fresh deployment, use:
-
-```bash
-export ARC_TESTNET_RPC_URL="<Arc Testnet RPC>"
-export DEPLOYER_PRIVATE_KEY="<DO NOT COMMIT>"
-
-forge create contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol:ARCTISAgentTreasury \
-  --rpc-url "$ARC_TESTNET_RPC_URL" \
-  --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
-```
 
 ## Step 7 — Verify Treasury on ArcScan
 
@@ -110,22 +98,11 @@ The canonical Arc USDC precompile is:
 
 ## Step 8 — Configure Treasury
 
-After verification, the owner wallet should configure, in this order:
+Any further Treasury configuration must use only small testnet amounts and the documented owner wallet. Existing ARCTIS Transfer/Swap/Bridge flows must remain unchanged.
 
-1. `setAllowedToken(testnet token, true)`
-2. `registerAgent(agentId)`
-3. `setPolicy(agentId, maxPerTransaction, maxDaily, true)`
-4. deposit a very small testnet amount
+## Step 9 — Treasury isolated test gate
 
-For Arc USDC, use the canonical precompile address supported by the deployed source.
-
-## Step 9 — Treasury test transaction
-
-The owner wallet creates a small proposal, explicitly approves it, then executes it.
-
-Verify all transactions/events and the final recipient balance.
-
-Also test:
+Before any future application integration, verify:
 
 - amount above per-tx limit → revert;
 - daily limit exceeded → revert;
@@ -136,49 +113,31 @@ Also test:
 - execute twice → revert;
 - pause → financial action blocked.
 
-## Step 10 — Deploy Escrow separately
+Preserve the existing demo and application regression behavior.
 
-Only after Treasury passes its isolated test:
+## Step 10 — Escrow is intentionally postponed
 
-```bash
-forge create contracts/ARCTISAgentEscrow.sol:ARCTISAgentEscrow \
-  --rpc-url "$ARC_TESTNET_RPC_URL" \
-  --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
-```
+**Do not deploy Escrow for the current H1/demo state.**
 
-Verify the Escrow source on ArcScan using the same compiler settings.
+`contracts/ARCTISAgentEscrow.sol` remains in the repository as a future/testnet-stage primitive. It is **not deployed, not integrated into the current UI/API, and has no claimed ArcScan address**.
 
-**Current status:** Escrow source exists in the repository, but no deployed Arc Testnet Escrow address is currently documented or claimed.
+If Escrow is resumed in a future phase, it must use a separate deployment/integration gate:
 
-## Step 11 — Escrow test
+1. compile the canonical source;
+2. run unit/fuzz/invariant/security tests;
+3. deploy with the secured testnet deployment wallet;
+4. record the deployment transaction and address;
+5. verify exact source on ArcScan;
+6. run isolated `createJob → fund → submit → release` and refund/dispute tests;
+7. confirm existing ARCTIS regression tests remain green;
+8. integrate only behind an explicit feature flag.
 
-Use a very small testnet amount:
+## Step 11 — Application integration gate
 
-```text
-createJob → fund → submit → release
-```
+The Agent Treasury must not replace existing Transfer, Swap or Bridge rails. Any future Treasury application integration must be additive and feature-flagged after isolated verification and regression testing.
 
-Then separately test:
-
-```text
-createJob → fund → refund after deadline
-createJob → fund → submit → dispute → owner resolve
-expired job behavior
-pause behavior
-```
-
-## Step 12 — Application integration gate
-
-Do **not** connect the new contracts to production UI until:
-
-- both sources are verified;
-- isolated test transactions pass;
-- existing ARCTIS transaction regression tests pass;
-- contract addresses are added to the central configuration;
-- feature flag defaults to OFF;
-- a small end-to-end agent test passes.
+Escrow remains outside the current application/demo until its own deployment and verification gates are complete.
 
 ## Important
 
-A successful deployment is not an audit. These contracts are testnet-stage scaffolding. Mainnet use requires comprehensive testing, independent security review and a final authorization/custody design review.
+A successful deployment is not an audit. These contracts are testnet-stage engineering work. Mainnet use requires comprehensive testing, independent security review and a final authorization/custody design review.

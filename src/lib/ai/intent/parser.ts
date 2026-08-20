@@ -35,6 +35,7 @@ function matchBridgeChain(text: string): BridgeChainMatch | null { const lower =
 export function listSourceChainNames(): string[] { return BRIDGE_CHAIN_LIST.map((c) => c.name); }
 
 export function parseFinancialIntent(message: string): PendingFinancialAction | null {
+  if (typeof message !== 'string') return null;
   const text = message.trim();
   if (/\b(?:send|transfer)\s+usdc\s+(?:to\s+)?(?:a\s+)?passport\b/i.test(text)) return { action: 'transfer', amount: '', fromToken: 'USDC', missing: 'amount', createdAt: Date.now() };
   if (/\b(?:send|transfer)\s+usdc\s+to\s+(?:a\s+)?wallet\s+address\b/i.test(text)) return { action: 'transfer', amount: '', fromToken: 'USDC', missing: 'amount', createdAt: Date.now() };
@@ -58,6 +59,7 @@ export function parseFinancialIntent(message: string): PendingFinancialAction | 
 }
 
 export function resolveClarification(pending: PendingFinancialAction, replyText: string): PendingFinancialAction {
+  if (typeof replyText !== 'string') return pending;
   const text = replyText.trim(); const { error: _drop, ...clean } = pending as PendingFinancialAction & { error?: string };
   switch (pending.missing) {
     case 'full': return parseFinancialIntent(`${pending.action} ${text}`) ?? clean;

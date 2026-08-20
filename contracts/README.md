@@ -14,6 +14,17 @@ This directory contains the first ARCTIS-owned programmable-money contracts.
 
 **Canonical V1 Treasury implementation for Arc Testnet.** Use this file for compilation, deployment, verification and future development.
 
+**Current Arc Testnet deployment:**
+
+```text
+Contract: ARCTISAgentTreasury
+Address:  0xf28541094031BD34bA08Ae98982F4348C9ADB94c
+ArcScan:  https://testnet.arcscan.app/address/0xf28541094031BD34bA08Ae98982F4348C9ADB94c
+Deploy tx: https://testnet.arcscan.app/tx/0xc4447c1044327ee4eac001816161ce61c1f5d146f6e7404bd56a3889c66e820d
+```
+
+The ArcScan source is verified as an exact match for the deployed `ARCTISAgentTreasury` contract using Solidity `0.8.24`, optimizer enabled with 200 runs.
+
 This version is specifically maintained for the Arc Testnet USDC environment, where Arc USDC is exposed through the protocol precompile at `0x3600000000000000000000000000000000000000` and therefore does not have ordinary EVM bytecode.
 
 V1 provides:
@@ -57,6 +68,8 @@ V1 provides:
 - emergency pause;
 - event-based lifecycle proof.
 
+**Deployment status:** The Escrow source is present in the repository, but no deployed Arc Testnet Escrow address is currently documented or claimed here.
+
 ## Why these contracts are additive
 
 Existing ARCTIS Transfer, Circle Swap and CCTP Bridge flows remain unchanged. The contracts are initially deployed and tested independently. They should only be connected to the application behind an explicit feature flag after testnet verification.
@@ -76,9 +89,9 @@ New optional agent rails
 
 These contracts are **not audited** and must not hold meaningful funds. Use only testnet assets and a dedicated test wallet.
 
-For the current Treasury deployment, the canonical source is **`ARCTISAgentTreasury_ARC_USDC_FIX.sol`**.
+For the current Treasury deployment, the canonical source is **`ARCTISAgentTreasury_ARC_USDC_FIX.sol`**, deployed at the address documented above.
 
-Before any deployment:
+Before any future deployment:
 
 1. compile the canonical source with Solidity `0.8.24`;
 2. run unit/invariant/security tests;

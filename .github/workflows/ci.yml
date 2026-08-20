@@ -25,6 +25,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Dependency security audit
+        run: npm audit --audit-level=high --ignore-scripts
+
       - name: Setup Foundry
         uses: foundry-rs/foundry-toolchain@v1
 

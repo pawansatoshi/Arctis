@@ -26,22 +26,19 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install Node dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Refresh lockfile from declared dependencies
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Apply compatible npm audit remediations
-        run: npm audit fix --package-lock-only --ignore-scripts --no-audit
-
-      - name: Commit dependency remediation
+      - name: Commit lockfile refresh
         run: |
           if git diff --quiet -- package.json package-lock.json; then
-            echo "No compatible dependency remediation available."
+            echo "Lockfile is already synchronized."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
-          git commit -m "fix: remediate compatible dependency advisories"
+          git commit -m "fix: synchronize dependency lockfile"
           git push origin HEAD:${{ github.head_ref }}
 
   verify:

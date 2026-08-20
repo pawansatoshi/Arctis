@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       token: token ?? 'USDC',
       chainId: CHAIN_ID,
       networkName: NETWORK_NAME,
-      note,
+      ...(note !== undefined ? { note } : {}),
       mode: mode ?? 'manual',
       type: 'send',
     });

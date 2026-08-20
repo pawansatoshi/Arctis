@@ -67,9 +67,20 @@ There is intentionally **no separate relayer in V1**. The owner's wallet is the 
 
 A future relayer can be introduced only when there is a concrete automation requirement and a separate security model has been reviewed.
 
-## Step 6 — Deploy Treasury
+## Step 6 — Treasury deployment
 
-Deploy the **canonical Arc-USDC-compatible source**:
+The canonical Treasury has now been deployed successfully on Arc Testnet.
+
+```text
+Contract: ARCTISAgentTreasury
+Address:  0xf28541094031BD34bA08Ae98982F4348C9ADB94c
+Deploy tx: 0xc4447c1044327ee4eac001816161ce61c1f5d146f6e7404bd56a3889c66e820d
+ArcScan: https://testnet.arcscan.app/address/0xf28541094031BD34bA08Ae98982F4348C9ADB94c
+```
+
+The deployment transaction succeeded at block `56815151`. The deployed source is verified on ArcScan as an exact match using Solidity `0.8.24`, optimizer enabled with 200 runs.
+
+For a fresh deployment, use:
 
 ```bash
 export ARC_TESTNET_RPC_URL="<Arc Testnet RPC>"
@@ -81,11 +92,9 @@ forge create contracts/ARCTISAgentTreasury_ARC_USDC_FIX.sol:ARCTISAgentTreasury 
   --constructor-args "0xb467F683764593316fAEbB0709127E90791Fe47F"
 ```
 
-Record the resulting contract address and deployment transaction hash.
-
 ## Step 7 — Verify Treasury on ArcScan
 
-Use ArcScan's contract verification flow with the exact compiler version/settings used by Foundry:
+The current deployment is verified. Verification settings:
 
 - Source: `ARCTISAgentTreasury_ARC_USDC_FIX.sol`
 - Solidity: `0.8.24`
@@ -98,8 +107,6 @@ The canonical Arc USDC precompile is:
 ```text
 0x3600000000000000000000000000000000000000
 ```
-
-Do not claim the contract is verified until ArcScan confirms it.
 
 ## Step 8 — Configure Treasury
 
@@ -141,6 +148,8 @@ forge create contracts/ARCTISAgentEscrow.sol:ARCTISAgentEscrow \
 ```
 
 Verify the Escrow source on ArcScan using the same compiler settings.
+
+**Current status:** Escrow source exists in the repository, but no deployed Arc Testnet Escrow address is currently documented or claimed.
 
 ## Step 11 — Escrow test
 

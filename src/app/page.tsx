@@ -7,8 +7,8 @@ import { ArrowRight, ArrowUpRight, Bot, ArrowLeftRight, GitMerge, Sparkles, Shie
 import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 const ConnectButton = dynamic(() => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })), { ssr: false });
-const DEMO_VIDEO_URL = 'https://youtu.be/EaXlv4ajv8g';
-const DEMO_VIDEO_EMBED = 'https://www.youtube.com/embed/EaXlv4ajv8g?rel=0&playsinline=1';
+const DEMO_VIDEO_URL = 'https://youtu.be/il9_T7rfSMU';
+const DEMO_VIDEO_EMBED = 'https://www.youtube.com/embed/il9_T7rfSMU?rel=0&playsinline=1';
 const YOUTUBE_CHANNEL_URL = 'https://youtube.com/@PawanSatoshi';
 
 const PILLARS = [

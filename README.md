@@ -4,6 +4,7 @@
   <p><strong>Programmable money for humans and AI agents.</strong></p>
   <p>AI · Knowledge · Stablecoins · Economic Agents · Identity · Membership</p>
   <p><strong>Built on Arc Testnet</strong> · wallet-controlled · live public testnet build</p>
+  <p><strong>🌐 Website:</strong> <a href="https://arctis-zeta.vercel.app">https://arctis-zeta.vercel.app</a></p>
 </div>
 
 ---
@@ -40,6 +41,7 @@ History / proof / accounting
 
 ### Live product
 
+- **Website:** https://arctis-zeta.vercel.app
 - **Demo:** https://arctis-zeta.vercel.app
 - **Repository:** https://github.com/pawansatoshi/Arctis
 - **Network:** Arc Testnet (`5042002`)

@@ -44,6 +44,7 @@ History / proof / accounting
 - **Repository:** https://github.com/pawansatoshi/Arctis
 - **Network:** Arc Testnet (`5042002`)
 - **Primary payment/gas asset:** Arc Native USDC
+- **3-minute demo:** https://youtu.be/il9_T7rfSMU
 
 For a Circle reviewer or hackathon judge, start with [`docs/README-EVALUATION.md`](./docs/README-EVALUATION.md).
 
@@ -215,17 +216,24 @@ Canonical configuration:
 - **tUSDC:** `0x28E49B36C1c6fD16ad81aB152488f37C93b3D8CA`
 - **tARC:** `0xe66a11cb4b147F208e6d81B7540bfc83E1680c78`
 - **ARCTIS Memo:** `0x5294E9927c3306DcBaDb03fe70b92e01cCede505`
+- **ARCTISAgentTreasury:** `0xf28541094031BD34bA08Ae98982F4348C9ADB94c`
 
-These are testnet/application addresses, not mainnet deployments or official Arc-issued tokens.
+The Agent Treasury is an ARCTIS-owned application contract deployed and source-verified on Arc Testnet. These are testnet/application addresses, not mainnet deployments or official Arc-issued tokens.
 
 ### ARCTIS application-contract foundation
 
-The repository also contains an initial Solidity foundation for future Economic Agent capabilities:
+The repository contains an initial Solidity foundation for Economic Agent capabilities:
 
-- `ARCTISAgentTreasury.sol`
-- `ARCTISAgentEscrow.sol`
+- `ARCTISAgentTreasury_ARC_USDC_FIX.sol` — **deployed + source-verified on Arc Testnet**
+- `ARCTISAgentEscrow.sol` — **scaffolded/test-covered, not deployed or integrated**
 
-These are **ARCTIS application-layer contracts**, not Circle/Arc infrastructure contracts. They are currently documented as design/scaffold work and are **not claimed as deployed, audited or production-connected** until the compile → test → Arc Testnet deploy → ArcScan verification gates are completed.
+The Treasury deployment is additive and does not replace the existing Transfer, Swap or Bridge rails. Escrow remains a future optional extension and is intentionally excluded from the current live demo.
+
+**Treasury ArcScan:** https://testnet.arcscan.app/address/0xf28541094031BD34bA08Ae98982F4348C9ADB94c
+
+**Treasury deployment transaction:** https://testnet.arcscan.app/tx/0xc4447c1044327ee4eac001816161ce61c1f5d146f6e7404bd56a3889c66e820d
+
+The current testnet owner/deployer/human-approval wallet is `0xb467F683764593316fAEbB0709127E90791Fe47F`. The same wallet is also currently configured as the normal ARCTIS payment/revenue treasury wallet; it is not the Agent Treasury contract address.
 
 ---
 
@@ -279,10 +287,11 @@ ARCTIS is a **testnet-stage build**.
 - Bridge and Circle Swap availability depends on live testnet routes/liquidity/policy.
 - OTC Swap requires a funded counterparty wallet for meaningful end-to-end settlement.
 - tARC is an ARCTIS test asset, not an official Arc token.
-- Treasury/Escrow Solidity contracts are scaffolded application-layer work until independently compiled, tested, deployed and verified.
+- The Agent Treasury is deployed and source-verified on Arc Testnet but remains testnet-stage and unaudited.
+- The Agent Escrow Solidity source exists in the repository but is **not deployed or integrated**; no Escrow contract address is claimed.
 - Vercel production deployment is dependent on the current account/build-rate environment; a deployment marked `READY` is required before claiming that the latest Git commit is live in production.
 
-These boundaries are documented deliberately so reviewers can distinguish implemented capability from route-dependent infrastructure, scaffolded work and future hardening.
+These boundaries are documented deliberately so reviewers can distinguish implemented capability from route-dependent infrastructure, deployed testnet contract evidence, scaffolded work and future hardening.
 
 ---
 
@@ -297,10 +306,12 @@ src/app/                 product pages + API routes
 src/components/          reusable UI + agent components
 src/config/              AI, assets, billing configuration
 src/lib/                 auth, AI, chain, bridge, swap, persistence
-contracts/               ARCTIS application-layer Solidity foundation
+contracts/               ARCTIS application-layer Solidity
 
 docs/architecture-flow.svg     animated architecture overview
 docs/README-EVALUATION.md      reviewer / judge walkthrough
+
+docs/SMART_CONTRACT_CONTINUATION.md  onchain continuation truth
 
 ARCHITECTURE_TRUTH.md           canonical capability truth
 SYSTEM_ARCHITECTURE.md          runtime architecture + boundaries
@@ -322,7 +333,7 @@ npm run build
 npm run dev
 ```
 
-For the Solidity application foundation, use the documented contract-specific toolchain/instructions under `contracts/` before any testnet deployment.
+For the Solidity application layer, use the documented contract-specific toolchain/instructions under `contracts/`. The current Treasury deployment is already recorded and verified on ArcScan; Escrow must not be treated as deployed until its separate gates are completed.
 
 A successful static build is not a substitute for live Arc Testnet verification.
 

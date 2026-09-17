@@ -16,38 +16,25 @@ const SOURCE_RPC: Record<number, string> = {
   421614: 'https://sepolia-rollup.arbitrum.io/rpc',
 };
 
-/**
- * Records the lifecycle of a Circle App Kit bridge after the burn tx exists.
- * A submitted burn is persisted first, so History can represent pending and
- * failed bridges. Completion is written only after the source receipt is
- * independently verified and a forwarding hash is supplied.
- */
+/** Records a Circle App Kit bridge after the burn tx exists. */
 export async function POST(req: NextRequest) {
   let burnTxHash = '';
   let walletAddress = '';
   try {
-    const body = await req.json() as {
-      burnTxHash?: string;
-      forwardTxHash?: string;
-      sourceChainId?: number;
-      destinationChainId?: number;
-      walletAddress?: string;
-      amount?: number;
-    };
-
+    const body = await req.json() as { burnTxHash?: string; forwardTxHash?: string; sourceChainId?: number; destinationChainId?: number; walletAddress?: string; amount?: number };
     const { forwardTxHash, sourceChainId, destinationChainId, amount } = body;
     burnTxHash = body.burnTxHash ?? '';
     walletAddress = body.walletAddress ?? '';
 
-    if (!burnTxHash || !sourceChainId || !destinationChainId || !walletAddress || !amount) {
-      return NextResponse.json({ error: 'burnTxHash, sourceChainId, destinationChainId, walletAddress, amount required' }, { status: 400 });
-    }
-    if (!/^0x[0-9a-fA-F]{64}$/.test(burnTxHash) || (forwardTxHash && !/^0x[0-9a-fA-F]{64}$/.test(forwardTxHash))) {
-      return NextResponse.json({ error: 'Invalid transaction hash format' }, { status: 400 });
-    }
+    if (!burnTxHash || !sourceChainId || !destinationChainId || !walletAddress || !amount) return NextResponse.json({ error: 'burnTxHash, sourceChainId, destinationChainId, walletAddress, amount required' }, { status: 400 });
+    if (!/^0x[0-9a-fA-F]{64}$/.test(burnTxHash) || (forwardTxHash && !/^0x[0-9a-fA-F]{64}$/.test(forwardTxHash))) return NextResponse.json({ error: 'Invalid transaction hash format' }, { status: 400 });
     if (!isValidEthAddress(walletAddress)) return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
     if (amount < BRIDGE_MIN_AMOUNT || amount > BRIDGE_MAX_AMOUNT) return NextResponse.json({ error: 'Bridge amount outside configured limits' }, { status: 422 });
     if (sourceChainId === destinationChainId) return NextResponse.json({ error: 'Source and destination chains must differ' }, { status: 400 });
+
+    // Arc Mainnet is deliberately not accepted here until Circle publishes and
+    // ARCTIS independently verifies a production CCTP route and end-to-end mint.
+    if (sourceChainId === 5042 || destinationChainId === 5042) return NextResponse.json({ error: 'Arc Mainnet bridge is not enabled yet; use a verified supported route.' }, { status: 503 });
 
     const source = CCTP_BRIDGE_CHAINS[String(sourceChainId) as keyof typeof CCTP_BRIDGE_CHAINS];
     const destination = CCTP_BRIDGE_CHAINS[String(destinationChainId) as keyof typeof CCTP_BRIDGE_CHAINS];
@@ -59,9 +46,6 @@ export async function POST(req: NextRequest) {
 
     const existing = await bridgeTxAlreadyProcessed(burnTxHash);
     if (existing) {
-      // The first call may have created a pending record while the burn was
-      // still propagating. A later call with the forwarding tx must finalize
-      // that same record rather than returning the stale pending state.
       if (forwardTxHash && existing.status !== 'completed') {
         const now = new Date().toISOString();
         await updateBridgePending(burnTxHash, { status: 'completed', forwardTxHash, completedAt: now });
@@ -70,39 +54,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ bridge: existing, alreadyRecorded: true });
     }
 
-    await createBridgePending({
-      burnTxHash,
-      walletAddress,
-      sourceChain: source.name,
-      sourceChainId,
-      sourceDomain: source.domain,
-      destinationChain: destination.name,
-      destinationChainId,
-      destinationDomain: destination.domain,
-      amount,
-      status: 'burning',
-    });
+    await createBridgePending({ burnTxHash, walletAddress, sourceChain: source.name, sourceChainId, sourceDomain: source.domain, destinationChain: destination.name, destinationChainId, destinationDomain: destination.domain, amount, status: 'burning' });
 
     const client = createPublicClient({ transport: http(rpc) });
     let tx;
-    try {
-      tx = await client.getTransaction({ hash: burnTxHash as `0x${string}` });
-    } catch {
-      return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash });
-    }
-
+    try { tx = await client.getTransaction({ hash: burnTxHash as `0x${string}` }); } catch { return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash }); }
     if (tx.from.toLowerCase() !== walletAddress.toLowerCase()) {
       await updateBridgePending(burnTxHash, { status: 'failed', failureReason: 'Source transaction does not belong to the supplied wallet' });
       return NextResponse.json({ error: 'Source transaction does not belong to the supplied wallet' }, { status: 403 });
     }
 
     let receipt;
-    try {
-      receipt = await client.getTransactionReceipt({ hash: burnTxHash as `0x${string}` });
-    } catch {
-      return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash });
-    }
-
+    try { receipt = await client.getTransactionReceipt({ hash: burnTxHash as `0x${string}` }); } catch { return NextResponse.json({ bridgeId: burnTxHash, status: 'burning', burnTxHash }); }
     if (receipt.status !== 'success') {
       await updateBridgePending(burnTxHash, { status: 'failed', failureReason: 'Source bridge transaction did not succeed' });
       return NextResponse.json({ error: 'Source bridge transaction did not succeed' }, { status: 422 });
@@ -111,32 +74,15 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     const finalStatus = forwardTxHash ? 'completed' : 'attesting';
     await updateBridgePending(burnTxHash, { status: finalStatus, ...(forwardTxHash ? { forwardTxHash, completedAt: now } : {}) });
-
-    if (!forwardTxHash) {
-      return NextResponse.json({ bridgeId: burnTxHash, status: 'attesting', burnTxHash, forwardTxHash: null });
-    }
+    if (!forwardTxHash) return NextResponse.json({ bridgeId: burnTxHash, status: 'attesting', burnTxHash, forwardTxHash: null });
 
     const recordedHash = forwardTxHash;
     const recordedExplorer = destination.explorer;
-
     await Promise.allSettled([
-      saveTransaction(walletAddress, {
-        toAddress: walletAddress,
-        amount: String(amount),
-        amountFormatted: String(amount),
-        txHash: recordedHash,
-        status: 'confirmed',
-        token: 'USDC',
-        chainId: destinationChainId,
-        networkName: destination.name,
-        explorerUrl: `${recordedExplorer}/tx/${recordedHash}`,
-        type: 'bridge',
-        note: `Bridged from ${source.name} to ${destination.name} via Circle App Kit / CCTP V2`,
-      }),
+      saveTransaction(walletAddress, { toAddress: walletAddress, amount: String(amount), amountFormatted: String(amount), txHash: recordedHash, status: 'confirmed', token: 'USDC', chainId: destinationChainId, networkName: destination.name, explorerUrl: `${recordedExplorer}/tx/${recordedHash}`, type: 'bridge', note: `Bridged from ${source.name} to ${destination.name} via Circle App Kit / CCTP V2` }),
       writeActivity(buildBridgeActivity(walletAddress, amount, `${source.name} → ${destination.name}`, burnTxHash, recordedHash)),
       logTreasuryEvent('bridge_activity', amount, `USDC bridged from ${source.name} to ${destination.name} via Circle App Kit`, walletAddress, recordedHash),
     ]);
-
     return NextResponse.json({ bridgeId: burnTxHash, status: 'completed', burnTxHash, forwardTxHash, sourceChain: source.name, destinationChain: destination.name, completedAt: now });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unable to record bridge';

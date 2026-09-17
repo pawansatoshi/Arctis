@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
+import { CCTP_BRIDGE_CHAINS, CHAIN_ID } from '@/lib/contracts';
 
 export async function GET(_req: NextRequest) {
+  if (CHAIN_ID === 5042) {
+    return NextResponse.json({
+      available: false,
+      mode: null,
+      protocol: null,
+      direction: null,
+      destination: null,
+      chains: [],
+      routes: [],
+      reason: 'Circle CCTP routes are not enabled for ARCTIS Arc Mainnet until mainnet route identifiers and production verification are complete.',
+    });
+  }
+
   const chains = Object.entries(CCTP_BRIDGE_CHAINS).map(([chainId, chain]) => ({
     chain: chain.name,
     chainId: Number(chainId),

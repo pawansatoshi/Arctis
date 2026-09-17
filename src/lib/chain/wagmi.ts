@@ -44,7 +44,7 @@ export const arbitrumSepolia = defineChain({
   id: 421614,
   name: 'Arbitrum Sepolia',
   nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
-  rpcUrls: { default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] }, public: { http: ['https://sepolia.arbiscan.io'] } },
+  rpcUrls: { default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] }, public: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] } },
   blockExplorers: { default: { name: 'Arbiscan', url: 'https://sepolia.arbiscan.io' } },
   testnet: true,
 });

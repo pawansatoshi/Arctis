@@ -9,6 +9,7 @@ const ENV: NetworkEnv =
   process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+const MAINNET_TREASURY = '0xb467F683764593316fAEbB0709127E90791Fe47F' as const;
 
 // ─── Arc Testnet ────────────────────────────────────────────
 const TESTNET = {
@@ -31,9 +32,9 @@ const TESTNET = {
 } as const;
 
 // ─── Arc Mainnet ────────────────────────────────────────────
-// Mainnet treasury is intentionally supplied through Vercel/server
-// configuration rather than committed to the repository. Keep the
-// zero address until a production receiving wallet is configured.
+// The receiving wallet is public by design. Environment configuration
+// may override it, while the supplied production address remains the
+// safe source-controlled fallback for the Mainnet build.
 const MAINNET = {
   chainId: 5042,
   rpc: 'https://rpc.mainnet.arc.io',
@@ -50,7 +51,7 @@ const MAINNET = {
     tUSDC: 6,
     tARC:  18,
   },
-  treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || ZERO_ADDRESS) as `0x${string}`,
+  treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || MAINNET_TREASURY) as `0x${string}`,
 } as const;
 
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;

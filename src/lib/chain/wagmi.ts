@@ -6,22 +6,21 @@ import {
   braveWallet, walletConnectWallet, injectedWallet, coinbaseWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import { defineChain, fallback, http } from 'viem';
-import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL } from '@/lib/contracts';
+import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL, NETWORK_NAME } from '@/lib/contracts';
 
 export const arcTestnet = defineChain({
   id: CHAIN_ID,
-  name: 'Arc Testnet',
-  nativeCurrency: { decimals: 18, name: 'Arc', symbol: 'ARC' },
+  name: NETWORK_NAME,
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
   rpcUrls: {
     default: { http: RPC_FALLBACK_URLS },
     public:  { http: RPC_FALLBACK_URLS },
   },
   blockExplorers: {
-    default: { name: 'ArcScan', url: EXPLORER_URL },
+    default: { name: 'Arc Explorer', url: EXPLORER_URL },
   },
-  testnet: true,
+  testnet: CHAIN_ID === 5042002,
 });
-
 
 export const ethereumSepolia = defineChain({
   id: 11155111,
@@ -45,15 +44,11 @@ export const arbitrumSepolia = defineChain({
   id: 421614,
   name: 'Arbitrum Sepolia',
   nativeCurrency: { decimals: 18, name: 'Sepolia Ether', symbol: 'ETH' },
-  rpcUrls: { default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] }, public: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] } },
+  rpcUrls: { default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] }, public: { http: ['https://sepolia.arbiscan.io'] } },
   blockExplorers: { default: { name: 'Arbiscan', url: 'https://sepolia.arbiscan.io' } },
   testnet: true,
 });
 
-// Fallback transport (Phase 18) — tries each RPC in order, moving to
-// the next only on failure. Used by server-side viem clients
-// (bridge attestation polling, swap executor, chain verification)
-// that create their own clients rather than going through wagmi.
 export const arcTransport = fallback(RPC_FALLBACK_URLS.map((url) => http(url)));
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';

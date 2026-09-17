@@ -23,18 +23,11 @@ const TESTNET = {
     tARC:  '0xe66a11cb4b147F208e6d81B7540bfc83E1680c78',
     AGENT_TREASURY: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
   },
-  decimals: {
-    USDC:  6,
-    tUSDC: 6,
-    tARC:  18,
-  },
-  treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',
+  decimals: { USDC: 6, tUSDC: 6, tARC: 18 },
+  treasury: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
 } as const;
 
 // ─── Arc Mainnet ────────────────────────────────────────────
-// The receiving wallet is public by design. Environment configuration
-// may override it, while the supplied production address remains the
-// safe source-controlled fallback for the Mainnet build.
 const MAINNET = {
   chainId: 5042,
   rpc: 'https://rpc.mainnet.arc.io',
@@ -46,51 +39,28 @@ const MAINNET = {
     tARC:  ZERO_ADDRESS,
     AGENT_TREASURY: ZERO_ADDRESS,
   },
-  decimals: {
-    USDC:  6,
-    tUSDC: 6,
-    tARC:  18,
-  },
+  decimals: { USDC: 6, tUSDC: 6, tARC: 18 },
   treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || MAINNET_TREASURY) as `0x${string}`,
 } as const;
 
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;
-
-// ─── Convenience exports ─────────────────────────────────────
-export const CHAIN_ID        = NETWORK.chainId;
-export const RPC_URL         = NETWORK.rpc;
-export const EXPLORER_URL    = NETWORK.explorer;
-export const NETWORK_NAME    = NETWORK.networkName;
-export const CONTRACTS       = NETWORK.contracts;
-export const DECIMALS        = NETWORK.decimals;
+export const CHAIN_ID = NETWORK.chainId;
+export const RPC_URL = NETWORK.rpc;
+export const EXPLORER_URL = NETWORK.explorer;
+export const NETWORK_NAME = NETWORK.networkName;
+export const CONTRACTS = NETWORK.contracts;
+export const DECIMALS = NETWORK.decimals;
 export const TREASURY_WALLET = NETWORK.treasury as `0x${string}`;
-export const AGENT_TREASURY  = NETWORK.contracts.AGENT_TREASURY as `0x${string}`;
-
-// Primary payment asset — Arc Native USDC
-export const PRIMARY_TOKEN    = 'USDC' as const;
+export const AGENT_TREASURY = NETWORK.contracts.AGENT_TREASURY as `0x${string}`;
+export const PRIMARY_TOKEN = 'USDC' as const;
 export const PRIMARY_DECIMALS = DECIMALS.USDC;
 export const PRIMARY_CONTRACT = CONTRACTS.USDC as `0x${string}`;
-
-// Swap layer. Testnet-only assets are zeroed on mainnet until a
-// separately verified mainnet route is implemented.
 export const TUSDC_CONTRACT = CONTRACTS.tUSDC as `0x${string}`;
-export const TARC_CONTRACT  = CONTRACTS.tARC  as `0x${string}`;
-
-// Explorer URL builders
-export const txUrl      = (hash: string) => `${EXPLORER_URL}/tx/${hash}`;
+export const TARC_CONTRACT = CONTRACTS.tARC as `0x${string}`;
+export const txUrl = (hash: string) => `${EXPLORER_URL}/tx/${hash}`;
 export const addressUrl = (addr: string) => `${EXPLORER_URL}/address/${addr}`;
+export const RPC_FALLBACK_URLS = ENV === 'mainnet' ? [RPC_URL] : [RPC_URL, 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'].filter(Boolean);
 
-// ─── RPC fallback endpoints ─────────────────────────────────
-// Keep all endpoints on the same selected network.
-export const RPC_FALLBACK_URLS = ENV === 'mainnet'
-  ? [RPC_URL].filter(Boolean)
-  : [
-      RPC_URL,
-      'https://rpc.drpc.testnet.arc.network',
-      'https://rpc.quicknode.testnet.arc.network',
-    ].filter(Boolean);
-
-// ─── ERC-20 ABI (covers USDC, tUSDC, tARC) ──────────────────
 export const ERC20_ABI = [
   { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'transfer', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
@@ -102,68 +72,20 @@ export const ERC20_ABI = [
   { anonymous: false, inputs: [{ indexed: true, name: 'from', type: 'address' }, { indexed: true, name: 'to', type: 'address' }, { indexed: false, name: 'value', type: 'uint256' }], name: 'Transfer', type: 'event' },
 ] as const;
 
-// ─── Circle App Kit bridge route registry ───────────────────
-// Testnet-only routes remain explicit until each mainnet route is
-// separately verified. Mainnet core does not depend on these routes.
 export const CCTP_SOURCE_CHAINS = {
   '11155111': { name: 'Ethereum Sepolia', domain: 0, usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', explorer: 'https://sepolia.etherscan.io' },
-  '84532':    { name: 'Base Sepolia', domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', explorer: 'https://sepolia.basescan.org' },
-  '421614':   { name: 'Arbitrum Sepolia', domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', explorer: 'https://sepolia.arbiscan.io' },
+  '84532': { name: 'Base Sepolia', domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', explorer: 'https://sepolia.basescan.org' },
+  '421614': { name: 'Arbitrum Sepolia', domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', explorer: 'https://sepolia.arbiscan.io' },
 } as const;
 
 export const CCTP_BRIDGE_CHAINS = {
-  '5042002': {
-    name: 'Arc Testnet',
-    domain: 26,
-    usdc: '0x3600000000000000000000000000000000000000',
-    explorer: 'https://explorer.testnet.arc.io',
-    appKitChain: 'Arc_Testnet',
-  },
-  '11155111': {
-    name: 'Ethereum Sepolia',
-    domain: 0,
-    usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238',
-    explorer: 'https://sepolia.etherscan.io',
-    appKitChain: 'Ethereum_Sepolia',
-  },
-  '84532': {
-    name: 'Base Sepolia',
-    domain: 6,
-    usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-    explorer: 'https://sepolia.basescan.org',
-    appKitChain: 'Base_Sepolia',
-  },
-  '421614': {
-    name: 'Arbitrum Sepolia',
-    domain: 3,
-    usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
-    explorer: 'https://sepolia.arbiscan.io',
-    appKitChain: 'Arbitrum_Sepolia',
-  },
+  '5042002': { name: 'Arc Testnet', domain: 26, usdc: '0x3600000000000000000000000000000000000000', explorer: 'https://explorer.testnet.arc.io', appKitChain: 'Arc_Testnet' },
+  '11155111': { name: 'Ethereum Sepolia', domain: 0, usdc: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', explorer: 'https://sepolia.etherscan.io', appKitChain: 'Ethereum_Sepolia' },
+  '84532': { name: 'Base Sepolia', domain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', explorer: 'https://sepolia.basescan.org', appKitChain: 'Base_Sepolia' },
+  '421614': { name: 'Arbitrum Sepolia', domain: 3, usdc: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', explorer: 'https://sepolia.arbiscan.io', appKitChain: 'Arbitrum_Sepolia' },
 } as const;
 
-// Memo contract — testnet-only until a mainnet deployment is verified.
-export const MEMO_CONTRACT          = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as const;
-export const MULTICALL3_FROM        = '0x522fAf9A91c41c443c66765030741e4AaCe147D0' as const;
-
-export const CCTP_TOKEN_MESSENGER_ABI = [
-  {
-    inputs: [
-      { name: 'amount', type: 'uint256' },
-      { name: 'destinationDomain', type: 'uint32' },
-      { name: 'mintRecipient', type: 'bytes32' },
-      { name: 'burnToken', type: 'address' },
-      { name: 'destinationCaller', type: 'bytes32' },
-      { name: 'maxFee', type: 'uint256' },
-      { name: 'minFinalityThreshold', type: 'uint32' },
-    ],
-    name: 'depositForBurn',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-] as const;
-
-export const MEMO_ABI = [
-  { inputs: [{ name: 'data', type: 'bytes' }], name: 'memo', outputs: [], stateMutability: 'nonpayable', type: 'function' },
-] as const;
+export const MEMO_CONTRACT = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505' as const;
+export const MULTICALL3_FROM = '0x522fAf9A91c41c443c66765030741e4AaCe147D0' as const;
+export const CCTP_TOKEN_MESSENGER_ABI = [{ inputs: [{ name: 'amount', type: 'uint256' }, { name: 'destinationDomain', type: 'uint32' }, { name: 'mintRecipient', type: 'bytes32' }, { name: 'burnToken', type: 'address' }, { name: 'destinationCaller', type: 'bytes32' }, { name: 'maxFee', type: 'uint256' }, { name: 'minFinalityThreshold', type: 'uint32' }], name: 'depositForBurn', outputs: [], stateMutability: 'nonpayable', type: 'function' }] as const;
+export const MEMO_ABI = [{ inputs: [{ name: 'data', type: 'bytes' }], name: 'memo', outputs: [], stateMutability: 'nonpayable', type: 'function' }] as const;

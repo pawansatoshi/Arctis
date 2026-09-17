@@ -1,18 +1,20 @@
 import { defineChain, fallback, http } from 'viem';
-import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL } from '@/lib/contracts';
+import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL, NETWORK_NAME } from '@/lib/contracts';
 
+// Kept under the existing export name for compatibility with current imports.
+// The selected network is controlled by NEXT_PUBLIC_NETWORK_ENV.
 export const arcTestnet = defineChain({
   id: CHAIN_ID,
-  name: 'Arc Testnet',
-  nativeCurrency: { decimals: 18, name: 'Arc', symbol: 'ARC' },
+  name: NETWORK_NAME,
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
   rpcUrls: {
     default: { http: RPC_FALLBACK_URLS },
     public:  { http: RPC_FALLBACK_URLS },
   },
   blockExplorers: {
-    default: { name: 'ArcScan', url: EXPLORER_URL },
+    default: { name: 'Arc Explorer', url: EXPLORER_URL },
   },
-  testnet: true,
+  testnet: CHAIN_ID === 5042002,
 });
 
 export const arcTransport = fallback(RPC_FALLBACK_URLS.map((url) => http(url)));

@@ -137,8 +137,8 @@ export default function AdminPage() {
               {[
                 { name: 'Firebase', status: 'operational', note: 'Firestore + Auth connected' },
                 { name: 'OpenRouter AI', status: 'operational', note: 'Streaming enabled, fallback chain active' },
-                { name: '${NETWORK_NAME} RPC', status: 'operational', note: '${RPC_URL}' },
-                { name: 'Swap Providers', status: 'degraded', note: '${NETWORK_NAME} provider not enabled' },
+                { name: `${NETWORK_NAME} RPC`, status: 'operational', note: RPC_URL },
+                { name: 'Swap Providers', status: 'degraded', note: `${NETWORK_NAME} provider not enabled` },
                 { name: 'Bridge Providers', status: 'degraded', note: 'Arc bridge not yet launched' },
               ].map((s) => (
                 <div key={s.name} className="flex items-center justify-between py-2 border-b border-black/[0.04] dark:border-white/[0.04]">

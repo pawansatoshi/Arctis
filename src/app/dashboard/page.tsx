@@ -16,6 +16,7 @@ import { useAppStore } from '@/lib/store';
 import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
+import { NETWORK_NAME } from '@/lib/contracts';
 import type { PassportData } from "@/components/passport/PassportIdentityCard";
 
 const PassportIdentityCard = dynamic(
@@ -259,7 +260,7 @@ export default function DashboardPage() {
               <span className="text-surface-500 text-xs font-mono">
                 {formatAddress(address, 6)}
               </span>
-              <span className="text-surface-600 text-xs">· Arc Testnet</span>
+              <span className="text-surface-600 text-xs">· {NETWORK_NAME}</span>
             </div>
           )}
         </div>
@@ -311,7 +312,7 @@ export default function DashboardPage() {
                 </div>
                 <span className="text-surface-500 text-xs font-medium uppercase tracking-wider">USDC Balance</span>
               </div>
-              <span className="text-surface-600 text-xs">Arc Testnet</span>
+              <span className="text-surface-600 text-xs">{NETWORK_NAME}</span>
             </div>
 
             {balanceLoading ? (

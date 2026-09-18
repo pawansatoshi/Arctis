@@ -225,7 +225,7 @@ export default function AppOrientation() {
       let key = '';
       let phrase = '';
       let modal: { kind: 'success' | 'pending' | 'failed'; title: string; message: string } | null = null;
-      if (bodyText.includes('Transfer Confirmed')) { key = 'transfer-success'; phrase = 'Transfer successful. Your transaction has been confirmed on Arc Testnet.'; modal = { kind: 'success', title: 'Transfer Confirmed', message: 'Your transfer was confirmed on-chain.' }; }
+      if (bodyText.includes('Transfer Confirmed')) { key = 'transfer-success'; phrase = `Transfer successful. Your transaction has been confirmed on ${NETWORK_NAME}.`; modal = { kind: 'success', title: 'Transfer Confirmed', message: 'Your transfer was confirmed on-chain.' }; }
       else if (bodyText.includes('Circle Swap complete') || bodyText.includes('Swap complete')) { key = 'swap-success'; phrase = 'Swap successful. Your transaction has been confirmed.'; modal = { kind: 'success', title: 'Swap Complete', message: 'Your swap was completed successfully.' }; }
       else if (bodyText.includes('Bridge Submitted') || bodyText.includes('successfully bridged')) { key = 'bridge-success'; phrase = 'Bridge submitted successfully. Circle Forwarding is handling the destination mint.'; modal = { kind: 'success', title: 'Bridge Submitted', message: 'Your bridge request was submitted successfully.' }; }
       else if (bodyText.includes('Confirm in wallet…') || bodyText.includes('Review & Execute')) { key = `${pathname}:wallet`; phrase = 'Your transaction is ready. Please review and approve it in your wallet.'; }

@@ -1,3 +1,4 @@
+import { NETWORK_NAME } from '@/lib/contracts';
 import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase/admin';
@@ -93,7 +94,7 @@ export function buildBridgeActivity(
     walletAddress,
     type: 'bridge_completed',
     category: 'wallet',
-    title: `Bridged ${amount} USDC to Arc Testnet`,
+    title: `Bridged ${amount} USDC to ${NETWORK_NAME}`,
     description: `From ${sourceChain} via Circle CCTP V2`,
     severity: 'success',
     metadata: {

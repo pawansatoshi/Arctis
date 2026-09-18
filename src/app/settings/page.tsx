@@ -176,8 +176,8 @@ export default function SettingsPage() {
             <SettingRow label="USDC Decimals" description="Token decimal precision">
               <span className="font-mono text-xs text-surface-700">{ARC_USDC_DECIMALS}</span>
             </SettingRow>
-            <SettingRow label="RPC Endpoint" description="Arc Testnet RPC">
-              <span className="font-mono text-xs text-surface-700">rpc.testnet.arc.network</span>
+            <SettingRow label="RPC Endpoint" description={`${NETWORK_NAME} RPC`}>
+              <span className="font-mono text-xs text-surface-700">{RPC_URL}</span>
             </SettingRow>
           </div>
         </motion.div>

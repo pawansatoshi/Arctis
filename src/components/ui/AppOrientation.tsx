@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK_NAME } from '@/lib/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Bot, FolderOpen, ArrowLeftRight, GitMerge, X, Info, Volume2, VolumeX, Play, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
@@ -22,7 +23,7 @@ const HELP: Record<string, { title: string; text: string }> = {
   '/workspace': { title: 'Workspace', text: 'Choose a work domain and start from templates. Your prompts are sent to the AI workspace for the selected mode.' },
   '/knowledge': { title: 'Knowledge', text: 'Organize documents, notes, research, and references. Use Ask AI to turn your knowledge into an explainable AI session.' },
   '/agents': { title: 'Agents', text: 'Agents can prepare economic actions, but wallet authorization remains with you. Review proposals before execution.' },
-  '/transfer': { title: 'Transfer', text: 'Send USDC on Arc Testnet. Confirm the recipient and amount, then approve the transaction in your wallet.' },
+  '/transfer': { title: 'Transfer', text: `Send USDC on ${NETWORK_NAME}. Confirm the recipient and amount, then approve the transaction in your wallet.` },
   '/swap': { title: 'Swap', text: 'Choose the tokens, enter an amount, review the live quote and fees, then approve the swap in your wallet.' },
   '/bridge': { title: 'Bridge', text: 'Move supported USDC between configured test networks. Review source, destination, fees and the Circle route before approval.' },
   '/treasury': { title: 'Treasury', text: 'Review treasury balances and activity. Financial actions remain subject to wallet authorization and configured controls.' },

@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK_NAME } from '@/lib/contracts';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -84,7 +85,7 @@ export default function TreasuryPage() {
       icon: Building2,
       color: 'text-blue-600 dark:text-blue-400',
       bg: 'bg-blue-500/10',
-      sub: 'Arc Testnet',
+      sub: NETWORK_NAME,
     },
     {
       label: '30D Outflow',

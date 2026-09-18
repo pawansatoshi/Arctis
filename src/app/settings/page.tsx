@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK_NAME, CHAIN_ID, RPC_URL } from '@/lib/contracts';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
@@ -159,7 +160,7 @@ export default function SettingsPage() {
             <SettingRow label="Chain" description="Active network">
               <div className="flex items-center gap-2">
                 <span className="status-dot-online" />
-                <span className="text-surface-950 text-xs font-medium">Arc Testnet</span>
+                <span className="text-surface-950 text-xs font-medium">{NETWORK_NAME}</span>
               </div>
             </SettingRow>
             <SettingRow label="Chain ID" description="Network identifier">

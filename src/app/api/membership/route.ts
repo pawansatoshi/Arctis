@@ -1,3 +1,4 @@
+import { NETWORK_NAME } from '@/lib/contracts';
 import { NextRequest, NextResponse } from 'next/server';
 import { getMembership, activateMembership } from '@/lib/memberships/service';
 import { obs } from '@/lib/observability/logger';
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
         type: 'membership_purchase',
         category: 'treasury',
         title: `${plan.name} membership activated`,
-        description: `${plan.priceUSDC} USDC · Arc Testnet`,
+        description: `${plan.priceUSDC} USDC · ${NETWORK_NAME}`,
         severity: 'success',
         metadata: { txHash, explorerURL: txUrl(txHash), amount: plan.priceUSDC, tier },
       }),

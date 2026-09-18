@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK_NAME, CHAIN_ID } from '@/lib/contracts';
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -86,6 +87,6 @@ export function PassportCard({ username, walletAddress, displayName, bio, avatar
         {isOwner && <Link href="/dashboard" className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-surface-700 hover:text-surface-950 text-xs font-medium transition-colors hover:bg-surface-300/60 border border-black/[0.06] dark:border-white/[0.06]" aria-label="Back to ARCTIS home"><Home className="w-3.5 h-3.5" />Back to ARCTIS Home</Link>}
       </div>
     </div>
-    <div className="flex items-center justify-center gap-4 mt-4"><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /><span className="text-surface-600 text-xs">Arc Testnet · Chain 5042002</span></div></div>
+    <div className="flex items-center justify-center gap-4 mt-4"><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /><span className="text-surface-600 text-xs">{NETWORK_NAME} · Chain {CHAIN_ID}</span></div></div>
   </motion.div>;
 }

@@ -22,6 +22,7 @@ import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/lib/theme/ThemeProvider';
 import { isMemoEnabled, setMemoEnabled } from '@/lib/memo/service';
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, ARC_USDC_DECIMALS } from '@/lib/chain/config';
+import { NETWORK_NAME, RPC_URL } from '@/lib/contracts';
 import { copyToClipboard, formatAddress, getAddressExplorerUrl, cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useLanguagePreference, SUPPORTED_LANGUAGES } from '@/lib/hooks/useLanguagePreference';

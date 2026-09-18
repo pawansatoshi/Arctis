@@ -20,6 +20,7 @@ import { useAppStore } from '@/lib/store';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
 import { useAccount } from 'wagmi';
+import { NETWORK_NAME } from '@/lib/contracts';
 
 const ConnectButton = dynamic(
   () => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })),
@@ -242,7 +243,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className={cn('status-dot flex-shrink-0', isCorrectChain ? 'status-dot-online' : 'status-dot-offline')} />
-            <span className="text-surface-600">{isCorrectChain ? 'Arc Testnet · Connected' : 'Wrong chain'}</span>
+            <span className="text-surface-600">{isCorrectChain ? `${NETWORK_NAME} · Connected` : 'Wrong chain'}</span>
           </div>
         </div>
       )}
@@ -330,7 +331,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 role={!isCorrectChain ? 'button' : undefined}
               >
                 <span className={cn('w-1.5 h-1.5 rounded-full', isCorrectChain ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse')} />
-                {isCorrectChain ? 'Arc Testnet' : 'Switch Network'}
+                {isCorrectChain ? NETWORK_NAME : 'Switch Network'}
               </div>
             )}
             <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />

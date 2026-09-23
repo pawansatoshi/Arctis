@@ -10,7 +10,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/security/rateLimit';
 import { BRIDGE_MAX_AMOUNT, BRIDGE_MIN_AMOUNT } from '@/lib/bridge/types';
 
 const SOURCE_RPC: Record<number, string> = {
-  5042002: 'https://rpc.testnet.arc.network',
+  5042002: 'https://rpc.testnet.arc.io',
   11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
   84532: 'https://sepolia.base.org',
   421614: 'https://sepolia-rollup.arbitrum.io/rpc',
@@ -21,11 +21,12 @@ export async function POST(req: NextRequest) {
   let burnTxHash = '';
   let walletAddress = '';
   try {
-    const body = await req.json() as { burnTxHash?: string; forwardTxHash?: string; sourceChainId?: number; destinationChainId?: number; walletAddress?: string; amount?: number };
-    const { forwardTxHash, sourceChainId, destinationChainId, amount } = body;
+    const body = await req.json() as { burnTxHash?: string; forwardTxHash?: string; sourceChainId?: number; destinationChainId?: number; walletAddress?: string; amount?: number; network?: 'testnet' | 'mainnet' };
+    const { forwardTxHash, sourceChainId, destinationChainId, amount, network } = body;
     burnTxHash = body.burnTxHash ?? '';
     walletAddress = body.walletAddress ?? '';
 
+    if (network !== 'testnet') return NextResponse.json({ error: 'Bridge recording is disabled for Arc Mainnet in this build.' }, { status: 503 });
     if (!burnTxHash || !sourceChainId || !destinationChainId || !walletAddress || !amount) return NextResponse.json({ error: 'burnTxHash, sourceChainId, destinationChainId, walletAddress, amount required' }, { status: 400 });
     if (!/^0x[0-9a-fA-F]{64}$/.test(burnTxHash) || (forwardTxHash && !/^0x[0-9a-fA-F]{64}$/.test(forwardTxHash))) return NextResponse.json({ error: 'Invalid transaction hash format' }, { status: 400 });
     if (!isValidEthAddress(walletAddress)) return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });

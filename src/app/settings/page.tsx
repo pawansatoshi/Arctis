@@ -21,10 +21,11 @@ import {
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/lib/theme/ThemeProvider';
 import { isMemoEnabled, setMemoEnabled } from '@/lib/memo/service';
-import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, ARC_USDC_DECIMALS } from '@/lib/chain/config';
+import { } from '@/lib/chain/config';
 import { copyToClipboard, formatAddress, getAddressExplorerUrl, cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useLanguagePreference, SUPPORTED_LANGUAGES } from '@/lib/hooks/useLanguagePreference';
+import { getSelectedNetworkEnv, getNetworkProfile, type NetworkEnv } from '@/lib/network/profile';
 
 // ============================================================
 // Settings Page — App Configuration
@@ -93,6 +94,9 @@ export default function SettingsPage() {
   useEffect(() => { setMemoEnabledState(isMemoEnabled()); }, []);
   const handleMemoToggle = (v: boolean) => { setMemoEnabledState(v); setMemoEnabled(v); };
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
+  useEffect(() => { const sync = () => setNetworkEnv(getSelectedNetworkEnv()); sync(); window.addEventListener('arctis-network-changed', sync); return () => window.removeEventListener('arctis-network-changed', sync); }, []);
+  const network = getNetworkProfile(networkEnv);
 
   return (
       <div className="max-w-2xl space-y-6 safe-bottom">
@@ -159,25 +163,25 @@ export default function SettingsPage() {
             <SettingRow label="Chain" description="Active network">
               <div className="flex items-center gap-2">
                 <span className="status-dot-online" />
-                <span className="text-surface-950 text-xs font-medium">Arc Testnet</span>
+                <span className="text-surface-950 text-xs font-medium">{network.networkName}</span>
               </div>
             </SettingRow>
             <SettingRow label="Chain ID" description="Network identifier">
-              <span className="font-mono text-xs text-surface-700">{ARC_CHAIN_ID}</span>
+              <span className="font-mono text-xs text-surface-700">{network.chainId}</span>
             </SettingRow>
             <SettingRow label="USDC Contract" description="ERC-20 token address">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-surface-700">{formatAddress(ARC_USDC_ADDRESS, 4)}</span>
-                <button onClick={() => { copyToClipboard(ARC_USDC_ADDRESS); toast.success('Copied!'); }} aria-label="Copy USDC contract address" className="text-surface-500 hover:text-surface-950 transition-colors">
+                <span className="font-mono text-xs text-surface-700">{formatAddress(network.contracts.USDC, 4)}</span>
+                <button onClick={() => { copyToClipboard(network.contracts.USDC); toast.success('Copied!'); }} aria-label="Copy USDC contract address" className="text-surface-500 hover:text-surface-950 transition-colors">
                   <Copy className="w-3.5 h-3.5" />
                 </button>
               </div>
             </SettingRow>
             <SettingRow label="USDC Decimals" description="Token decimal precision">
-              <span className="font-mono text-xs text-surface-700">{ARC_USDC_DECIMALS}</span>
+              <span className="font-mono text-xs text-surface-700">{network.decimals.USDC}</span>
             </SettingRow>
-            <SettingRow label="RPC Endpoint" description="Arc Testnet RPC">
-              <span className="font-mono text-xs text-surface-700">rpc.testnet.arc.network</span>
+            <SettingRow label="RPC Endpoint" description={`${network.networkName} RPC`}>
+              <span className="font-mono text-xs text-surface-700">{network.rpc}</span>
             </SettingRow>
           </div>
         </motion.div>

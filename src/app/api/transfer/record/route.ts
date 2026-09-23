@@ -7,7 +7,7 @@ import type { TransactionRecord } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const { walletAddress, toAddress, amount, amountFormatted, token, note, mode } =
+    const { walletAddress, toAddress, amount, amountFormatted, token, note, mode, network } =
       (await req.json()) as {
         walletAddress?: string;
         toAddress?: string;

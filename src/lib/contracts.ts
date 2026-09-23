@@ -64,7 +64,6 @@ export const TUSDC_CONTRACT = CONTRACTS.tUSDC as `0x${string}`;
 export const TARC_CONTRACT = CONTRACTS.tARC as `0x${string}`;
 export const txUrl = (hash: string) => `${EXPLORER_URL}/tx/${hash}`;
 export const addressUrl = (addr: string) => `${EXPLORER_URL}/address/${addr}`;
-export const RPC_FALLBACK_URLS = ENV === 'mainnet' ? [RPC_URL] : [RPC_URL, 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'].filter(Boolean);
 
 export const ERC20_ABI = [
   { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },

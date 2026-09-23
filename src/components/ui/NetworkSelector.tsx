@@ -26,6 +26,7 @@ export default function NetworkSelector() {
       window.localStorage.setItem('arctis-network-env', value);
       document.cookie = `arctis-network-env=${value}; Path=/; Max-Age=31536000; SameSite=Lax`;
     } catch {}
+    window.dispatchEvent(new Event('arctis-network-changed'));
     window.location.reload();
   }
 

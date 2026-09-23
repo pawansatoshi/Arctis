@@ -3,6 +3,11 @@ import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
 import { BRIDGE_MIN_AMOUNT, BRIDGE_MAX_AMOUNT } from '@/lib/bridge/types';
 
 export async function GET(req: NextRequest) {
+  const network = req.nextUrl.searchParams.get('network') ?? 'testnet';
+  if (network !== 'testnet') {
+    return NextResponse.json({ error: 'Bridge is not enabled on Arc Mainnet in this build.' }, { status: 503 });
+  }
+
   const sourceChainParam = req.nextUrl.searchParams.get('sourceChain');
   const destinationChainParam = req.nextUrl.searchParams.get('destinationChain');
   const amountParam = req.nextUrl.searchParams.get('amount');

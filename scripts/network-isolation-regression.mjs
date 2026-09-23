@@ -21,6 +21,7 @@ assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
 
 assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);
 assert.match(wagmi, /id:\s*5042[\s\S]*rpc\.mainnet\.arc\.io/);
+assert.doesNotMatch(contracts, /RPC_FALLBACK_URLS/);
 assert.doesNotMatch(wagmi, /RPC_FALLBACK_URLS/,
   'wagmi chain definitions must not inherit a single build-time network RPC');
 

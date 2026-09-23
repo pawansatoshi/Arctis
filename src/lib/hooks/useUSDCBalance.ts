@@ -1,18 +1,30 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useReadContract, useAccount } from 'wagmi';
-import { PRIMARY_CONTRACT, ERC20_ABI, CHAIN_ID } from '@/lib/contracts';
+import { TESTNET_NETWORK, MAINNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import { formatUSDC } from '@/lib/utils';
+
+type NetworkEnv = 'testnet' | 'mainnet';
 
 export function useUSDCBalance(overrideAddress?: `0x${string}`) {
   const { address } = useAccount();
   const targetAddress = overrideAddress ?? address;
+  const [network, setNetwork] = useState<NetworkEnv>('testnet');
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('arctis-network-env');
+      if (saved === 'mainnet' || saved === 'testnet') setNetwork(saved);
+    } catch {}
+  }, []);
+
+  const profile = network === 'mainnet' ? MAINNET_NETWORK : TESTNET_NETWORK;
   const { data: rawBalance, isLoading, isError, refetch } = useReadContract({
-    address: PRIMARY_CONTRACT,
+    address: profile.contracts.USDC,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    chainId: CHAIN_ID,
+    chainId: profile.chainId,
     args: targetAddress ? [targetAddress] : undefined,
     query: {
       enabled: !!targetAddress,

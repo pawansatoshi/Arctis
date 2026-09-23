@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CCTP_BRIDGE_CHAINS, CHAIN_ID } from '@/lib/contracts';
 
 export async function GET(_req: NextRequest) {
-  if (CHAIN_ID === 5042) {
+  const requestedNetwork = _req.nextUrl.searchParams.get('network');
+  if (requestedNetwork === 'mainnet' || CHAIN_ID === 5042) {
     return NextResponse.json({
       available: false,
       mode: null,

@@ -18,6 +18,7 @@ import { announceTransactionState } from '@/lib/transaction/voice';
 import { tryAcquireExecution, releaseExecution } from '@/lib/transaction/execution-lock';
 import { formatRelative } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { getSelectedNetworkEnv } from '@/lib/network/profile';
 
 type SwapToken = 'USDC' | 'tUSDC' | 'tARC' | 'EURC';
 const TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC', 'EURC'];
@@ -77,8 +78,8 @@ function SwapPageInner() {
   const { writeContractAsync } = useWriteContract();
   const { getAuthHeaders } = useWalletAuth();
   const { pendingAction, setPendingAction } = useAppStore();
-  const [networkEnv, setNetworkEnv] = useState<'testnet' | 'mainnet'>('testnet');
-  useEffect(() => { try { setNetworkEnv(window.localStorage.getItem('arctis-network-env') === 'mainnet' ? 'mainnet' : 'testnet'); } catch {} }, []);
+  const [networkEnv, setNetworkEnv] = useState<'testnet' | 'mainnet'>(() => getSelectedNetworkEnv());
+  
   const [sessions, setSessions] = useState<{ manual: Session; agent: Session }>({ manual: { ...empty }, agent: { ...empty } });
   const sessionsRef = useRef(sessions);
   const quoteSeq = useRef<{ manual: number; agent: number }>({ manual: 0, agent: 0 });

@@ -5,16 +5,10 @@
 
 export type NetworkEnv = 'testnet' | 'mainnet';
 
-const ENV: NetworkEnv = (() => {
-  const configured: NetworkEnv = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
-  if (typeof window !== 'undefined') {
-    try {
-      const selected = window.localStorage.getItem('arctis-network-env');
-      if (selected === 'mainnet' || selected === 'testnet') return selected;
-    } catch {}
-  }
-  return configured;
-})();
+// Build/runtime configuration is server-side only.
+// Client code must select a profile explicitly through src/lib/network/profile.ts.
+// This prevents browser localStorage from silently changing module-level constants.
+const ENV: NetworkEnv = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 const MAINNET_TREASURY = '0xb467F683764593316fAEbB0709127E90791Fe47F' as const;

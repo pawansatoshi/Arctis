@@ -7,7 +7,7 @@ import { AppKit } from '@circle-fin/app-kit';
 import { ArcTestnet } from '@circle-fin/app-kit/chains';
 import { createPublicClient, formatEther, http, parseUnits } from 'viem';
 import { ArrowLeftRight, History, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
-import { CONTRACTS, ERC20_ABI, RPC_URL, txUrl } from '@/lib/contracts';
+import { CONTRACTS, ERC20_ABI, RPC_URL, CHAIN_ID, txUrl } from '@/lib/contracts';
 import { isCircleSwapPair } from '@/lib/swap/circle';
 import { useAppStore } from '@/lib/store';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
@@ -118,7 +118,9 @@ function SwapPageInner() {
     }
     setS({ step: 'estimating', error: undefined }, target);
     try {
-      if (isCircleSwapPair(q.from, q.to)) {
+      if (CHAIN_ID === 5042) {
+        setS({ quote: null, step: 'error', error: 'ARCTIS OTC/Circle swap is not enabled on Arc Mainnet in this stable build.' }, target);
+      } else if (isCircleSwapPair(q.from, q.to)) {
         const provider = await connector.getProvider();
         const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
         const kit = new AppKit();
@@ -126,7 +128,7 @@ function SwapPageInner() {
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'circle', input: n, output: Number(e.estimatedOutput.amount), fee: 0, available: true }, step: 'idle' }, target);
       } else if (otcPair(q.from, q.to)) {
-        const r = await fetch(`/api/swap/quote?from=${q.from}&to=${q.to}&amount=${q.amount}`);
+        const r = await fetch(`/api/swap/quote?network=${CHAIN_ID === 5042 ? 'mainnet' : 'testnet'}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
         const d = await r.json();
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'otc', input: n, output: Number(d.outputAmount ?? 0), fee: Number(d.fee ?? 0), available: d.routeAvailable !== false }, step: 'idle', error: d.routeAvailable === false ? d.error : undefined }, target);

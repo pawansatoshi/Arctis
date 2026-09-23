@@ -118,7 +118,7 @@ function SwapPageInner() {
     }
     setS({ step: 'estimating', error: undefined }, target);
     try {
-      if (CHAIN_ID === 5042) {
+      if (String(CHAIN_ID) === '5042') {
         setS({ quote: null, step: 'error', error: 'ARCTIS OTC/Circle swap is not enabled on Arc Mainnet in this stable build.' }, target);
       } else if (isCircleSwapPair(q.from, q.to)) {
         const provider = await connector.getProvider();

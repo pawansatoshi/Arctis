@@ -1,88 +1,40 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
-import { formatUnits } from 'viem';
-import { CHAIN_ID } from '@/lib/contracts';
+import { useReadContract, useAccount } from 'wagmi';
+import { PRIMARY_CONTRACT, ERC20_ABI, CHAIN_ID } from '@/lib/contracts';
+import { formatUSDC } from '@/lib/utils';
 
-type BalanceState = {
-  raw: bigint;
-  formatted: string;
-  isLoading: boolean;
-  isError: boolean;
-};
-
-async function readNativeUsdc(
-  provider: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> },
-  address: `0x${string}`,
-): Promise<bigint> {
-  const rawChain = await provider.request({ method: 'eth_chainId' });
-  const chainId = typeof rawChain === 'string' ? parseInt(rawChain, 16) : Number(rawChain);
-  if (chainId !== CHAIN_ID) throw new Error('Wallet is on the wrong Arc network');
-
-  const raw = await provider.request({
-    method: 'eth_getBalance',
-    params: [address, 'latest'],
-  });
-
-  if (typeof raw !== 'string') throw new Error('Wallet did not return a native balance');
-  return BigInt(raw);
-}
-
+/**
+ * Reads the selected Arc profile's native USDC through its canonical
+ * contract/precompile interface. This is intentionally kept identical to
+ * the last known-good Testnet implementation; do not mix it with native
+ * gas-balance reads.
+ */
 export function useUSDCBalance(overrideAddress?: `0x${string}`) {
-  const { address, connector } = useAccount();
+  const { address } = useAccount();
   const targetAddress = overrideAddress ?? address;
-  const [state, setState] = useState<BalanceState>({
-    raw: 0n,
-    formatted: '0.00',
-    isLoading: !!targetAddress,
-    isError: false,
+
+  const { data: rawBalance, isLoading, isError, refetch } = useReadContract({
+    address: PRIMARY_CONTRACT,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    chainId: CHAIN_ID,
+    args: targetAddress ? [targetAddress] : undefined,
+    query: {
+      enabled: !!targetAddress,
+      refetchInterval: 10_000,
+      staleTime: 5_000,
+    },
   });
 
-  const refetch = useCallback(async () => {
-    if (!targetAddress || !connector) {
-      setState({ raw: 0n, formatted: '0.00', isLoading: false, isError: false });
-      return;
-    }
-
-    setState((prev) => ({ ...prev, isLoading: true, isError: false }));
-
-    try {
-      const provider = await connector.getProvider();
-      const native18 = await readNativeUsdc(
-        provider as { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> },
-        targetAddress,
-      );
-
-      // Arc's native USDC balance uses 18-decimal EVM units.
-      // It is the same balance represented by Arc's 6-decimal ERC-20 mirror.
-      setState({
-        raw: native18,
-        formatted: formatUnits(native18, 18),
-        isLoading: false,
-        isError: false,
-      });
-    } catch {
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        isError: true,
-      }));
-    }
-  }, [targetAddress, connector]);
-
-  useEffect(() => {
-    void refetch();
-    const timer = window.setInterval(() => void refetch(), 10_000);
-    return () => window.clearInterval(timer);
-  }, [refetch]);
+  const balance = rawBalance as bigint | undefined;
 
   return {
-    raw: state.raw,
-    formatted: state.formatted,
-    isLoading: state.isLoading,
-    isError: state.isError,
+    raw: balance ?? 0n,
+    formatted: balance !== undefined ? formatUSDC(balance) : '0.00',
+    isLoading,
+    isError,
     refetch,
-    hasBalance: state.raw > 0n,
+    hasBalance: balance !== undefined && balance > 0n,
   };
 }

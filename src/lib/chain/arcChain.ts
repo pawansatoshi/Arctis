@@ -1,20 +1,30 @@
 import { defineChain, fallback, http } from 'viem';
-import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL, NETWORK_NAME } from '@/lib/contracts';
 
-// Kept under the existing export name for compatibility with current imports.
-// The selected network is controlled by NEXT_PUBLIC_NETWORK_ENV.
 export const arcTestnet = defineChain({
-  id: CHAIN_ID,
-  name: NETWORK_NAME,
+  id: 5042002,
+  name: 'Arc Testnet',
   nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
   rpcUrls: {
-    default: { http: RPC_FALLBACK_URLS },
-    public:  { http: RPC_FALLBACK_URLS },
+    default: { http: ['https://rpc.testnet.arc.io'] },
+    public: { http: ['https://rpc.testnet.arc.io'] },
   },
   blockExplorers: {
-    default: { name: 'Arc Explorer', url: EXPLORER_URL },
+    default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },
   },
-  testnet: CHAIN_ID === 5042002,
+  testnet: true,
 });
 
-export const arcTransport = fallback(RPC_FALLBACK_URLS.map((url) => http(url)));
+export const arcMainnet = defineChain({
+  id: 5042,
+  name: 'Arc Mainnet',
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
+  rpcUrls: {
+    default: { http: ['https://rpc.mainnet.arc.io'] },
+    public: { http: ['https://rpc.mainnet.arc.io'] },
+  },
+  blockExplorers: {
+    default: { name: 'Arc Explorer', url: 'https://explorer.arc.io' },
+  },
+});
+
+export const arcTransport = fallback([http('https://rpc.testnet.arc.io')]);

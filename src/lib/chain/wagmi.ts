@@ -6,20 +6,33 @@ import {
   braveWallet, walletConnectWallet, injectedWallet, coinbaseWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import { defineChain, fallback, http } from 'viem';
-import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL, NETWORK_NAME } from '@/lib/contracts';
+import { RPC_FALLBACK_URLS } from '@/lib/contracts';
 
 export const arcTestnet = defineChain({
-  id: CHAIN_ID,
-  name: NETWORK_NAME,
+  id: 5042002,
+  name: 'Arc Testnet',
   nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
   rpcUrls: {
-    default: { http: RPC_FALLBACK_URLS },
-    public:  { http: RPC_FALLBACK_URLS },
+    default: { http: ['https://rpc.testnet.arc.network', ...RPC_FALLBACK_URLS.filter((u) => u !== 'https://rpc.testnet.arc.network')] },
+    public:  { http: ['https://rpc.testnet.arc.network', ...RPC_FALLBACK_URLS.filter((u) => u !== 'https://rpc.testnet.arc.network')] },
   },
   blockExplorers: {
-    default: { name: 'Arc Explorer', url: EXPLORER_URL },
+    default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },
   },
-  testnet: CHAIN_ID === 5042002,
+  testnet: true,
+});
+
+export const arcMainnet = defineChain({
+  id: 5042,
+  name: 'Arc Mainnet',
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
+  rpcUrls: {
+    default: { http: ['https://rpc.mainnet.arc.io'] },
+    public:  { http: ['https://rpc.mainnet.arc.io'] },
+  },
+  blockExplorers: {
+    default: { name: 'Arc Explorer', url: 'https://explorer.arc.io' },
+  },
 });
 
 export const ethereumSepolia = defineChain({
@@ -56,7 +69,7 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
 export const wagmiConfig = getDefaultConfig({
   appName: 'ARCTIS',
   projectId,
-  chains: [arcTestnet, ethereumSepolia, baseSepolia, arbitrumSepolia],
+  chains: [arcTestnet, arcMainnet, ethereumSepolia, baseSepolia, arbitrumSepolia],
   wallets: [
     {
       groupName: 'Recommended',

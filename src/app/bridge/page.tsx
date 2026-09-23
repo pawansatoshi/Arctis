@@ -24,7 +24,8 @@ interface Quote { amount: number; providerFee: number; forwarderFee: number; gas
 interface Session { amount: string; source: BridgeChain | null; destination: BridgeChain | null; quote: Quote | null; step: 'idle' | 'estimating' | 'executing' | 'completed' | 'error'; burn?: string; forward?: string; error?: string; executing: boolean; }
 const EMPTY: Session = { amount: '', source: null, destination: null, quote: null, step: 'idle', executing: false };
 const RPC: Record<number, string> = { 5042002: RPC_FALLBACK_URLS[0] ?? 'https://rpc.testnet.arc.network', 11155111: 'https://ethereum-sepolia-rpc.publicnode.com', 84532: 'https://sepolia.base.org', 421614: 'https://sepolia-rollup.arbitrum.io/rpc' };
-const NATIVE: Record<number, string> = { 5042002: 'ARC', 11155111: 'ETH', 84532: 'ETH', 421614: 'ETH' };\nconst CCTP_CONFIG = { transferSpeed: 'SLOW' as const };
+const NATIVE: Record<number, string> = { 5042002: 'ARC', 11155111: 'ETH', 84532: 'ETH', 421614: 'ETH' };
+const CCTP_CONFIG = { transferSpeed: 'SLOW' as const };
 const policy = getBridgePolicy();
 function fee(entries: unknown[], type: string) { if (!Array.isArray(entries)) return 0; const item = entries.find(e => typeof e === 'object' && e !== null && (e as { type?: string }).type === type) as { amount?: string | number } | undefined; const n = Number(item?.amount ?? 0); return Number.isFinite(n) ? n : 0; }
 function formatUSDC(value: number) { return Number.isFinite(value) ? value.toFixed(6).replace(/\.?0+$/, '') : '—'; }

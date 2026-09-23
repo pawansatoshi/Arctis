@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, FlaskConical, Globe2 } from 'lucide-react';
+import { getSelectedNetworkEnv } from '@/lib/network/profile';
 
 type NetworkEnv = 'testnet' | 'mainnet';
 
@@ -11,7 +12,7 @@ const OPTIONS: Array<{ value: NetworkEnv; label: string; detail: string }> = [
 ];
 
 export default function NetworkSelector() {
-  const [network, setNetwork] = useState<NetworkEnv>('testnet');
+  const [network, setNetwork] = useState<NetworkEnv>(() => getSelectedNetworkEnv());
 
   useEffect(() => {
     try {

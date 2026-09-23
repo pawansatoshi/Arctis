@@ -37,7 +37,7 @@ const TESTNET = {
     AGENT_TREASURY: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
   },
   decimals: { USDC: 6, tUSDC: 6, tARC: 18 },
-  treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',
+  treasury: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
 } as const;
 
 // ─── Arc Mainnet ────────────────────────────────────────────

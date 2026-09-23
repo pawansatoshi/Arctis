@@ -7,15 +7,18 @@ import { saveTransaction } from '@/lib/firebase/transactions';
 import { writeActivity } from '@/lib/firebase/activity';
 import { obs } from '@/lib/observability/logger';
 import { isValidEthAddress, verifyApiWallet } from '@/lib/auth/middleware';
-import { CONTRACTS, CHAIN_ID, NETWORK_NAME, txUrl } from '@/lib/contracts';
+import { TESTNET_NETWORK } from '@/lib/contracts';
 import { buildSwapMemo } from '@/lib/memo/service';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/security/rateLimit';
 import { parseUnits } from 'viem';
 import type { SwapToken } from '@/lib/swap/types';
 
 const TOKEN_DECIMALS: Record<SwapToken, number> = { USDC: 6, tUSDC: 6, tARC: 18 };
-const TOKEN_CONTRACT: Record<SwapToken, string> = { USDC: CONTRACTS.USDC, tUSDC: CONTRACTS.tUSDC, tARC: CONTRACTS.tARC };
+const TOKEN_CONTRACT: Record<SwapToken, string> = { USDC: TESTNET_NETWORK.contracts.USDC, tUSDC: TESTNET_NETWORK.contracts.tUSDC, tARC: TESTNET_NETWORK.contracts.tARC };
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
+const TESTNET_CHAIN_ID = TESTNET_NETWORK.chainId;
+const TESTNET_NAME = TESTNET_NETWORK.networkName;
+const testnetTxUrl = (hash: string) => `${TESTNET_NETWORK.explorer}/tx/${hash}`;
 
 export async function POST(req: NextRequest) {
   let inboundTxHash = '';
@@ -135,9 +138,9 @@ export async function POST(req: NextRequest) {
       txHash: inboundTxHash,
       status: 'confirmed',
       token: fromToken,
-      chainId: CHAIN_ID,
-      networkName: NETWORK_NAME,
-      explorerUrl: txUrl(inboundTxHash),
+      chainId: TESTNET_CHAIN_ID,
+      networkName: TESTNET_NAME,
+      explorerUrl: testnetTxUrl(inboundTxHash),
       type: 'swap',
       note: `${fromToken} → ${toToken} (outbound: ${dispatch.txHash})`,
     });
@@ -150,16 +153,16 @@ export async function POST(req: NextRequest) {
       description: `${quote.inputAmount} ${fromToken} → ${quote.outputAmount.toFixed(4)} ${toToken} (${quote.feeBps / 100}% fee)`,
       severity: 'success',
       metadata: {
-        txHash: inboundTxHash, explorerURL: txUrl(inboundTxHash),
-        outboundTxHash: dispatch.txHash, outboundExplorerURL: txUrl(dispatch.txHash!),
+        txHash: inboundTxHash, explorerURL: testnetTxUrl(inboundTxHash),
+        outboundTxHash: dispatch.txHash, outboundExplorerURL: testnetTxUrl(dispatch.txHash!),
         amount: quote.inputAmount, token: fromToken, fromToken, toToken, routeId,
       },
     });
 
     await Promise.allSettled([
-      logTreasuryEvent('swap_inflow', quote.inputAmount, `Swap inbound: ${routeId} — ${walletAddress.slice(0, 8)}`, walletAddress, inboundTxHash),
-      logTreasuryEvent('swap_outflow', quote.outputAmount, `Swap outbound: ${routeId} — ${walletAddress.slice(0, 8)}`, walletAddress, dispatch.txHash),
-      logTreasuryEvent('swap_fee_revenue', quote.fee, `Swap fee (${quote.feeBps / 100}%): ${routeId}`, walletAddress, inboundTxHash),
+      logTreasuryEvent('swap_inflow', quote.inputAmount, `Swap inbound: ${routeId} — ${walletAddress.slice(0, 8)}`, walletAddress, inboundTxHash, { explorerUrl: TESTNET_NETWORK.explorer, networkName: TESTNET_NAME, chainId: TESTNET_CHAIN_ID }),
+      logTreasuryEvent('swap_outflow', quote.outputAmount, `Swap outbound: ${routeId} — ${walletAddress.slice(0, 8)}`, walletAddress, dispatch.txHash, { explorerUrl: TESTNET_NETWORK.explorer, networkName: TESTNET_NAME, chainId: TESTNET_CHAIN_ID }),
+      logTreasuryEvent('swap_fee_revenue', quote.fee, `Swap fee (${quote.feeBps / 100}%): ${routeId}`, walletAddress, inboundTxHash, { explorerUrl: TESTNET_NETWORK.explorer, networkName: TESTNET_NAME, chainId: TESTNET_CHAIN_ID }),
     ]);
 
     void obs.info('swap', 'Swap completed', { routeId, inboundTxHash, outboundTxHash: dispatch.txHash }, walletAddress);

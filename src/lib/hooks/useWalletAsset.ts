@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useConnectorClient } from 'wagmi';
-import { ARC_USDC_ADDRESS, ARC_USDC_DECIMALS, ARC_USDC_SYMBOL } from '@/lib/chain/config';
+import { getSelectedNetworkProfile } from '@/lib/network/profile';
 import toast from 'react-hot-toast';
 
 // ============================================================
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 
 export function useWalletAsset() {
   const { data: client } = useConnectorClient();
+  const network = getSelectedNetworkProfile();
 
   const addUSDCToWallet = useCallback(async () => {
     if (!client) {
@@ -25,9 +26,9 @@ export function useWalletAsset() {
         params: {
           type: 'ERC20',
           options: {
-            address: ARC_USDC_ADDRESS,
-            symbol: ARC_USDC_SYMBOL,
-            decimals: ARC_USDC_DECIMALS,
+            address: network.contracts.USDC,
+            symbol: 'USDC',
+            decimals: network.decimals.USDC,
             image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png',
           },
         },
@@ -41,7 +42,7 @@ export function useWalletAsset() {
         toast.error('Failed to add token');
       }
     }
-  }, [client]);
+  }, [client, network.contracts.USDC, network.decimals.USDC]);
 
   return { addUSDCToWallet };
 }

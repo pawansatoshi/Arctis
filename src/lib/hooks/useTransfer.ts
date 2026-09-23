@@ -97,7 +97,7 @@ export function useTransfer(mode: TransactionRecord['mode'] = 'manual') {
   const { switchChainAsync } = useSwitchChain();
   const { addTransaction, updateTransaction } = useAppStore();
   const { getAuthHeaders } = useWalletAuth();
-  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
+  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>(() => selectedEnv());
   const [isPending, setPending] = useState(false);
   const [isSuccess, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useReadContract, useAccount } from 'wagmi';
 import { TESTNET_NETWORK, MAINNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import { formatUSDC } from '@/lib/utils';
+import { getSelectedNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
 type NetworkEnv = 'testnet' | 'mainnet';
 
@@ -13,10 +14,10 @@ export function useUSDCBalance(overrideAddress?: `0x${string}`) {
   const [network, setNetwork] = useState<NetworkEnv>('testnet');
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('arctis-network-env');
-      if (saved === 'mainnet' || saved === 'testnet') setNetwork(saved);
-    } catch {}
+    const sync = () => setNetwork(getSelectedNetworkEnv());
+    sync();
+    window.addEventListener('arctis-network-changed', sync);
+    return () => window.removeEventListener('arctis-network-changed', sync);
   }, []);
 
   const profile = network === 'mainnet' ? MAINNET_NETWORK : TESTNET_NETWORK;

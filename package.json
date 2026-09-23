@@ -9,6 +9,7 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "architecture-truth": "node scripts/check-architecture-truth.mjs",
+    "network-regression": "node scripts/network-isolation-regression.mjs",
     "test": "node scripts/transaction-regression.mjs"
   },
   "dependencies": {

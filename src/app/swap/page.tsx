@@ -5,9 +5,9 @@ import { useAccount, useSwitchChain, useWriteContract } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
 import { ArcTestnet } from '@circle-fin/app-kit/chains';
-import { createPublicClient, formatEther, http, parseUnits } from 'viem';
+import { createPublicClient, custom, formatEther, parseUnits } from 'viem';
 import { ArrowLeftRight, History, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
-import { CONTRACTS, ERC20_ABI, RPC_URL, CHAIN_ID, txUrl } from '@/lib/contracts';
+import { ERC20_ABI, NETWORK_PROFILES } from '@/lib/contracts';
 import { isCircleSwapPair } from '@/lib/swap/circle';
 import { useAppStore } from '@/lib/store';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
@@ -22,11 +22,7 @@ import toast from 'react-hot-toast';
 type SwapToken = 'USDC' | 'tUSDC' | 'tARC' | 'EURC';
 const TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC', 'EURC'];
 const DEC: Record<SwapToken, number> = { USDC: 6, EURC: 6, tUSDC: 6, tARC: 18 };
-const OTC: Partial<Record<SwapToken, `0x${string}`>> = {
-  USDC: CONTRACTS.USDC as `0x${string}`,
-  tUSDC: CONTRACTS.tUSDC as `0x${string}`,
-  tARC: CONTRACTS.tARC as `0x${string}`,
-};
+
 const OTC_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 interface Quote { rail: 'circle' | 'otc'; input: number; output: number; fee: number; available: boolean }
 interface Session {
@@ -48,14 +44,19 @@ function formatAmount(value: number, token: SwapToken) {
   const digits = token === 'tARC' ? 8 : 6;
   return value.toFixed(digits).replace(/\.?0+$/, '');
 }
-async function preflight(token: SwapToken, amount: string, address: `0x${string}`) {
-  if (!OTC[token]) return;
-  const c = createPublicClient({ transport: http(RPC_URL) });
+async function preflight(token: SwapToken, amount: string, address: `0x${string}`, provider: unknown, tokenAddress: `0x${string}`, rpcChain: typeof NETWORK_PROFILES.testnet | typeof NETWORK_PROFILES.mainnet) {
+  if (!tokenAddress) return;
+  const c = createPublicClient({ chain: {
+    id: rpcChain.chainId,
+    name: rpcChain.networkName,
+    nativeCurrency: { name: 'Arc', symbol: 'USDC', decimals: 18 },
+    rpcUrls: { default: { http: [rpcChain.rpc] } },
+  }, transport: custom(provider as Parameters<typeof custom>[0]) });
   const req = parseUnits(amount, DEC[token]);
   const [native, gas, balance] = await Promise.all([
     c.getBalance({ address }),
     c.getGasPrice(),
-    c.readContract({ address: OTC[token]!, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
+    c.readContract({ address: tokenAddress, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] }),
   ]);
   if (balance < req) throw new Error(`Insufficient ${token}. No token was sent.`);
   if (native < gas * 100_000n * 2n) throw new Error(`Insufficient ARC for swap gas. Approximately ${formatEther(gas * 100_000n * 2n)} ARC is required.`);
@@ -114,14 +115,16 @@ function SwapPageInner() {
     const q = sessionsRef.current[target];
     const n = Number(q.amount);
     const seq = ++quoteSeq.current[target];
-    if (q.executing || !isConnected || !address || !connector || chainId !== 5042002 || !Number.isFinite(n) || n <= 0 || n > 100000 || q.from === q.to) {
+    const network = NETWORK_PROFILES[networkEnv];
+    const tokenAddress = network.contracts[q.from as keyof typeof network.contracts] as `0x${string}` | undefined;
+    if (q.executing || !isConnected || !address || !connector || chainId !== network.chainId || !Number.isFinite(n) || n <= 0 || n > 100000 || q.from === q.to) {
       if (!q.executing) setS({ quote: null }, target);
       return;
     }
     setS({ step: 'estimating', error: undefined }, target);
     try {
-      if (String(CHAIN_ID) === '5042') {
-        setS({ quote: null, step: 'error', error: 'ARCTIS OTC/Circle swap is not enabled on Arc Mainnet in this stable build.' }, target);
+      if (networkEnv === 'mainnet') {
+        setS({ quote: null, step: 'error', error: 'Swap is disabled on Arc Mainnet in this stable build.' }, target);
       } else if (isCircleSwapPair(q.from, q.to)) {
         const provider = await connector.getProvider();
         const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
@@ -130,7 +133,7 @@ function SwapPageInner() {
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'circle', input: n, output: Number(e.estimatedOutput.amount), fee: 0, available: true }, step: 'idle' }, target);
       } else if (otcPair(q.from, q.to)) {
-        const r = await fetch(`/api/swap/quote?network=${String(CHAIN_ID) === '5042' ? 'mainnet' : 'testnet'}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
+        const r = await fetch(`/api/swap/quote?network=${networkEnv}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
         const d = await r.json();
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'otc', input: n, output: Number(d.outputAmount ?? 0), fee: Number(d.fee ?? 0), available: d.routeAvailable !== false }, step: 'idle', error: d.routeAvailable === false ? d.error : undefined }, target);
@@ -142,7 +145,7 @@ function SwapPageInner() {
       const msg = e instanceof Error ? e.message : 'Live swap quote unavailable.';
       setS({ quote: null, step: 'error', error: msg.includes('No route') || msg.includes('Route') ? `Circle swap route is temporarily unavailable for ${q.from} → ${q.to}. No wallet transaction was started.` : msg }, target);
     }
-  }, [isConnected, address, connector, chainId, mode, setS]);
+  }, [isConnected, address, connector, chainId, mode, networkEnv, setS]);
 
   useEffect(() => {
     const t = window.setTimeout(() => void loadQuote(mode), 350);
@@ -161,7 +164,9 @@ function SwapPageInner() {
   const execute = useCallback(async (target: ExecutionMode) => {
     const q = sessionsRef.current[target];
     const n = Number(q.amount);
-    if (!q.quote?.available || !isConnected || !address || !connector || chainId !== 5042002 || q.executing) return;
+    const network = NETWORK_PROFILES[networkEnv];
+    const tokenAddress = network.contracts[q.from as keyof typeof network.contracts] as `0x${string}` | undefined;
+    if (!q.quote?.available || !isConnected || !address || !connector || chainId !== network.chainId || !tokenAddress || q.executing) return;
     const lockKey = `swap:${address.toLowerCase()}:${target}:${q.from}:${q.to}:${q.amount}`;
     if (!tryAcquireExecution(lockKey)) return;
     setS({ step: 'sending', executing: true, error: undefined }, target);
@@ -186,11 +191,20 @@ function SwapPageInner() {
       }
       const wallet = process.env.NEXT_PUBLIC_SWAP_WALLET_ADDRESS as `0x${string}` | undefined;
       if (!wallet || /^0x0{40}$/i.test(wallet)) throw new Error('ARCTIS swap wallet is not configured.');
-      await preflight(q.from, q.amount, address);
+      const provider = await connector.getProvider();
+      const providerChain = await (provider as { request: (args: { method: string }) => Promise<string> }).request({ method: 'eth_chainId' });
+      const providerChainId = Number.parseInt(providerChain, 16);
+      if (providerChainId !== network.chainId) throw new Error(`Wallet is on the wrong network. ARCTIS is locked to ${network.networkName}.`);
+      await preflight(q.from, q.amount, address, provider, tokenAddress, network);
       const amountBig = parseUnits(n.toFixed(DEC[q.from]), DEC[q.from]);
       announceTransactionState('wallet_approval');
-      const hash = await writeContractAsync({ address: OTC[q.from]!, abi: ERC20_ABI, functionName: 'transfer', args: [wallet, amountBig] });
-      const client = createPublicClient({ transport: http(RPC_URL) });
+      const hash = await writeContractAsync({ address: tokenAddress, abi: ERC20_ABI, functionName: 'transfer', args: [wallet, amountBig], chainId: network.chainId });
+      const client = createPublicClient({ chain: {
+        id: network.chainId,
+        name: network.networkName,
+        nativeCurrency: { name: 'Arc', symbol: 'USDC', decimals: 18 },
+        rpcUrls: { default: { http: [network.rpc] } },
+      }, transport: custom(provider as Parameters<typeof custom>[0]) });
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('OTC settlement transaction failed on-chain.');
       setS({ txHash: hash, step: 'processing', executing: true }, target);
@@ -207,7 +221,7 @@ function SwapPageInner() {
       setS({ step: 'error', executing: false, error: e instanceof Error ? e.message : 'Swap failed.' }, target);
       announceTransactionState('failed');
     } finally { releaseExecution(lockKey); }
-  }, [isConnected, address, connector, chainId, writeContractAsync, getAuthHeaders, save, setS]);
+  }, [isConnected, address, connector, chainId, networkEnv, writeContractAsync, getAuthHeaders, save, setS]);
 
   const agentExecute = useCallback(async (p: import('@/lib/store').PendingFinancialAction) => {
     if (!p.amount || !p.fromToken || !p.toToken) throw new Error('Swap proposal is incomplete.');
@@ -239,7 +253,7 @@ function SwapPageInner() {
       <EconomicAgentPanel action="swap" onExecute={agentExecute} executionStatus={s.executing ? 'executing' : s.step === 'completed' ? 'success' : s.step === 'error' ? 'failed' : 'idle'} executionError={s.error} executionTxHash={s.outbound ?? s.txHash ?? null} />
       {s.step === 'estimating' && <div className="glass-card p-4 text-center text-xs text-surface-500"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live quote before wallet approval…</div>}
       {s.quote && <QuoteCard quote={s.quote} from={s.from} to={s.to} title={s.executing ? 'Approved quote / execution' : 'Quote ready — review before wallet approval'} />}
-      {s.quote?.available && !s.executing && s.step === 'idle' && <button onClick={() => void execute('agent')} disabled={!isConnected || chainId !== 5042002} className="btn-primary w-full py-3.5 disabled:opacity-40">Review quote & approve in wallet</button>}
+      {s.quote?.available && !s.executing && s.step === 'idle' && <button onClick={() => void execute('agent')} disabled={!isConnected || chainId !== NETWORK_PROFILES[networkEnv].chainId} className="btn-primary w-full py-3.5 disabled:opacity-40">Review quote & approve in wallet</button>}
       {!s.quote && s.error && <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2"><AlertCircle className="w-4 h-4" />{s.error}</div>}
     </div> : showHistory ? <div className="space-y-2 mt-4">{history.length === 0 ? <div className="glass-card p-8 text-center text-sm text-surface-600">No swaps found.</div> : history.map(x => <div key={String(x.id ?? x.inboundTxHash)} className="glass-card p-4"><div className="flex justify-between"><span className="text-sm font-semibold">{String(x.inputAmount)} {String(x.fromToken)} → {String(x.outputAmount)} {String(x.toToken)}</span><span className="text-xs text-emerald-600">{String(x.status)} · {String(x.mode ?? 'manual')}</span></div><p className="text-xs text-surface-500 mt-1">{formatRelative(String(x.createdAt))}</p></div>)}</div> : <div className="space-y-4 mt-4">
       <div className="glass-card p-5 space-y-4"><div><label className="text-surface-600 text-xs font-medium">FROM</label><select value={s.from} onChange={e => setS({ from: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{TOKENS.map(t => <option key={t}>{t}</option>)}</select></div>
@@ -247,10 +261,10 @@ function SwapPageInner() {
       <div><label className="text-surface-600 text-xs font-medium">TO</label><select value={s.to} onChange={e => setS({ to: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{TOKENS.filter(t => t !== s.from).map(t => <option key={t}>{t}</option>)}</select></div>
       <div><label className="text-surface-600 text-xs font-medium">Amount</label><input value={s.amount} onChange={e => setS({ amount: e.target.value, quote: null, error: undefined })} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base mt-1" /></div></div>
       <div className="min-h-[120px] flex items-start">{s.quote ? <QuoteCard quote={s.quote} from={s.from} to={s.to} /> : s.error ? <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2 w-full"><AlertCircle className="w-4 h-4" />{s.error}</div> : s.step === 'estimating' ? <div className="w-full text-center text-xs text-surface-500 pt-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live quote…</div> : <div className="w-full min-h-[90px]" />}</div>
-      <div className="min-h-[58px] flex items-center"><button onClick={() => void execute('manual')} disabled={!isConnected || chainId !== 5042002 || !s.quote?.available || s.executing || isSwitching} className="btn-primary w-full py-3.5 disabled:opacity-40">{s.executing ? 'Confirm in wallet…' : 'Review & Swap'}</button></div>
+      <div className="min-h-[58px] flex items-center"><button onClick={() => void execute('manual')} disabled={!isConnected || chainId !== NETWORK_PROFILES[networkEnv].chainId || !s.quote?.available || s.executing || isSwitching} className="btn-primary w-full py-3.5 disabled:opacity-40">{s.executing ? 'Confirm in wallet…' : 'Review & Swap'}</button></div>
       <div className="rounded-xl border border-violet-500/15 bg-violet-500/[.04] p-3 text-xs text-surface-600 flex gap-2"><ShieldCheck className="w-4 h-4 text-violet-600" />Preflight → quote → human approval → wallet approval → on-chain confirmation.</div>
     </div>}
-    <TransactionConfirmationModal open={modal} data={{ status: modalSession.step === 'error' ? 'failed' : 'confirmed', amount: `${modalSession.amount} ${modalSession.from} → ${formatAmount(modalSession.quote?.output ?? 0, modalSession.to)} ${modalSession.to}`, route: `${modalSession.from} → ${modalSession.to}`, network: 'Arc Testnet', txHash: modalSession.outbound ?? modalSession.txHash, explorerUrl: (modalSession.outbound ?? modalSession.txHash) ? txUrl((modalSession.outbound ?? modalSession.txHash) as `0x${string}`) : undefined, detail: 'Verified on-chain when confirmed.' }} onClose={close} onNew={close} />
+    <TransactionConfirmationModal open={modal} data={{ status: modalSession.step === 'error' ? 'failed' : 'confirmed', amount: `${modalSession.amount} ${modalSession.from} → ${formatAmount(modalSession.quote?.output ?? 0, modalSession.to)} ${modalSession.to}`, route: `${modalSession.from} → ${modalSession.to}`, network: NETWORK_PROFILES[networkEnv].networkName, txHash: modalSession.outbound ?? modalSession.txHash, explorerUrl: (modalSession.outbound ?? modalSession.txHash) ? `${NETWORK_PROFILES[networkEnv].explorer}/tx/${modalSession.outbound ?? modalSession.txHash}` : undefined, detail: 'Verified on-chain when confirmed.' }} onClose={close} onNew={close} />
   </div>;
 }
 export default function SwapPage() { return <Suspense fallback={<div className="page-container max-w-lg flex items-center justify-center min-h-[60vh]">Loading…</div>}><SwapPageInner /></Suspense>; }

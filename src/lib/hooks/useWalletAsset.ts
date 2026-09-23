@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useConnectorClient } from 'wagmi';
-import { getSelectedNetworkProfile } from '@/lib/network/profile';
+import { getNetworkProfile, getSelectedNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 import toast from 'react-hot-toast';
 
 // ============================================================
@@ -11,7 +11,14 @@ import toast from 'react-hot-toast';
 
 export function useWalletAsset() {
   const { data: client } = useConnectorClient();
-  const network = getSelectedNetworkProfile();
+  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
+  useEffect(() => {
+    const sync = () => setNetworkEnv(getSelectedNetworkEnv());
+    sync();
+    window.addEventListener('arctis-network-changed', sync);
+    return () => window.removeEventListener('arctis-network-changed', sync);
+  }, []);
+  const network = getNetworkProfile(networkEnv);
 
   const addUSDCToWallet = useCallback(async () => {
     if (!client) {

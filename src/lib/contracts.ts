@@ -5,8 +5,16 @@
 
 export type NetworkEnv = 'testnet' | 'mainnet';
 
-const ENV: NetworkEnv =
-  process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
+const ENV: NetworkEnv = (() => {
+  const configured: NetworkEnv = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
+  if (typeof window !== 'undefined') {
+    try {
+      const selected = window.localStorage.getItem('arctis-network-env');
+      if (selected === 'mainnet' || selected === 'testnet') return selected;
+    } catch {}
+  }
+  return configured;
+})();
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 const MAINNET_TREASURY = '0xb467F683764593316fAEbB0709127E90791Fe47F' as const;
@@ -43,6 +51,9 @@ const MAINNET = {
   treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || MAINNET_TREASURY) as `0x${string}`,
 } as const;
 
+export const TESTNET_NETWORK = TESTNET;
+export const MAINNET_NETWORK = MAINNET;
+export const NETWORK_PROFILES = { testnet: TESTNET, mainnet: MAINNET } as const;
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;
 export const CHAIN_ID = NETWORK.chainId;
 export const RPC_URL = NETWORK.rpc;

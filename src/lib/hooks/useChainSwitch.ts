@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { announceTransactionState } from '@/lib/transaction/voice';
 import toast from 'react-hot-toast';
-import { getNetworkProfile, normalizeNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
+import { getSelectedNetworkEnv, getNetworkProfile, normalizeNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
 
 export function useChainSwitch() {
   const { chainId } = useAccount();
   const { switchChainAsync, isPending } = useSwitchChain();
-  const [network, setNetwork] = useState<NetworkEnv>('testnet');
+  const [network, setNetwork] = useState<NetworkEnv>(() => getSelectedNetworkEnv());
 
   useEffect(() => {
     try {

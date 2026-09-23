@@ -47,6 +47,9 @@ jobs:
       - name: Architecture truth check
         run: npm run architecture-truth
 
+      - name: Network isolation regression
+        run: npm run network-regression
+
       - name: Lint
         run: npm run lint
 

@@ -1,15 +1,28 @@
 // ============================================================
-// Swap Executor — OTC settlement, server-signed dispatch
-// Uses a dedicated Swap Wallet (SWAP_WALLET_PRIVATE_KEY), never
-// the Treasury Wallet. Treasury remains observer-only per the
-// locked separation rule — logTreasuryEvent() is called by the
-// API route AFTER settlement, never by this executor.
+// ARCTIS Testnet OTC Swap Executor
+// This route is intentionally Testnet-only. It must not inherit the
+// browser's Mainnet selector because the OTC assets are test assets.
 // ============================================================
-import { createWalletClient, createPublicClient, parseUnits, formatUnits } from 'viem';
+import { createWalletClient, createPublicClient, parseUnits, formatUnits, http, defineChain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arcTestnet, arcTransport } from '@/lib/chain/arcChain';
-import { CONTRACTS, ERC20_ABI } from '@/lib/contracts';
+import { TESTNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import type { SwapToken } from './types';
+
+const TESTNET_CHAIN = defineChain({
+  id: TESTNET_NETWORK.chainId,
+  name: TESTNET_NETWORK.networkName,
+  nativeCurrency: { decimals: 18, name: 'USDC', symbol: 'USDC' },
+  rpcUrls: { default: { http: [TESTNET_NETWORK.rpc] }, public: { http: [TESTNET_NETWORK.rpc] } },
+  blockExplorers: { default: { name: 'ArcScan', url: TESTNET_NETWORK.explorer } },
+  testnet: true,
+});
+
+const TOKEN_DECIMALS: Record<SwapToken, number> = { USDC: 6, tUSDC: 6, tARC: 18 };
+const TOKEN_CONTRACT: Record<SwapToken, `0x${string}`> = {
+  USDC: TESTNET_NETWORK.contracts.USDC as `0x${string}`,
+  tUSDC: TESTNET_NETWORK.contracts.tUSDC as `0x${string}`,
+  tARC: TESTNET_NETWORK.contracts.tARC as `0x${string}`,
+};
 
 let _walletClient: ReturnType<typeof createWalletClient> | null = null;
 let _publicClient: ReturnType<typeof createPublicClient> | null = null;
@@ -20,10 +33,10 @@ function getClients() {
 
   if (!_walletClient) {
     const account = privateKeyToAccount(pk);
-    _walletClient = createWalletClient({ account, chain: arcTestnet, transport: arcTransport });
+    _walletClient = createWalletClient({ account, chain: TESTNET_CHAIN, transport: http(TESTNET_NETWORK.rpc) });
   }
   if (!_publicClient) {
-    _publicClient = createPublicClient({ chain: arcTestnet, transport: arcTransport });
+    _publicClient = createPublicClient({ chain: TESTNET_CHAIN, transport: http(TESTNET_NETWORK.rpc) });
   }
   return { walletClient: _walletClient, publicClient: _publicClient };
 }
@@ -34,24 +47,12 @@ export function getSwapWalletAddress(): string {
   return privateKeyToAccount(pk).address;
 }
 
-const TOKEN_DECIMALS: Record<SwapToken, number> = { USDC: 6, tUSDC: 6, tARC: 18 };
-const TOKEN_CONTRACT: Record<SwapToken, `0x${string}`> = {
-  USDC: CONTRACTS.USDC as `0x${string}`,
-  tUSDC: CONTRACTS.tUSDC as `0x${string}`,
-  tARC: CONTRACTS.tARC as `0x${string}`,
-};
-
 export interface DispatchResult {
   success: boolean;
   txHash?: string;
   reason?: string;
 }
 
-/**
- * Checks the swap wallet's on-chain balance of a given token.
- * Used by the quote route to warn the user before they sign
- * the inbound transfer if the swap wallet cannot fulfil the route.
- */
 export async function getSwapWalletReserve(token: SwapToken): Promise<number> {
   const { publicClient } = getClients();
   const address = getSwapWalletAddress();
@@ -64,12 +65,6 @@ export async function getSwapWalletReserve(token: SwapToken): Promise<number> {
   return parseFloat(formatUnits(balance, TOKEN_DECIMALS[token]));
 }
 
-/**
- * Dispatches the output token from the swap wallet to the user.
- * This is the OTC settlement leg — real on-chain transfer, real
- * reserves, no simulation. The API does not report success until
- * the output transfer has a successful on-chain receipt.
- */
 export async function dispatchSwapOutput(
   toAddress: string,
   token: SwapToken,
@@ -84,7 +79,7 @@ export async function dispatchSwapOutput(
       abi: ERC20_ABI,
       functionName: 'transfer',
       args: [toAddress as `0x${string}`, amountRaw],
-      chain: arcTestnet,
+      chain: TESTNET_CHAIN,
       account: walletClient.account!,
     });
 

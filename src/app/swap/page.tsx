@@ -7,7 +7,7 @@ import { AppKit } from '@circle-fin/app-kit';
 import { ArcTestnet } from '@circle-fin/app-kit/chains';
 import { createPublicClient, formatEther, http, parseUnits } from 'viem';
 import { ArrowLeftRight, History, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
-import { CONTRACTS, ERC20_ABI, RPC_URL, txUrl } from '@/lib/contracts';
+import { TESTNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import { isCircleSwapPair } from '@/lib/swap/circle';
 import { useAppStore } from '@/lib/store';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
@@ -23,9 +23,9 @@ type SwapToken = 'USDC' | 'tUSDC' | 'tARC' | 'EURC';
 const TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC', 'EURC'];
 const DEC: Record<SwapToken, number> = { USDC: 6, EURC: 6, tUSDC: 6, tARC: 18 };
 const OTC: Partial<Record<SwapToken, `0x${string}`>> = {
-  USDC: CONTRACTS.USDC as `0x${string}`,
-  tUSDC: CONTRACTS.tUSDC as `0x${string}`,
-  tARC: CONTRACTS.tARC as `0x${string}`,
+  USDC: TESTNET_NETWORK.contracts.USDC as `0x${string}`,
+  tUSDC: TESTNET_NETWORK.contracts.tUSDC as `0x${string}`,
+  tARC: TESTNET_NETWORK.contracts.tARC as `0x${string}`,
 };
 const OTC_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 interface Quote { rail: 'circle' | 'otc'; input: number; output: number; fee: number; available: boolean }
@@ -50,7 +50,7 @@ function formatAmount(value: number, token: SwapToken) {
 }
 async function preflight(token: SwapToken, amount: string, address: `0x${string}`) {
   if (!OTC[token]) return;
-  const c = createPublicClient({ transport: http(RPC_URL) });
+  const c = createPublicClient({ transport: http(TESTNET_NETWORK.rpc) });
   const req = parseUnits(amount, DEC[token]);
   const [native, gas, balance] = await Promise.all([
     c.getBalance({ address }),
@@ -186,7 +186,7 @@ function SwapPageInner() {
       const amountBig = parseUnits(n.toFixed(DEC[q.from]), DEC[q.from]);
       announceTransactionState('wallet_approval');
       const hash = await writeContractAsync({ address: OTC[q.from]!, abi: ERC20_ABI, functionName: 'transfer', args: [wallet, amountBig] });
-      const client = createPublicClient({ transport: http(RPC_URL) });
+      const client = createPublicClient({ transport: http(TESTNET_NETWORK.rpc) });
       const receipt = await client.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error('OTC settlement transaction failed on-chain.');
       setS({ txHash: hash, step: 'processing', executing: true }, target);

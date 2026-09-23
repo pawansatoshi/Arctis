@@ -5,8 +5,21 @@
 
 export type NetworkEnv = 'testnet' | 'mainnet';
 
-const ENV: NetworkEnv =
-  process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
+const ENV: NetworkEnv = (() => {
+  const configured = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mainnet' : 'testnet';
+  // The dashboard network selector is client-side. Keep SSR/API behavior on
+  // the configured environment, while allowing the browser to switch modes
+  // without changing the deployed build.
+  if (typeof window !== 'undefined') {
+    try {
+      const selected = window.localStorage.getItem('arctis-network-env');
+      if (selected === 'mainnet' || selected === 'testnet') return selected;
+    } catch {
+      // Fall back to the deployment configuration when storage is unavailable.
+    }
+  }
+  return configured;
+})();
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 const MAINNET_TREASURY = '0xb467F683764593316fAEbB0709127E90791Fe47F' as const;

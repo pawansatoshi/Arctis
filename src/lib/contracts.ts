@@ -27,8 +27,8 @@ const MAINNET_TREASURY = '0xb467F683764593316fAEbB0709127E90791Fe47F' as const;
 // ─── Arc Testnet ────────────────────────────────────────────
 const TESTNET = {
   chainId: 5042002,
-  rpc: 'https://rpc.testnet.arc.io',
-  explorer: 'https://explorer.testnet.arc.io',
+  rpc: 'https://rpc.testnet.arc.network',
+  explorer: 'https://testnet.arcscan.app',
   networkName: 'Arc Testnet',
   contracts: {
     USDC:  '0x3600000000000000000000000000000000000000',
@@ -37,7 +37,7 @@ const TESTNET = {
     AGENT_TREASURY: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
   },
   decimals: { USDC: 6, tUSDC: 6, tARC: 18 },
-  treasury: '0xf28541094031BD34bA08Ae98982F4348C9ADB94c',
+  treasury: '0xb467F683764593316fAEbB0709127E90791Fe47F',
 } as const;
 
 // ─── Arc Mainnet ────────────────────────────────────────────
@@ -56,6 +56,12 @@ const MAINNET = {
   treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || MAINNET_TREASURY) as `0x${string}`,
 } as const;
 
+export const TESTNET_NETWORK = TESTNET;
+export const MAINNET_NETWORK = MAINNET;
+export const NETWORK_PROFILES = { testnet: TESTNET, mainnet: MAINNET } as const;
+
+// Exactly one complete profile is active at runtime. The profiles themselves
+// stay isolated so removing Testnet later cannot mutate Mainnet configuration.
 export const NETWORK = ENV === 'mainnet' ? MAINNET : TESTNET;
 export const CHAIN_ID = NETWORK.chainId;
 export const RPC_URL = NETWORK.rpc;
@@ -72,7 +78,9 @@ export const TUSDC_CONTRACT = CONTRACTS.tUSDC as `0x${string}`;
 export const TARC_CONTRACT = CONTRACTS.tARC as `0x${string}`;
 export const txUrl = (hash: string) => `${EXPLORER_URL}/tx/${hash}`;
 export const addressUrl = (addr: string) => `${EXPLORER_URL}/address/${addr}`;
-export const RPC_FALLBACK_URLS = ENV === 'mainnet' ? [RPC_URL] : [RPC_URL, 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'].filter(Boolean);
+export const RPC_FALLBACK_URLS = ENV === 'mainnet'
+  ? [RPC_URL]
+  : [RPC_URL, 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'].filter(Boolean);
 
 export const ERC20_ABI = [
   { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },

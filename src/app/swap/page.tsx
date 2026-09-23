@@ -76,6 +76,8 @@ function SwapPageInner() {
   const { writeContractAsync } = useWriteContract();
   const { getAuthHeaders } = useWalletAuth();
   const { pendingAction, setPendingAction } = useAppStore();
+  const [networkEnv, setNetworkEnv] = useState<'testnet' | 'mainnet'>('testnet');
+  useEffect(() => { try { setNetworkEnv(window.localStorage.getItem('arctis-network-env') === 'mainnet' ? 'mainnet' : 'testnet'); } catch {} }, []);
   const [sessions, setSessions] = useState<{ manual: Session; agent: Session }>({ manual: { ...empty }, agent: { ...empty } });
   const sessionsRef = useRef(sessions);
   const quoteSeq = useRef<{ manual: number; agent: number }>({ manual: 0, agent: 0 });
@@ -219,6 +221,16 @@ function SwapPageInner() {
     setModal(false);
     setSessions(prev => ({ ...prev, [modalMode]: { ...prev[modalMode], step: 'idle', executing: false, quote: null, txHash: undefined, outbound: undefined, error: undefined, amount: '' } }));
   };
+
+  if (networkEnv === 'mainnet') {
+    return <div className="page-container max-w-lg safe-bottom">
+      <div className="glass-card p-6 sm:p-8 text-center space-y-4">
+        <div className="mx-auto w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center"><ShieldCheck className="w-6 h-6 text-emerald-600" /></div>
+        <div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Arc Mainnet</p><h1 className="text-2xl font-bold mt-2">Swap is not enabled</h1><p className="text-sm text-surface-600 mt-2 leading-relaxed">This mainnet environment does not expose the Testnet Circle/OTC swap rails. No Testnet assets or Testnet transactions are available here.</p></div>
+        <div className="rounded-xl bg-surface-100 p-3 text-xs text-surface-600">Network boundary: Mainnet only · chain 5042</div>
+      </div>
+    </div>;
+  }
 
   return <div className="page-container max-w-lg safe-bottom">
     <div className="flex items-center justify-between mb-6"><div><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span><h1 className="text-2xl font-bold mt-1">Swap</h1><p className="text-surface-600 text-sm mt-1">Circle liquidity + ARCTIS OTC settlement</p></div><button onClick={() => setShowHistory(v => !v)} className="btn-ghost p-2" aria-label="Swap history"><History className="w-4 h-4" /></button></div>

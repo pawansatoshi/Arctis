@@ -21,6 +21,7 @@ import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
 import { useAccount } from 'wagmi';
 import { NETWORK_NAME } from '@/lib/contracts';
+import NetworkSelector from '@/components/ui/NetworkSelector';
 
 const ConnectButton = dynamic(
   () => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })),
@@ -319,6 +320,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="flex items-center gap-2 ml-auto">
+            <NetworkSelector />
             {isConnected && (
               <div
                 className={cn(

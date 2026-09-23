@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveTransaction, updateTransactionStatus } from '@/lib/firebase/transactions';
 import { obs } from '@/lib/observability/logger';
 import { isValidEthAddress, verifyApiWallet } from '@/lib/auth/middleware';
-import { CHAIN_ID, NETWORK_NAME } from '@/lib/contracts';
+import { CHAIN_ID, NETWORK_NAME, TESTNET_NETWORK, MAINNET_NETWORK } from '@/lib/contracts';
 import type { TransactionRecord } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
         token?: TransactionRecord['token'];
         note?: string;
         mode?: TransactionRecord['mode'];
+        network?: 'testnet' | 'mainnet';
       };
 
     if (!walletAddress || !toAddress || !amount || !amountFormatted) {
@@ -32,14 +33,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid execution mode' }, { status: 400 });
     }
 
+    const profile = network === 'mainnet' ? MAINNET_NETWORK : TESTNET_NETWORK;
+
     const id = await saveTransaction(walletAddress, {
       toAddress,
       amount,
       amountFormatted,
       status: 'pending',
       token: token ?? 'USDC',
-      chainId: CHAIN_ID,
-      networkName: NETWORK_NAME,
+      chainId: network ? profile.chainId : CHAIN_ID,
+      networkName: network ? profile.networkName : NETWORK_NAME,
       ...(note !== undefined ? { note } : {}),
       mode: mode ?? 'manual',
       type: 'send',

@@ -25,9 +25,10 @@ export async function POST(req: NextRequest) {
   let walletAddress = '';
   try {
     const body = await req.json() as {
-      walletAddress: string; fromToken: SwapToken; toToken: SwapToken; amount: number; inboundTxHash: string;
+      walletAddress: string; fromToken: SwapToken; toToken: SwapToken; amount: number; inboundTxHash: string; network?: 'testnet' | 'mainnet';
     };
     ({ walletAddress, inboundTxHash } = body);
+    if (body.network !== 'testnet') return NextResponse.json({ error: 'ARCTIS OTC swap execution is disabled on Arc Mainnet in this build.' }, { status: 503 });
     const { fromToken, toToken, amount } = body;
 
     if (!walletAddress || !fromToken || !toToken || amount == null || !inboundTxHash) {

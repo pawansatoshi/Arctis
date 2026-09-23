@@ -128,7 +128,7 @@ function SwapPageInner() {
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'circle', input: n, output: Number(e.estimatedOutput.amount), fee: 0, available: true }, step: 'idle' }, target);
       } else if (otcPair(q.from, q.to)) {
-        const r = await fetch(`/api/swap/quote?network=${CHAIN_ID === 5042 ? 'mainnet' : 'testnet'}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
+        const r = await fetch(`/api/swap/quote?network=${String(CHAIN_ID) === '5042' ? 'mainnet' : 'testnet'}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
         const d = await r.json();
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'otc', input: n, output: Number(d.outputAmount ?? 0), fee: Number(d.fee ?? 0), available: d.routeAvailable !== false }, step: 'idle', error: d.routeAvailable === false ? d.error : undefined }, target);

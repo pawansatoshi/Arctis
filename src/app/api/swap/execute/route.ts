@@ -7,14 +7,14 @@ import { saveTransaction } from '@/lib/firebase/transactions';
 import { writeActivity } from '@/lib/firebase/activity';
 import { obs } from '@/lib/observability/logger';
 import { isValidEthAddress, verifyApiWallet } from '@/lib/auth/middleware';
-import { CONTRACTS, CHAIN_ID, NETWORK_NAME, txUrl } from '@/lib/contracts';
+import { TESTNET_NETWORK, CHAIN_ID, NETWORK_NAME, txUrl } from '@/lib/contracts';
 import { buildSwapMemo } from '@/lib/memo/service';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/security/rateLimit';
 import { parseUnits } from 'viem';
 import type { SwapToken } from '@/lib/swap/types';
 
 const TOKEN_DECIMALS: Record<SwapToken, number> = { USDC: 6, tUSDC: 6, tARC: 18 };
-const TOKEN_CONTRACT: Record<SwapToken, string> = { USDC: CONTRACTS.USDC, tUSDC: CONTRACTS.tUSDC, tARC: CONTRACTS.tARC };
+const TOKEN_CONTRACT: Record<SwapToken, string> = { USDC: TESTNET_NETWORK.contracts.USDC, tUSDC: TESTNET_NETWORK.contracts.tUSDC, tARC: TESTNET_NETWORK.contracts.tARC };
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 export async function POST(req: NextRequest) {

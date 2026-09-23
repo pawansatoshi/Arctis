@@ -7,6 +7,9 @@ import { TESTNET_NETWORK } from '@/lib/contracts';
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get('network') === 'mainnet') {
+    return NextResponse.json({ error: 'ARCTIS OTC swap is disabled on Arc Mainnet until a production liquidity and settlement rail is verified.' }, { status: 503 });
+  }
   const fromToken = req.nextUrl.searchParams.get('from') as SwapToken | null;
   const toToken = req.nextUrl.searchParams.get('to') as SwapToken | null;
   const amountParam = req.nextUrl.searchParams.get('amount');

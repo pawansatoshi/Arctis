@@ -20,8 +20,6 @@ const HASH = /^0x[0-9a-fA-F]{64}$/;
 const PASSPORT = /^[a-z0-9_-]{3,32}(?:\.arc)?$/i;
 const AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
 
-const APP_KIT_CHAIN = NETWORK_NAME === 'Arc Mainnet' ? 'Arc_Mainnet' : 'Arc_Testnet';
-
 async function resolveRecipient(value: string) {
   const v = value.trim();
   if (EVM.test(v)) return v;
@@ -205,18 +203,36 @@ export function useTransfer(mode: TransactionRecord['mode'] = 'manual') {
       announceTransactionState('wallet_approval');
 
       const provider = await connector.getProvider();
-      const adapter = await createViemAdapterFromProvider({ provider: provider as never });
-      const kit = new AppKit();
+      let hash: `0x${string}`;
 
-      const result = await kit.send({
-        from: { adapter, chain: APP_KIT_CHAIN as 'Arc_Testnet' | 'Arc_Mainnet' },
-        to: resolved,
-        amount,
-        token: 'USDC' as const,
-      });
+      if (NETWORK_NAME === 'Arc Testnet') {
+        // Preserve the last known-good Testnet payment path.
+        const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+        const kit = new AppKit();
+        const result = await kit.send({
+          from: { adapter, chain: 'Arc_Testnet' as const },
+          to: resolved,
+          amount,
+          token: 'USDC' as const,
+        });
+        hash = result.txHash as `0x${string}`;
+      } else {
+        // Keep the Mainnet migration path independent from the Testnet App Kit flow.
+        const { createWalletClient, custom } = await import('viem');
+        const walletClient = createWalletClient({
+          account: address,
+          chain: arcTestnet,
+          transport: custom(provider as Parameters<typeof custom>[0]),
+        });
+        hash = await walletClient.writeContract({
+          address: PRIMARY_CONTRACT,
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [resolved as `0x${string}`, parseUnits(amount, PRIMARY_DECIMALS)],
+        });
+      }
 
-      const hash = result.txHash as `0x${string}`;
-      if (!HASH.test(hash)) throw new Error('Arc App Kit returned no valid transaction hash');
+      if (!HASH.test(hash)) throw new Error('Arc returned no valid transaction hash');
 
       setTxHash(hash);
       updateTransaction(id, { txHash: hash, status: 'pending' });

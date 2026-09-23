@@ -3,13 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { announceTransactionState } from '@/lib/transaction/voice';
 import toast from 'react-hot-toast';
+import { getNetworkProfile, normalizeNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
-type NetworkEnv = 'testnet' | 'mainnet';
-
-const TARGETS = {
-  testnet: { chainId: 5042002, name: 'Arc Testnet' },
-  mainnet: { chainId: 5042, name: 'Arc Mainnet' },
-} as const;
 
 export function useChainSwitch() {
   const { chainId } = useAccount();
@@ -19,11 +14,11 @@ export function useChainSwitch() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem('arctis-network-env');
-      if (saved === 'mainnet' || saved === 'testnet') setNetwork(saved);
+      setNetwork(normalizeNetworkEnv(saved));
     } catch {}
   }, []);
 
-  const target = TARGETS[network];
+  const target = getNetworkProfile(network);
   const isCorrectChain = chainId === target.chainId;
 
   const switchToArc = useCallback(async () => {
@@ -39,7 +34,7 @@ export function useChainSwitch() {
           const actual = typeof raw === 'string' ? parseInt(raw, 16) : Number(raw);
           if (actual === target.chainId) {
             announceTransactionState('network_switched');
-            toast.success(`Switched to ${target.name}`);
+            toast.success(`Switched to ${target.networkName}`);
             return true;
           }
         }

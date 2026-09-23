@@ -2,15 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRouteId, calculateSwapQuote } from '@/lib/swap/service';
 import { getSwapWalletReserve } from '@/lib/swap/executor';
 import { SWAP_MIN_AMOUNT, SWAP_MAX_AMOUNT, type SwapToken } from '@/lib/swap/types';
-import { CHAIN_ID } from '@/lib/contracts';
+import { TESTNET_NETWORK } from '@/lib/contracts';
 
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 export async function GET(req: NextRequest) {
-  if (CHAIN_ID === 5042) {
-    return NextResponse.json({ error: 'ARCTIS OTC swap is disabled on Arc Mainnet until a production liquidity and settlement rail is verified.' }, { status: 503 });
-  }
-
   const fromToken = req.nextUrl.searchParams.get('from') as SwapToken | null;
   const toToken = req.nextUrl.searchParams.get('to') as SwapToken | null;
   const amountParam = req.nextUrl.searchParams.get('amount');

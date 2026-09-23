@@ -4,34 +4,28 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, FlaskConical, Globe2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAccount } from 'wagmi';
+import { NETWORK_PROFILES } from '@/lib/contracts';
 
 type NetworkEnv = 'testnet' | 'mainnet';
 
-const NETWORKS: Record<NetworkEnv, {
-  label: string;
-  sublabel: string;
-  chainId: number;
-  chainName: string;
-  rpcUrl: string;
-  explorerUrl: string;
-}> = {
+const NETWORKS = {
   testnet: {
-    label: 'Arc Testnet',
-    sublabel: 'Demo & testing',
-    chainId: 5042002,
-    chainName: 'Arc Testnet',
-    rpcUrl: 'https://rpc.testnet.arc.io',
-    explorerUrl: 'https://explorer.testnet.arc.io',
+    label: NETWORK_PROFILES.testnet.networkName,
+    sublabel: 'Known-good demo baseline',
+    chainId: NETWORK_PROFILES.testnet.chainId,
+    chainName: NETWORK_PROFILES.testnet.networkName,
+    rpcUrl: NETWORK_PROFILES.testnet.rpc,
+    explorerUrl: NETWORK_PROFILES.testnet.explorer,
   },
   mainnet: {
-    label: 'Arc Mainnet',
-    sublabel: 'Mainnet configuration',
-    chainId: 5042,
-    chainName: 'Arc Mainnet',
-    rpcUrl: 'https://rpc.mainnet.arc.io',
-    explorerUrl: 'https://explorer.arc.io',
+    label: NETWORK_PROFILES.mainnet.networkName,
+    sublabel: 'Independent mainnet profile',
+    chainId: NETWORK_PROFILES.mainnet.chainId,
+    chainName: NETWORK_PROFILES.mainnet.networkName,
+    rpcUrl: NETWORK_PROFILES.mainnet.rpc,
+    explorerUrl: NETWORK_PROFILES.mainnet.explorer,
   },
-};
+} as const;
 
 export default function NetworkSelector() {
   const { isConnected } = useAccount();

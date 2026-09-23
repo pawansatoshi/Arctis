@@ -209,7 +209,7 @@ function SwapPageInner() {
       if (receipt.status !== 'success') throw new Error('OTC settlement transaction failed on-chain.');
       setS({ txHash: hash, step: 'processing', executing: true }, target);
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/swap/execute', { method: 'POST', headers, body: JSON.stringify({ walletAddress: address, fromToken: q.from, toToken: q.to, amount: n, inboundTxHash: hash }) });
+      const response = await fetch('/api/swap/execute', { method: 'POST', headers, body: JSON.stringify({ network: networkEnv, walletAddress: address, fromToken: q.from, toToken: q.to, amount: n, inboundTxHash: hash }) });
       const d = await response.json();
       if (!response.ok || !d.success) throw new Error(d.error ?? 'ARCTIS OTC settlement failed.');
       const output = Number(d.outputAmount ?? q.quote.output);

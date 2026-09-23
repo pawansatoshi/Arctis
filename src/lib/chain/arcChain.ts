@@ -2,7 +2,7 @@ import { defineChain, fallback, http } from 'viem';
 import { CHAIN_ID, RPC_FALLBACK_URLS, EXPLORER_URL, NETWORK_NAME } from '@/lib/contracts';
 
 // Kept under the existing export name for compatibility with current imports.
-// The selected network is controlled by NEXT_PUBLIC_NETWORK_ENV.
+// Its values always come from exactly one selected network profile.
 export const arcTestnet = defineChain({
   id: CHAIN_ID,
   name: NETWORK_NAME,

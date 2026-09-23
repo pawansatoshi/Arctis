@@ -7,7 +7,8 @@ import { CHAIN_ID } from '@/lib/contracts';
 const VALID_TOKENS: SwapToken[] = ['USDC', 'tUSDC', 'tARC'];
 
 export async function GET(req: NextRequest) {
-  if (CHAIN_ID === 5042) {
+  const requestedNetwork = req.nextUrl.searchParams.get('network');
+  if (requestedNetwork === 'mainnet' || CHAIN_ID === 5042) {
     return NextResponse.json({ error: 'ARCTIS OTC swap is disabled on Arc Mainnet until a production liquidity and settlement rail is verified.' }, { status: 503 });
   }
 

@@ -45,7 +45,7 @@ export function useChainSwitch() {
       toast.error(e.message?.toLowerCase().includes('reject') ? 'Chain switch rejected' : 'Failed to verify network switch');
       return false;
     }
-  }, [isCorrectChain, switchChainAsync, target.chainId, target.name]);
+  }, [isCorrectChain, switchChainAsync, target.chainId, target.networkName]);
 
   return {
     isCorrectChain,
@@ -53,6 +53,6 @@ export function useChainSwitch() {
     isSwitching: isPending,
     currentChainId: chainId,
     targetChainId: target.chainId,
-    targetNetworkName: target.name,
+    targetNetworkName: target.networkName,
   };
 }

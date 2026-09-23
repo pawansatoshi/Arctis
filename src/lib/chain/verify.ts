@@ -2,17 +2,28 @@
 // Server-side Transaction Verification
 // Uses viem to verify on-chain — called from API routes only
 // ============================================================
-import { createPublicClient, parseUnits } from 'viem';
+import { createPublicClient, http, parseUnits } from 'viem';
 import { arcTestnet, arcTransport } from '@/lib/chain/arcChain';
-import { PRIMARY_CONTRACT, TREASURY_WALLET, PRIMARY_DECIMALS, ERC20_ABI } from '@/lib/contracts';
+import { PRIMARY_CONTRACT, TREASURY_WALLET, PRIMARY_DECIMALS, ERC20_ABI, TESTNET_NETWORK } from '@/lib/contracts';
 
 let _client: ReturnType<typeof createPublicClient> | null = null;
+let _testnetClient: ReturnType<typeof createPublicClient> | null = null;
 
 function getClient() {
   if (!_client) {
     _client = createPublicClient({ chain: arcTestnet, transport: arcTransport });
   }
   return _client;
+}
+
+function getTestnetClient() {
+  if (!_testnetClient) {
+    _testnetClient = createPublicClient({
+      chain: arcTestnet,
+      transport: http(TESTNET_NETWORK.rpc),
+    });
+  }
+  return _testnetClient;
 }
 
 export interface VerificationResult {
@@ -85,7 +96,7 @@ export async function verifyTokenPayment(
   expectedSender?: string,
 ): Promise<VerificationResult> {
   try {
-    const client = getClient();
+    const client = getTestnetClient();
     const receipt = await client.getTransactionReceipt({ hash: txHash });
 
     if (receipt.status !== 'success') {

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useWaitForTransactionReceipt, useAccount, useChainId, useSwitchChain } from 'wagmi';
-import { createPublicClient, createWalletClient, custom, formatEther, formatUnits, http, parseUnits } from 'viem';
+import { createPublicClient, createWalletClient, custom, formatEther, formatUnits, parseUnits } from 'viem';
 import { TESTNET_NETWORK, MAINNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import { arcTestnet, arcMainnet } from '@/lib/chain/arcChain';
 import { useAppStore } from '@/lib/store';
@@ -45,11 +45,18 @@ async function resolveRecipient(value: string) {
 async function preflight(
   network: typeof TESTNET_NETWORK | typeof MAINNET_NETWORK,
   chain: typeof arcTestnet | typeof arcMainnet,
+  provider: unknown,
   address: `0x${string}`,
   recipient: `0x${string}`,
   amount: string
 ) {
-  const c = createPublicClient({ chain, transport: http(network.rpc) });
+  // Use the connected wallet's EIP-1193 provider for ALL preflight reads.
+  // This keeps browser preflight on the exact same network selected in ARCTIS
+  // and avoids direct browser calls to the public Arc RPC endpoint.
+  const c = createPublicClient({
+    chain,
+    transport: custom(provider as Parameters<typeof custom>[0]),
+  });
   const req = parseUnits(amount, network.decimals.USDC);
   const [native, gasPrice, usdc] = await Promise.all([
     c.getBalance({ address }),
@@ -156,7 +163,16 @@ export function useTransfer(mode: TransactionRecord['mode'] = 'manual') {
         await switchChainAsync({ chainId: network.chainId });
       }
 
-      await preflight(network, chain, address, resolved as `0x${string}`, amount);
+      // Re-read the wallet chain after switching. Do not trust the stale wagmi
+      // render value before touching balances, gas estimation, or signing.
+      const provider = await connector.getProvider();
+      const providerChain = await (provider as { request: (args: { method: string }) => Promise<string> }).request({ method: 'eth_chainId' });
+      const providerChainId = Number.parseInt(providerChain, 16);
+      if (providerChainId !== network.chainId) {
+        throw new Error(`Wallet is on the wrong network. ARCTIS is locked to ${network.networkName} (chain ${network.chainId}).`);
+      }
+
+      await preflight(network, chain, provider, address, resolved as `0x${string}`, amount);
 
       const rawAmount = parseUnits(amount, network.decimals.USDC).toString();
       addTransaction({
@@ -188,7 +204,6 @@ export function useTransfer(mode: TransactionRecord['mode'] = 'manual') {
       docId.current = d;
 
       announceTransactionState('wallet_approval');
-      const provider = await connector.getProvider();
       const walletClient = createWalletClient({
         account: address,
         chain,

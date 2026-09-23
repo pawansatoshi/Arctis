@@ -1,4 +1,3 @@
-import { NETWORK_NAME } from '@/lib/contracts';
 import { NextRequest, NextResponse } from 'next/server';
 import { getMembership, activateMembership } from '@/lib/memberships/service';
 import { obs } from '@/lib/observability/logger';

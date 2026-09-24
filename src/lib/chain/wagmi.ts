@@ -70,6 +70,21 @@ export const wagmiConfig = getDefaultConfig({
   appName: 'ARCTIS',
   projectId,
   chains: [arcTestnet, arcMainnet, ethereumSepolia, baseSepolia, arbitrumSepolia],
+  transports: {
+    // Testnet keeps a resilient read path so balance/gas queries do not depend
+    // on a single public RPC endpoint. All fallbacks target Arc Testnet only.
+    [arcTestnet.id]: fallback([
+      http('https://rpc.testnet.arc.io'),
+      http('https://rpc.testnet.arc.network'),
+      http('https://rpc.drpc.testnet.arc.network'),
+      http('https://rpc.quicknode.testnet.arc.network'),
+    ]),
+    // Mainnet remains explicitly isolated and never inherits Testnet RPCs.
+    [arcMainnet.id]: http('https://rpc.mainnet.arc.io'),
+    [ethereumSepolia.id]: http('https://ethereum-sepolia-rpc.publicnode.com'),
+    [baseSepolia.id]: http('https://sepolia.base.org'),
+    [arbitrumSepolia.id]: http('https://sepolia-rollup.arbitrum.io/rpc'),
+  },
   wallets: [
     {
       groupName: 'Recommended',

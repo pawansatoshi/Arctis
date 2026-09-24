@@ -13,6 +13,7 @@ import { isCircleSwapToken } from '@/lib/swap/circle';
 import { cn, generateId } from '@/lib/utils';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useRecipientValidation } from '@/lib/hooks/useRecipientValidation';
+import { getSelectedNetworkEnv, getNetworkProfile, type NetworkEnv } from '@/lib/network/profile';
 
 type LockedAction = 'transfer' | 'swap' | 'bridge';
 type AgentExecutionStatus = 'idle' | 'executing' | 'success' | 'failed';
@@ -277,8 +278,20 @@ export function EconomicAgentPanel({
   executionTxHash?: string | null;
 }) {
   const { address } = useAccount();
-  const { formatted: usdcBalance } = useUSDCBalance(address);
-  const { data: nativeBalance } = useBalance({ address, query: { enabled: !!address, refetchInterval: 10_000 } });
+  const { formatted: usdcBalance, chainId: selectedChainId } = useUSDCBalance(address);
+  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
+  useEffect(() => {
+    const sync = () => setNetworkEnv(getSelectedNetworkEnv());
+    sync();
+    window.addEventListener('arctis-network-changed', sync);
+    return () => window.removeEventListener('arctis-network-changed', sync);
+  }, []);
+  const selectedNetwork = getNetworkProfile(networkEnv);
+  const { data: nativeBalance } = useBalance({
+    address,
+    chainId: selectedNetwork.chainId,
+    query: { enabled: !!address, refetchInterval: 10_000, staleTime: 5_000 }
+  });
   const [messages, setMessages] = useState<AgentPanelMessage[]>([]);
   const [input, setInput] = useState('');
   const [amount, setAmount] = useState('');

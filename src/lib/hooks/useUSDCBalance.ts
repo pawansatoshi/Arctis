@@ -6,8 +6,6 @@ import { TESTNET_NETWORK, MAINNET_NETWORK, ERC20_ABI } from '@/lib/contracts';
 import { formatUSDC } from '@/lib/utils';
 import { getSelectedNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
-type NetworkEnv = 'testnet' | 'mainnet';
-
 export function useUSDCBalance(overrideAddress?: `0x${string}`) {
   const { address } = useAccount();
   const targetAddress = overrideAddress ?? address;
@@ -42,5 +40,6 @@ export function useUSDCBalance(overrideAddress?: `0x${string}`) {
     isError,
     refetch,
     hasBalance: balance !== undefined && balance > 0n,
+    chainId: profile.chainId,
   };
 }

@@ -30,6 +30,11 @@ assert.match(transfer, /arcTestnet.*arcMainnet/);
 assert.match(transfer, /providerChainId !== network\.chainId/);
 
 assert.match(balance, /chainId:\s*profile\.chainId/);
+assert.doesNotMatch(balance, /import \{ getSelectedNetworkEnv, type NetworkEnv \}[^;]*;[\s\S]*type NetworkEnv =/,
+  'USDC balance hook must not redeclare NetworkEnv after importing it');
+assert.match(balance, /chainId: profile\.chainId/);
+const agent = read('src/components/agent/EconomicAgentPanel.tsx');
+assert.match(agent, /useBalance\(\{[\s\S]*chainId:\s*selectedNetwork\.chainId/);
 assert.match(tarc, /network === 'testnet'/);
 assert.match(tarc, /Never query a test asset on Mainnet/);
 assert.match(switcher, /getNetworkProfile\(network\)/);

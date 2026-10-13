@@ -51,6 +51,7 @@ export async function activateMembership(
   walletAddress: string,
   tier: MembershipTier,
   txHash?: string,
+  network: 'testnet' | 'mainnet' = 'testnet',
 ): Promise<UserMembership> {
   const db = getAdminDb();
   const addr = walletAddress.toLowerCase();
@@ -87,6 +88,7 @@ export async function activateMembership(
     priceUSDC: plan.priceUSDC,
     monthlyCredits: plan.credits,
     ...(txHash ? { txHash } : {}),
+    network,
     autoRenew: false,
   };
 

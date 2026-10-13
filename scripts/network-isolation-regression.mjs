@@ -60,20 +60,20 @@ assert.match(swapExecute, /body\.network !== 'testnet'/);
 
 // Financial APIs must reject absent/unknown network context and bind payment to
 // the authenticated sender, network-specific token and treasury, and exact amount.
-assert.match(paymentVerifier, /verifyUSDCPayment\\([\\s\\S]*network: NetworkEnv,[\\s\\S]*expectedSender: string/);
-assert.match(paymentVerifier, /clients\\[network\\]/);
-assert.match(paymentVerifier, /tx\\.from\\.toLowerCase\\(\\) !== expectedSender\\.toLowerCase\\(\\)/);
+assert.match(paymentVerifier, /verifyUSDCPayment\([\s\S]*network: NetworkEnv,[\s\S]*expectedSender: string/);
+assert.match(paymentVerifier, /clients\[network\]/);
+assert.match(paymentVerifier, /tx\.from\.toLowerCase\(\) !== expectedSender\.toLowerCase\(\)/);
 assert.match(paymentVerifier, /value === expectedAmount/);
-assert.match(paymentVerifier, /process\\.env\\.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY/);
-assert.match(contracts, /NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY \\|\\| ZERO_ADDRESS/);
+assert.match(paymentVerifier, /process\.env\.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY/);
+assert.match(contracts, /NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY \|\| ZERO_ADDRESS/);
 assert.match(membershipApi, /!network/);
-assert.match(membershipApi, /plan\\.priceUSDC, network, walletAddress/);
+assert.match(membershipApi, /plan\.priceUSDC, network, walletAddress/);
 assert.match(creditsApi, /!network/);
-assert.match(creditsApi, /pkg\\.usdcAmount, network, walletAddress/);
-assert.match(membershipPage, /network: pendingNetworkRef\\.current/);
-assert.match(creditsPage, /network: pendingNetworkRef\\.current/);
-assert.match(membershipPage, /getNetworkProfile\\(pendingNetworkRef\\.current\\)\\.treasury/);
-assert.match(creditsPage, /getNetworkProfile\\(pendingNetworkRef\\.current\\)\\.treasury/);
+assert.match(creditsApi, /pkg\.usdcAmount, network, walletAddress/);
+assert.match(membershipPage, /network: pendingNetworkRef\.current/);
+assert.match(creditsPage, /network: pendingNetworkRef\.current/);
+assert.match(membershipPage, /getNetworkProfile\(pendingNetworkRef\.current\)\.treasury/);
+assert.match(creditsPage, /getNetworkProfile\(pendingNetworkRef\.current\)\.treasury/);
 assert.match(membershipPage, /Mainnet treasury is not configured; payment is disabled/);
 assert.match(creditsPage, /Mainnet treasury is not configured; payment is disabled/);
 

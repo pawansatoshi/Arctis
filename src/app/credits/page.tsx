@@ -97,8 +97,14 @@ export default function CreditsPage() {
   const handlePurchase = useCallback(async (pkgId: string) => {
     const pkg = CREDIT_PACKAGES.find((p) => p.id === pkgId);
     if (!pkg || !address || selectedPkg) return;
+    const network = getSelectedNetworkEnv();
+    const treasury = getNetworkProfile(network).treasury;
+    if (/^0x0{40}$/i.test(treasury)) {
+      toast.error('Mainnet treasury is not configured; payment is disabled.');
+      return;
+    }
     pendingPkgRef.current = pkgId;
-    pendingNetworkRef.current = getSelectedNetworkEnv();
+    pendingNetworkRef.current = network;
     setSelectedPkg(pkgId);
     await transfer({ to: getNetworkProfile(pendingNetworkRef.current).treasury, amount: pkg.usdcAmount.toString(), note: `ARCTIS credit purchase — ${pkg.id}` });
   }, [address, selectedPkg, transfer]);

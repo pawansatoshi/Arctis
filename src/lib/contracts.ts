@@ -12,6 +12,9 @@ const ENV: NetworkEnv = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? 'mai
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 
+/** Mainnet paid purchases require an explicit deployment opt-in after treasury verification. */
+export const MAINNET_PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_ARCTIS_MAINNET_PAYMENTS_ENABLED === 'true';
+
 // ─── Arc Testnet ────────────────────────────────────────────
 const TESTNET = {
   chainId: 5042002,
@@ -41,7 +44,9 @@ const MAINNET = {
     AGENT_TREASURY: ZERO_ADDRESS,
   },
   decimals: { USDC: 6, tUSDC: 6, tARC: 18 },
-  treasury: (process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || ZERO_ADDRESS) as `0x${string}`,
+  treasury: (MAINNET_PAYMENTS_ENABLED && process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY
+    ? process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY
+    : ZERO_ADDRESS) as `0x${string}`,
 } as const;
 
 export const TESTNET_NETWORK = TESTNET;

@@ -115,8 +115,14 @@ export default function MembershipPage() {
     const plan = MEMBERSHIP_PLANS.find((p) => p.id === tier);
     if (!plan || !address || plan.priceUSDC === 0 || purchasing || freeActivating) return;
 
+    const network = getSelectedNetworkEnv();
+    const treasury = getNetworkProfile(network).treasury;
+    if (/^0x0{40}$/i.test(treasury)) {
+      toast.error('Mainnet treasury is not configured; payment is disabled.');
+      return;
+    }
     pendingTierRef.current = tier;
-    pendingNetworkRef.current = getSelectedNetworkEnv();
+    pendingNetworkRef.current = network;
     setPurchasing(tier);
     await transfer({
       to: getNetworkProfile(pendingNetworkRef.current).treasury,

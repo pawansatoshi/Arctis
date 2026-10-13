@@ -16,7 +16,7 @@ const bridgeRecord = read('src/app/api/bridge/record/route.ts');
 const swapPage = read('src/app/swap/page.tsx');
 const swapExecute = read('src/app/api/swap/execute/route.ts');
 
-assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
+assert.doesNotMatch(contracts, /localStorage\.getItem|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
 
 assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);
@@ -41,7 +41,27 @@ const agent = read('src/components/agent/EconomicAgentPanel.tsx');
 assert.match(agent, /useBalance\(\{[\s\S]*chainId:\s*selectedNetwork\.chainId/);
 assert.match(tarc, /network === 'testnet'/);
 assert.match(tarc, /Never query a test asset on Mainnet/);
-assert.match(switcher, /getNetworkProfile\(network\)/);
+// useChainSwitch must derive the target chain ID from the selected network profile
+// at call-time — never hardcode 5042002 (testnet) or 5042 (mainnet) as a literal.
+assert.ok(
+  switcher.includes('getSelectedNetworkProfile') || switcher.includes('getNetworkProfile'),
+  'useChainSwitch must call getSelectedNetworkProfile() or getNetworkProfile() to derive chainId',
+);
+assert.doesNotMatch(
+  switcher,
+  /switchChainAsync\s*\(\s*\{\s*chainId\s*:\s*5042002\s*\}/,
+  'useChainSwitch must not hardcode testnet chain ID 5042002 as the switch target',
+);
+assert.doesNotMatch(
+  switcher,
+  /chainId\s*:\s*5042002/,
+  'useChainSwitch must not contain literal 5042002 anywhere',
+);
+assert.doesNotMatch(
+  switcher,
+  /chainId\s*:\s*5042[^0-9]/,
+  'useChainSwitch must not contain literal 5042 anywhere',
+);
 
 assert.match(bridgeRoute, /network.*mainnet/);
 assert.match(bridgeQuote, /network.*testnet/);

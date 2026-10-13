@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import {
@@ -21,10 +21,11 @@ import {
 import { useAppStore } from '@/lib/store';
 import { useTheme } from '@/lib/theme/ThemeProvider';
 import { isMemoEnabled, setMemoEnabled } from '@/lib/memo/service';
+import { ARC_USDC_ADDRESS, ARC_USDC_DECIMALS } from '@/lib/chain/config';
 import { copyToClipboard, formatAddress, getAddressExplorerUrl, cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useLanguagePreference, SUPPORTED_LANGUAGES } from '@/lib/hooks/useLanguagePreference';
-import { getSelectedNetworkEnv, getNetworkProfile, type NetworkEnv } from '@/lib/network/profile';
+import { getSelectedNetworkProfile, getSelectedNetworkEnv } from '@/lib/network/profile';
 
 // ============================================================
 // Settings Page — App Configuration
@@ -89,182 +90,228 @@ export default function SettingsPage() {
   const { language, setLanguage } = useLanguagePreference();
   const { theme, setTheme } = useTheme();
   const [memoEnabled, setMemoEnabledState] = useState(true);
-
-  useEffect(() => { setMemoEnabledState(isMemoEnabled()); }, []);
-  const handleMemoToggle = (v: boolean) => { setMemoEnabledState(v); setMemoEnabled(v); };
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
-  useEffect(() => { const sync = () => setNetworkEnv(getSelectedNetworkEnv()); sync(); window.addEventListener('arctis-network-changed', sync); return () => window.removeEventListener('arctis-network-changed', sync); }, []);
-  const network = getNetworkProfile(networkEnv);
+
+  // Network profile is derived client-side from localStorage so it reflects the
+  // user's current selection without a page reload. SSR renders the build-time
+  // default (testnet) and the useEffect corrects it on hydration.
+  const [networkProfile, setNetworkProfile] = useState(() => getSelectedNetworkProfile());
+
+  const refreshNetworkProfile = useCallback(() => {
+    setNetworkProfile(getSelectedNetworkProfile());
+  }, []);
+
+  useEffect(() => {
+    setMemoEnabledState(isMemoEnabled());
+    // Sync on mount (covers SSR→CSR hydration delta).
+    refreshNetworkProfile();
+
+    // Re-sync when the user switches networks in another tab or via the
+    // network selector in the same tab (written to localStorage).
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'arctis-network-env') refreshNetworkProfile();
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [refreshNetworkProfile]);
+
+  const handleMemoToggle = (v: boolean) => { setMemoEnabledState(v); setMemoEnabled(v); };
+
+  // Derive a short hostname for display, stripping the https:// prefix.
+  const rpcHostname = networkProfile.rpc.replace(/^https?:\/\//, '');
+  const networkEnv = getSelectedNetworkEnv();
 
   return (
-      <div className="max-w-2xl space-y-6 safe-bottom">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center gap-2 mb-1"><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Platform</span></div>
-          <h1 className="text-2xl font-bold tracking-tight text-surface-950">Settings</h1>
-          <p className="text-surface-600 text-sm mt-1">Configure ARCTIS operational preferences</p>
-        </motion.div>
+    <div className="max-w-2xl space-y-6 safe-bottom">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-center gap-2 mb-1"><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Platform</span></div>
+        <h1 className="text-2xl font-bold tracking-tight text-surface-950">Settings</h1>
+        <p className="text-surface-600 text-sm mt-1">Configure ARCTIS operational preferences</p>
+      </motion.div>
 
-        {/* Appearance section */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }} className="glass-card p-6">
-          <SectionHeader icon={Sun} title="Appearance" />
-          <SettingRow label="Theme" description="Light is the default; dark mode is fully supported">
-            <div className="flex items-center gap-1 p-1 bg-surface-200/60 rounded-xl border border-black/[0.05] dark:border-white/[0.05]">
-              <button
-                onClick={() => setTheme('light')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  theme === 'light' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
-                )}
-              >
-                <Sun className="w-3.5 h-3.5" /> Light
-              </button>
-              <button
-                onClick={() => setTheme('dark')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  theme === 'dark' ? 'bg-surface-300 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
-                )}
-              >
-                <Moon className="w-3.5 h-3.5" /> Dark
+      {/* Appearance section */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }} className="glass-card p-6">
+        <SectionHeader icon={Sun} title="Appearance" />
+        <SettingRow label="Theme" description="Light is the default; dark mode is fully supported">
+          <div className="flex items-center gap-1 p-1 bg-surface-200/60 rounded-xl border border-black/[0.05] dark:border-white/[0.05]">
+            <button
+              onClick={() => setTheme('light')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                theme === 'light' ? 'bg-surface-0 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
+              )}
+            >
+              <Sun className="w-3.5 h-3.5" /> Light
+            </button>
+            <button
+              onClick={() => setTheme('dark')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                theme === 'dark' ? 'bg-surface-300 text-surface-950 shadow-sm' : 'text-surface-600 hover:text-surface-950'
+              )}
+            >
+              <Moon className="w-3.5 h-3.5" /> Dark
+            </button>
+          </div>
+        </SettingRow>
+      </motion.div>
+
+      {/* Wallet section */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6">
+        <SectionHeader icon={Wallet} title="Wallet" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Connected Address" description="Your active wallet address">
+            {address ? (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-surface-700">{formatAddress(address, 6)}</span>
+                <button onClick={() => { copyToClipboard(address); toast.success('Copied!'); }} aria-label="Copy wallet address" className="text-surface-500 hover:text-surface-950 transition-colors">
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+                <a href={getAddressExplorerUrl(address)} target="_blank" rel="noopener noreferrer" className="text-surface-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            ) : (
+              <span className="text-surface-600 text-xs">Not connected</span>
+            )}
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* Network section — all values derived from the selected network profile */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
+        <SectionHeader icon={Zap} title="Network" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Chain" description="Active network">
+            <div className="flex items-center gap-2">
+              <span className={cn('status-dot-online', networkEnv === 'mainnet' && 'bg-emerald-500')} />
+              <span className="text-surface-950 text-xs font-medium">{networkProfile.networkName}</span>
+            </div>
+          </SettingRow>
+          <SettingRow label="Chain ID" description="Network identifier">
+            <span className="font-mono text-xs text-surface-700">{networkProfile.chainId}</span>
+          </SettingRow>
+          <SettingRow label="USDC Contract" description="ERC-20 token address">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-surface-700">{formatAddress(ARC_USDC_ADDRESS, 4)}</span>
+              <button onClick={() => { copyToClipboard(ARC_USDC_ADDRESS); toast.success('Copied!'); }} aria-label="Copy USDC contract address" className="text-surface-500 hover:text-surface-950 transition-colors">
+                <Copy className="w-3.5 h-3.5" />
               </button>
             </div>
           </SettingRow>
-        </motion.div>
-
-        {/* Wallet section */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6">
-          <SectionHeader icon={Wallet} title="Wallet" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Connected Address" description="Your active wallet address">
-              {address ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-surface-700">{formatAddress(address, 6)}</span>
-                  <button onClick={() => { copyToClipboard(address); toast.success('Copied!'); }} aria-label="Copy wallet address" className="text-surface-500 hover:text-surface-950 transition-colors">
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                  <a href={getAddressExplorerUrl(address)} target="_blank" rel="noopener noreferrer" className="text-surface-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              ) : (
-                <span className="text-surface-600 text-xs">Not connected</span>
-              )}
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* Network section */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
-          <SectionHeader icon={Zap} title="Network" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Chain" description="Active network">
-              <div className="flex items-center gap-2">
-                <span className="status-dot-online" />
-                <span className="text-surface-950 text-xs font-medium">{network.networkName}</span>
-              </div>
-            </SettingRow>
-            <SettingRow label="Chain ID" description="Network identifier">
-              <span className="font-mono text-xs text-surface-700">{network.chainId}</span>
-            </SettingRow>
-            <SettingRow label="USDC Contract" description="ERC-20 token address">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-surface-700">{formatAddress(network.contracts.USDC, 4)}</span>
-                <button onClick={() => { copyToClipboard(network.contracts.USDC); toast.success('Copied!'); }} aria-label="Copy USDC contract address" className="text-surface-500 hover:text-surface-950 transition-colors">
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </SettingRow>
-            <SettingRow label="USDC Decimals" description="Token decimal precision">
-              <span className="font-mono text-xs text-surface-700">{network.decimals.USDC}</span>
-            </SettingRow>
-            <SettingRow label="RPC Endpoint" description={`${network.networkName} RPC`}>
-              <span className="font-mono text-xs text-surface-700">{network.rpc}</span>
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* Notifications */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6">
-          <SectionHeader icon={Bell} title="Notifications" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Transaction Alerts" description="Get notified on transfer events">
-              <Toggle enabled={notificationsEnabled} onChange={setNotificationsEnabled} label="Notifications" />
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* AI Copilot */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
-          <SectionHeader icon={Bot} title="AI Copilot" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="AI Operational Intelligence" description="Enable ARCTIS AI treasury copilots">
-              <Toggle enabled={aiEnabled} onChange={setAiEnabled} label="AI Operational Intelligence" />
-            </SettingRow>
-          </div>
-          {aiEnabled && (
-            <div className="mt-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600 dark:text-violet-400">
-              ARCTIS AI is enabled and ready.
-            </div>
-          )}
-        </motion.div>
-
-        {/* Language */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="glass-card p-6">
-          <SectionHeader icon={Globe} title="Language" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Response language" description="Language used by the AI Copilot and AI Chat when responding">
-              <select
-                value={language}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLanguage(e.target.value)}
-                className="bg-surface-200 border border-black/[0.08] dark:border-white/[0.08] rounded-lg px-3 py-1.5 text-sm text-surface-950 outline-none focus:border-blue-500/40"
+          <SettingRow label="USDC Decimals" description="Token decimal precision">
+            <span className="font-mono text-xs text-surface-700">{ARC_USDC_DECIMALS}</span>
+          </SettingRow>
+          <SettingRow
+            label="RPC Endpoint"
+            description={`${networkProfile.networkName} RPC`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-surface-700">{rpcHostname}</span>
+              <button
+                onClick={() => { copyToClipboard(networkProfile.rpc); toast.success('Copied!'); }}
+                aria-label="Copy RPC endpoint"
+                className="text-surface-500 hover:text-surface-950 transition-colors"
               >
-                {SUPPORTED_LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
-                ))}
-              </select>
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* Transaction Memos */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="glass-card p-6">
-          <SectionHeader icon={MessageSquare} title="Transaction Memos" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Attach memos to transactions" description="Writes structured metadata to Arc via the Memo contract. Non-blocking.">
-              <Toggle enabled={memoEnabled} onChange={handleMemoToggle} label="Attach memos to transactions" />
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* Developer */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.27 }} className="glass-card p-6">
-          <SectionHeader icon={Code2} title="Developer" />
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
-            <SettingRow label="Version" description="ARCTIS release">
-              <span className="text-surface-700 text-xs font-mono">v1.2.0</span>
-            </SettingRow>
-            <SettingRow label="Stack" description="Technology foundation">
-              <span className="text-surface-700 text-xs">Next.js · Wagmi v2 · Viem</span>
-            </SettingRow>
-            <SettingRow label="Documentation" description="Setup and deployment guides live in the repository">
-              <span className="text-surface-600 text-xs font-mono">README.md</span>
-            </SettingRow>
-          </div>
-        </motion.div>
-
-        {/* Security notice */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-4">
-          <div className="flex items-start gap-3">
-            <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-            <div className="text-surface-600 text-xs leading-relaxed">
-              <span className="text-surface-950 font-medium">Security note: </span>
-              ARCTIS never stores private keys. All signing is handled by your connected wallet provider.
-              Smart contract addresses are hardcoded and never mutable.
+                <Copy className="w-3.5 h-3.5" />
+              </button>
             </div>
+          </SettingRow>
+          <SettingRow label="Explorer" description="Block explorer for this network">
+            <a
+              href={networkProfile.explorer}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {networkProfile.explorer.replace(/^https?:\/\//, '')}
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* Notifications */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6">
+        <SectionHeader icon={Bell} title="Notifications" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Transaction Alerts" description="Get notified on transfer events">
+            <Toggle enabled={notificationsEnabled} onChange={setNotificationsEnabled} label="Notifications" />
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* AI Copilot */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
+        <SectionHeader icon={Bot} title="AI Copilot" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="AI Operational Intelligence" description="Enable ARCTIS AI treasury copilots">
+            <Toggle enabled={aiEnabled} onChange={setAiEnabled} label="AI Operational Intelligence" />
+          </SettingRow>
+        </div>
+        {aiEnabled && (
+          <div className="mt-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600 dark:text-violet-400">
+            ARCTIS AI is enabled and ready.
           </div>
-        </motion.div>
-      </div>
+        )}
+      </motion.div>
+
+      {/* Language */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="glass-card p-6">
+        <SectionHeader icon={Globe} title="Language" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Response language" description="Language used by the AI Copilot and AI Chat when responding">
+            <select
+              value={language}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLanguage(e.target.value)}
+              className="bg-surface-200 border border-black/[0.08] dark:border-white/[0.08] rounded-lg px-3 py-1.5 text-sm text-surface-950 outline-none focus:border-blue-500/40"
+            >
+              {SUPPORTED_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* Transaction Memos */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="glass-card p-6">
+        <SectionHeader icon={MessageSquare} title="Transaction Memos" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Attach memos to transactions" description="Writes structured metadata to Arc via the Memo contract. Non-blocking.">
+            <Toggle enabled={memoEnabled} onChange={handleMemoToggle} label="Attach memos to transactions" />
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* Developer */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.27 }} className="glass-card p-6">
+        <SectionHeader icon={Code2} title="Developer" />
+        <div className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+          <SettingRow label="Version" description="ARCTIS release">
+            <span className="text-surface-700 text-xs font-mono">v1.2.0</span>
+          </SettingRow>
+          <SettingRow label="Stack" description="Technology foundation">
+            <span className="text-surface-700 text-xs">Next.js · Wagmi v2 · Viem</span>
+          </SettingRow>
+          <SettingRow label="Documentation" description="Setup and deployment guides live in the repository">
+            <span className="text-surface-600 text-xs font-mono">README.md</span>
+          </SettingRow>
+        </div>
+      </motion.div>
+
+      {/* Security notice */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-4">
+        <div className="flex items-start gap-3">
+          <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div className="text-surface-600 text-xs leading-relaxed">
+            <span className="text-surface-950 font-medium">Security note: </span>
+            ARCTIS never stores private keys. All signing is handled by your connected wallet provider.
+            Smart contract addresses are hardcoded and never mutable.
+          </div>
+        </div>
+      </motion.div>
+    </div>
   );
 }

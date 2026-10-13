@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK_NAME, CHAIN_ID } from '@/lib/contracts';
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -69,7 +70,7 @@ export function PassportCard({ username, walletAddress, displayName, bio, avatar
     <div className="rounded-3xl overflow-hidden shadow-2xl border border-black/[0.07] dark:border-white/[0.07]">
       <div className="relative h-28 flex items-end px-5 pb-0" style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 55%, #8b5cf6 100%)' }}>
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.2) 0%, transparent 40%)' }} />
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-white text-[10px] font-medium tracking-wide">Arc Testnet</span></div>
+        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-black/30 backdrop-blur-sm px-2.5 py-1 rounded-full"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-white text-[10px] font-medium tracking-wide">{NETWORK_NAME}</span></div>
         <div className="absolute top-4 left-5 text-white/70 text-[11px] font-bold tracking-[0.2em] uppercase">ARCTIS</div>
         <div className="relative z-10 mb-[-2.5rem]">
           <InitialsAvatar username={username} avatarUrl={avatarUrl} />
@@ -86,6 +87,6 @@ export function PassportCard({ username, walletAddress, displayName, bio, avatar
         {isOwner && <Link href="/dashboard" className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-surface-700 hover:text-surface-950 text-xs font-medium transition-colors hover:bg-surface-300/60 border border-black/[0.06] dark:border-white/[0.06]" aria-label="Back to ARCTIS home"><Home className="w-3.5 h-3.5" />Back to ARCTIS Home</Link>}
       </div>
     </div>
-    <div className="flex items-center justify-center gap-4 mt-4"><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /><span className="text-surface-600 text-xs">Arc Testnet · Chain 5042002</span></div></div>
+    <div className="flex items-center justify-center gap-4 mt-4"><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /><span className="text-surface-600 text-xs">{NETWORK_NAME} · Chain {CHAIN_ID}</span></div></div>
   </motion.div>;
 }

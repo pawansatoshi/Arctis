@@ -1,40 +1,53 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
+import { getSelectedNetworkProfile } from '@/lib/network/profile';
 import { announceTransactionState } from '@/lib/transaction/voice';
 import toast from 'react-hot-toast';
-import { getSelectedNetworkEnv, getNetworkProfile, normalizeNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
-
+/**
+ * Network-aware chain switch hook.
+ *
+ * The target chain ID is derived at call-time from the user-selected network
+ * profile (localStorage key 'arctis-network-env'). On Testnet this resolves
+ * to 5042002; on Mainnet it resolves to 5042. No chain ID is ever hardcoded
+ * here — adding a new network only requires updating contracts.ts.
+ */
 export function useChainSwitch() {
   const { chainId } = useAccount();
   const { switchChainAsync, isPending } = useSwitchChain();
-  const [network, setNetwork] = useState<NetworkEnv>(() => getSelectedNetworkEnv());
 
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('arctis-network-env');
-      setNetwork(normalizeNetworkEnv(saved));
-    } catch {}
-  }, []);
+  // Re-derived on every render so the hook reacts immediately when the user
+  // switches networks without needing a page reload.
+  const profile = getSelectedNetworkProfile();
+  const targetChainId = profile.chainId;
+  const networkName = profile.networkName;
 
-  const target = getNetworkProfile(network);
-  const isCorrectChain = chainId === target.chainId;
+  const isCorrectChain = chainId === targetChainId;
 
   const switchToArc = useCallback(async () => {
-    if (isCorrectChain) return true;
+    // Re-read profile inside the callback so it is current at the moment of
+    // the switch attempt, not at the time the callback was created.
+    const currentProfile = getSelectedNetworkProfile();
+    const currentTargetId = currentProfile.chainId;
+    const currentNetworkName = currentProfile.networkName;
+
+    if (chainId === currentTargetId) return true;
+
     announceTransactionState('network_required');
     try {
       announceTransactionState('switching_network');
-      await switchChainAsync({ chainId: target.chainId });
+      await switchChainAsync({ chainId: currentTargetId });
+
+      // Poll briefly to let the wallet provider confirm the switch.
       for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise<void>((r) => setTimeout(r, 250));
         if (window.ethereum) {
           const raw = await window.ethereum.request({ method: 'eth_chainId' });
           const actual = typeof raw === 'string' ? parseInt(raw, 16) : Number(raw);
-          if (actual === target.chainId) {
+          if (actual === currentTargetId) {
             announceTransactionState('network_switched');
-            toast.success(`Switched to ${target.networkName}`);
+            toast.success(`Switched to ${currentNetworkName}`);
             return true;
           }
         }
@@ -42,17 +55,20 @@ export function useChainSwitch() {
       throw new Error('Wallet switch could not be verified');
     } catch (err) {
       const e = err as { message?: string };
-      toast.error(e.message?.toLowerCase().includes('reject') ? 'Chain switch rejected' : 'Failed to verify network switch');
+      toast.error(
+        e.message?.toLowerCase().includes('reject')
+          ? 'Chain switch rejected'
+          : 'Failed to verify network switch',
+      );
       return false;
     }
-  }, [isCorrectChain, switchChainAsync, target.chainId, target.networkName]);
+  }, [chainId, switchChainAsync]);
 
   return {
     isCorrectChain,
     switchToArc,
     isSwitching: isPending,
     currentChainId: chainId,
-    targetChainId: target.chainId,
-    targetNetworkName: target.networkName,
+    targetChainId,
   };
 }

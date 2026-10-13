@@ -10,7 +10,9 @@
     "type-check": "tsc --noEmit",
     "architecture-truth": "node scripts/check-architecture-truth.mjs",
     "network-regression": "node scripts/network-isolation-regression.mjs",
-    "test": "node scripts/transaction-regression.mjs"
+    "test": "node scripts/transaction-regression.mjs",
+    "mainnet-regression": "node scripts/mainnet-regression.mjs",
+    "chain-switch-regression": "node scripts/chain-switch-regression.mjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.1",

@@ -41,15 +41,27 @@ const agent = read('src/components/agent/EconomicAgentPanel.tsx');
 assert.match(agent, /useBalance\(\{[\s\S]*chainId:\s*selectedNetwork\.chainId/);
 assert.match(tarc, /network === 'testnet'/);
 assert.match(tarc, /Never query a test asset on Mainnet/);
-// useChainSwitch may either call getNetworkProfile(network) or use the build-time
-// CHAIN_ID constant (which is derived from NEXT_PUBLIC_NETWORK_ENV, not hardcoded).
-// Both are acceptable; what must NOT happen is a hardcoded literal testnet chain ID.
+// useChainSwitch must derive the target chain ID from the selected network profile
+// at call-time — never hardcode 5042002 (testnet) or 5042 (mainnet) as a literal.
 assert.ok(
-  switcher.includes('getNetworkProfile') || switcher.includes('CHAIN_ID'),
-  'useChainSwitch must use network-aware chain selection (CHAIN_ID or getNetworkProfile)',
+  switcher.includes('getSelectedNetworkProfile') || switcher.includes('getNetworkProfile'),
+  'useChainSwitch must call getSelectedNetworkProfile() or getNetworkProfile() to derive chainId',
 );
-assert.doesNotMatch(switcher, /switchChainAsync\(\s*\{\s*chainId:\s*5042002\s*\}/, 
-  'useChainSwitch must not hardcode testnet chain ID 5042002 as the switch target');
+assert.doesNotMatch(
+  switcher,
+  /switchChainAsync\s*\(\s*\{\s*chainId\s*:\s*5042002\s*\}/,
+  'useChainSwitch must not hardcode testnet chain ID 5042002 as the switch target',
+);
+assert.doesNotMatch(
+  switcher,
+  /chainId\s*:\s*5042002/,
+  'useChainSwitch must not contain literal 5042002 anywhere',
+);
+assert.doesNotMatch(
+  switcher,
+  /chainId\s*:\s*5042[^0-9]/,
+  'useChainSwitch must not contain literal 5042 anywhere',
+);
 
 assert.match(bridgeRoute, /network.*mainnet/);
 assert.match(bridgeQuote, /network.*testnet/);

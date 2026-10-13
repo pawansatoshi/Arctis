@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "forge-std/Script.sol";
 import "../ARCTISAgentEscrow.sol";
 
-/// @notice Deployment script for ARCTISAgentEscrow on Arc Mainnet (chain ID 5042).
+/// @title DeployARCTISAgentEscrow
+/// @notice Lightweight deployment script for ARCTISAgentEscrow on Arc Mainnet.
 ///
-/// Usage:
+/// This script uses the Forge cheatcode VM interface directly (no forge-std import)
+/// so it compiles cleanly in CI environments where lib/forge-std is not present.
+///
+/// ─── How to deploy ───────────────────────────────────────────────────────────
+///
+///   # 1. Set the intended owner of the contract.
+///   #    Defaults to the broadcast sender (deployer wallet) if unset.
+///   export OWNER_ADDRESS=0xb467F683764593316fAEbB0709127E90791Fe47F
+///
+///   # 2. Run with forge against Arc Mainnet.
 ///   forge script contracts/script/DeployARCTISAgentEscrow.s.sol \
 ///     --rpc-url https://rpc.mainnet.arc.io \
 ///     --broadcast \
@@ -15,29 +24,40 @@ import "../ARCTISAgentEscrow.sol";
 ///     --verifier-url https://explorer.arc.io/api \
 ///     -vvvv
 ///
-/// Constructor argument:
-///   initialOwner — the wallet address that will own the contract after deployment.
-///   Set DEPLOYER_ADDRESS in your environment; it defaults to the broadcast sender.
+///   # 3. Record the printed contract address, tx hash, and block number
+///   #    in README.md and docs/hackathon-submission.md.
 ///
-/// The deployment address is deterministic given the deployer nonce. Record the
-/// printed contract address, transaction hash and block number in AGENTS.md and
-/// the hackathon submission notes.
-contract DeployARCTISAgentEscrow is Script {
+/// ─── Constructor argument ────────────────────────────────────────────────────
+///
+///   initialOwner — The address that will own the deployed contract.
+///   Set OWNER_ADDRESS in the shell environment; defaults to tx.origin (deployer).
+///   The owner can call pause/unpause, resolveDispute, and transferOwnership.
+///
+/// ─── Arc Mainnet facts (on-chain verified) ───────────────────────────────────
+///
+///   Chain ID : 5042
+///   RPC      : https://rpc.mainnet.arc.io
+///   Explorer : https://explorer.arc.io
+///   USDC     : 0x3600000000000000000000000000000000000000  (symbol=USDC, decimals=6)
+///   Treasury : 0xb467F683764593316fAEbB0709127E90791Fe47F  (active EOA, USDC balance confirmed)
+///
+/// ─────────────────────────────────────────────────────────────────────────────
+
+interface IVm {
+    function envOr(string calldata name, address defaultValue) external view returns (address);
+    function startBroadcast() external;
+    function stopBroadcast() external;
+}
+
+contract DeployARCTISAgentEscrow {
+    IVm internal constant vm = IVm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
     function run() external returns (ARCTISAgentEscrow escrow) {
-        // Owner defaults to the broadcast sender (deployer wallet).
-        // Override by setting OWNER_ADDRESS env var.
-        address owner = vm.envOr("OWNER_ADDRESS", msg.sender);
+        address owner = vm.envOr("OWNER_ADDRESS", tx.origin);
         require(owner != address(0), "DeployARCTISAgentEscrow: owner is zero address");
 
         vm.startBroadcast();
         escrow = new ARCTISAgentEscrow(owner);
         vm.stopBroadcast();
-
-        console2.log("=== ARCTISAgentEscrow deployed ===");
-        console2.log("Address :", address(escrow));
-        console2.log("Owner   :", escrow.owner());
-        console2.log("ARC USDC:", escrow.ARC_USDC());
-        console2.log("Chain ID:", block.chainid);
-        console2.log("Explorer: https://explorer.arc.io/address/%s", address(escrow));
     }
 }

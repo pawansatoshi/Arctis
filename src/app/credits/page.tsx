@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import toast from 'react-hot-toast';
 import type { CreditLedgerEntry, UserMembership } from '@/types';
-import { TREASURY_WALLET } from '@/lib/contracts';
+import { getNetworkProfile, getSelectedNetworkEnv } from '@/lib/network/profile';
 
 function membershipIsActive(membership: UserMembership | null): boolean {
   if (!membership || membership.status !== 'active') return false;
@@ -36,6 +36,7 @@ export default function CreditsPage() {
   const { transfer, isPending, isConfirming, isSuccess, txHash, error, reset } = useTransfer();
   const pendingPkgRef = useRef<string | null>(null);
   const grantedRef = useRef<Set<string>>(new Set());
+  const pendingNetworkRef = useRef<'testnet' | 'mainnet'>('testnet');
 
   const fetchCredits = useCallback(async () => {
     if (!address) return;
@@ -70,7 +71,7 @@ export default function CreditsPage() {
     getAuthHeaders().then((authHeaders) => fetch('/api/credits', {
       method: 'POST',
       headers: authHeaders,
-      body: JSON.stringify({ walletAddress: address, packageId: pkgId, txHash }),
+      body: JSON.stringify({ walletAddress: address, packageId: pkgId, txHash, network: pendingNetworkRef.current }),
     }))
       .then(async (r) => {
         const data = await r.json();
@@ -97,8 +98,9 @@ export default function CreditsPage() {
     const pkg = CREDIT_PACKAGES.find((p) => p.id === pkgId);
     if (!pkg || !address || selectedPkg) return;
     pendingPkgRef.current = pkgId;
+    pendingNetworkRef.current = getSelectedNetworkEnv();
     setSelectedPkg(pkgId);
-    await transfer({ to: TREASURY_WALLET, amount: pkg.usdcAmount.toString(), note: `ARCTIS credit purchase — ${pkg.id}` });
+    await transfer({ to: getNetworkProfile(pendingNetworkRef.current).treasury, amount: pkg.usdcAmount.toString(), note: `ARCTIS credit purchase — ${pkg.id}` });
   }, [address, selectedPkg, transfer]);
 
   const handleRefresh = async () => {

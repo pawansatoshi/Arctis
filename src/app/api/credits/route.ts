@@ -60,6 +60,9 @@ export async function POST(req: NextRequest) {
       );
     } catch (recordingError) {
       const message = (recordingError as Error).message;
+      if (message === 'transaction_already_processed') {
+        return NextResponse.json({ error: 'This transaction has already been used for another credit operation.' }, { status: 409 });
+      }
       void obs.error('credits', 'Payment succeeded but credit recording failed', { error: message, txHash, packageId, network }, walletAddress);
       return NextResponse.json({
         error: 'Payment succeeded on-chain, but server-side credit recording failed. Contact support with this transaction hash.',

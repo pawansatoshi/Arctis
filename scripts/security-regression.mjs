@@ -24,7 +24,11 @@ const freeTier     = read('src/app/api/membership/activate-free/route.ts');
 const treasury     = read('src/app/api/treasury/route.ts');
 const engine       = read('src/lib/credits/engine.ts');
 const memberSvc    = read('src/lib/memberships/service.ts');
-const authVerify   = read('src/lib/auth/verify.ts');
+// verify.ts holds client-safe constants; verify.server.ts holds server-side nonce logic.
+// Nonce assertions run against the combined text so the split doesn't break the check.
+const authVerifyPublic = read('src/lib/auth/verify.ts');
+const authVerifyServer = read('src/lib/auth/verify.server.ts');
+const authVerify   = authVerifyPublic + '\n' + authVerifyServer;
 const rateLimit    = read('src/lib/security/rateLimit.ts');
 const contracts    = read('src/lib/contracts.ts');
 

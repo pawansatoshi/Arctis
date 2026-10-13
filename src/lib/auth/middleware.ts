@@ -3,7 +3,7 @@
 // Called from credit/membership/agent API routes
 // ============================================================
 import { type NextRequest, NextResponse } from 'next/server';
-import { verifyWalletSignature } from '@/lib/auth/verify';
+import { verifyWalletSignature } from '@/lib/auth/verify.server';
 
 export type AuthResult =
   | { ok: true; walletAddress: string }

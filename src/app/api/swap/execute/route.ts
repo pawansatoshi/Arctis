@@ -176,6 +176,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const e = err as Error;
+    // createSwapRecord throws this when a concurrent request already claimed the hash
+    // inside the Firestore transaction — this is safe and expected, not an error.
+    if (e.message === 'swap_already_processed') {
+      const existing = await swapTxAlreadyProcessed(inboundTxHash);
+      return NextResponse.json({ message: 'Swap already processed', swap: existing }, { status: 409 });
+    }
     if (inboundTxHash && walletAddress) {
       await updateSwapRecord(inboundTxHash, { status: 'failed', failureReason: e.message });
     }

@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         walletAddress, type: 'membership_purchase', category: 'treasury',
         title: `${plan.name} membership activated`,
         description: `${plan.priceUSDC} USDC · ${profile.networkName}`, severity: 'success',
-        metadata: { txHash, explorerURL: explorerUrl, amount: plan.priceUSDC, tier, network, chainId: profile.chainId },
+        metadata: { txHash, explorerURL: explorerUrl, amount: plan.priceUSDC, tier, chainId: profile.chainId },
       }),
       plan.priceUSDC > 0
         ? logTreasuryEvent('membership_payment', plan.priceUSDC, `${plan.name} membership — ${walletAddress.slice(0, 8)}`, walletAddress, txHash, {

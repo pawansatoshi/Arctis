@@ -6,7 +6,6 @@ import { addCredits } from '@/lib/credits/engine';
 import { MEMBERSHIP_PLANS } from '@/lib/memberships/plans';
 
 const MEMBERSHIPS_COL = 'memberships';
-const TREASURY_COL = 'treasury_logs';
 
 function addOneCalendarMonth(date: Date): Date {
   const result = new Date(date);
@@ -103,17 +102,6 @@ export async function activateMembership(
 
   // Monthly membership allocation is granted exactly once per activation.
   await addCredits(addr, plan.credits, 'bonus', `${plan.name} membership credits`, txHash);
-
-  if (plan.priceUSDC > 0 && txHash) {
-    await db.collection(TREASURY_COL).doc().set({
-      type: 'membership_payment',
-      amount: plan.priceUSDC,
-      description: `${plan.name} subscription — ${addr.slice(0, 8)}`,
-      walletAddress: addr,
-      txHash,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
 
   return membership;
 }

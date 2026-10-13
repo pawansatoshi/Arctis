@@ -26,7 +26,12 @@ export async function logTreasuryEvent(
   meta?: { explorerUrl?: string; networkName?: string; chainId?: number; blockNumber?: string; gasUsed?: string }
 ): Promise<void> {
   const db = getAdminDb();
-  await db.collection(LOGS_COL).doc().set({
+  // Use a stable transaction-scoped document key so API retries do not
+  // duplicate revenue events or inflate treasury transaction counts.
+  const logRef = txHash
+    ? db.collection(LOGS_COL).doc(`${type}_${txHash.toLowerCase()}`)
+    : db.collection(LOGS_COL).doc();
+  await logRef.set({
     type, amount, description,
     walletAddress: walletAddress?.toLowerCase() ?? null,
     txHash: txHash ?? null,

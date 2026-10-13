@@ -74,5 +74,7 @@ assert.match(membershipPage, /network: pendingNetworkRef\\.current/);
 assert.match(creditsPage, /network: pendingNetworkRef\\.current/);
 assert.match(membershipPage, /getNetworkProfile\\(pendingNetworkRef\\.current\\)\\.treasury/);
 assert.match(creditsPage, /getNetworkProfile\\(pendingNetworkRef\\.current\\)\\.treasury/);
+assert.match(membershipPage, /Mainnet treasury is not configured; payment is disabled/);
+assert.match(creditsPage, /Mainnet treasury is not configured; payment is disabled/);
 
 console.log('network isolation and payment verification regression checks passed');

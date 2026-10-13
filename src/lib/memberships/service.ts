@@ -61,9 +61,17 @@ export async function activateMembership(
   const existingSnap = await ref.get();
   const existing = existingSnap.exists ? existingSnap.data() : null;
 
-  // Never grant the same on-chain payment twice, even if the client retries.
+  // A retry is idempotent only for the same wallet and tier. A reused hash
+  // cannot be repurposed to activate a different tier.
   if (txHash && existing?.txHash === txHash) {
+    if (existing.tier !== tier) throw new Error('transaction_already_processed');
     return normalizeMembership(existing, addr);
+  }
+
+  // Prevent the same payment from being claimed by another wallet.
+  if (txHash) {
+    const priorClaim = await db.collection(MEMBERSHIPS_COL).where('txHash', '==', txHash).limit(1).get();
+    if (!priorClaim.empty) throw new Error('transaction_already_processed');
   }
 
   const now = new Date();

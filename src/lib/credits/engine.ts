@@ -33,15 +33,44 @@ export async function addCredits(
   const db = getAdminDb();
   const addr = walletAddress.toLowerCase();
   const balRef = db.collection(BALANCE_COL).doc(addr);
+  // Payment-backed ledger rows use a stable key so retries cannot mint credits twice.
+  const ledgerRef = txHash
+    ? db.collection(LEDGER_COL).doc(`tx_${txHash.toLowerCase()}`)
+    : db.collection(LEDGER_COL).doc();
 
   await db.runTransaction(async (tx) => {
-    const balSnap = await tx.get(balRef);
+    const [balSnap, ledgerSnap] = await Promise.all([tx.get(balRef), tx.get(ledgerRef)]);
+
+    if (ledgerSnap.exists) {
+      const prior = ledgerSnap.data()!;
+      const sameOperation = prior.walletAddress === addr &&
+        prior.credits === credits &&
+        prior.type === type &&
+        prior.description === description;
+      if (sameOperation) return; // Safe retry of the exact same operation.
+      throw new Error('transaction_already_processed');
+    }
+
+    // Check legacy randomly-keyed rows too, so pre-upgrade payment hashes cannot
+    // be replayed under a second package or wallet.
+    if (txHash) {
+      const legacyMatches = await tx.get(
+        db.collection(LEDGER_COL).where('txHash', '==', txHash).limit(1)
+      );
+      if (!legacyMatches.empty) {
+        const prior = legacyMatches.docs[0].data();
+        const sameOperation = prior.walletAddress === addr &&
+          prior.credits === credits &&
+          prior.type === type &&
+          prior.description === description;
+        if (sameOperation) return;
+        throw new Error('transaction_already_processed');
+      }
+    }
+
     const current = balSnap.exists ? (balSnap.data()!.total ?? 0) : 0;
-    const used     = balSnap.exists ? (balSnap.data()!.used ?? 0) : 0;
-
+    const used = balSnap.exists ? (balSnap.data()!.used ?? 0) : 0;
     tx.set(balRef, { total: current + credits, used, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-
-    const ledgerRef = db.collection(LEDGER_COL).doc();
     tx.set(ledgerRef, {
       walletAddress: addr,
       type,

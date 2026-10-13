@@ -87,6 +87,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, memoPayload: buildMembershipMemo(txHash, tier, walletAddress) });
   } catch (err) {
     const e = err as Error;
+    if (e.message === 'transaction_already_processed') {
+      return NextResponse.json({ error: 'This transaction has already been used for another membership activation.' }, { status: 409 });
+    }
     void obs.error('auth', 'Membership activation error', { error: e.message });
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

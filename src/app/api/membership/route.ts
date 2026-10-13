@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await activateMembership(walletAddress, tier, txHash);
+    await activateMembership(walletAddress, tier, txHash, network);
     void obs.info('auth', 'Membership activated', { tier, txHash, network }, walletAddress);
 
     const { profile, explorerUrl } = networkMetadata(network, txHash);

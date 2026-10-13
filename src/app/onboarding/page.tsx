@@ -1,5 +1,6 @@
 'use client';
 
+import { NETWORK, NETWORK_NAME, RPC_URL, CHAIN_ID, EXPLORER_URL } from '@/lib/contracts';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
@@ -21,7 +22,7 @@ const ConnectButton = dynamic(
 // ============================================================
 // Onboarding Wizard — 4 steps
 // 1. Connect Wallet
-// 2. Add Arc Testnet + Fund Wallet
+// 2. Add Arc + Fund Wallet
 // 3. Get Credits
 // 4. First AI Message
 // ============================================================
@@ -133,11 +134,11 @@ function StepFund({ onNext }: { onNext: () => void }) {
   };
 
   const networkDetails = [
-    { label: 'Network Name', value: 'Arc Testnet' },
-    { label: 'RPC URL',      value: 'https://rpc.testnet.arc.network' },
-    { label: 'Chain ID',     value: '5042002' },
+    { label: 'Network Name', value: NETWORK_NAME },
+    { label: 'RPC URL',      value: RPC_URL },
+    { label: 'Chain ID',     value: String(CHAIN_ID) },
     { label: 'Symbol',       value: 'USDC' },
-    { label: 'Explorer',     value: 'https://testnet.arcscan.app' },
+    { label: 'Explorer',     value: EXPLORER_URL },
   ];
 
   return (
@@ -146,9 +147,9 @@ function StepFund({ onNext }: { onNext: () => void }) {
         <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
           <Zap className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h2 className="text-2xl font-bold text-surface-950 mb-3">Add Arc Testnet & Fund</h2>
+        <h2 className="text-2xl font-bold text-surface-950 mb-3">Add ${NETWORK_NAME} & Fund</h2>
         <p className="text-surface-600 max-w-sm mx-auto">
-          Add Arc Testnet to your wallet, then get free testnet USDC from the Circle faucet.
+          {NETWORK.networkName === 'Arc Testnet' ? 'Add Arc Testnet to your wallet, then get free testnet USDC from the Circle faucet.' : 'Connect to Arc Mainnet and keep a small USDC balance available for real transactions.'}
         </p>
       </div>
 
@@ -175,21 +176,32 @@ function StepFund({ onNext }: { onNext: () => void }) {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
+        {NETWORK.networkName === 'Arc Testnet' ? (
+          <a
+            href="https://faucet.circle.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary flex-1 justify-center"
+          >
+            Get Testnet USDC <ExternalLink className="w-4 h-4" />
+          </a>
+        ) : (
+          <a
+            href={EXPLORER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary flex-1 justify-center"
+          >
+            Open Arc Explorer <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
         <a
-          href="https://faucet.circle.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-primary flex-1 justify-center"
-        >
-          Get Testnet USDC <ExternalLink className="w-4 h-4" />
-        </a>
-        <a
-          href="https://testnet.arcscan.app"
+          href={EXPLORER_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-ghost flex-1 justify-center border border-black/[0.08] dark:border-white/[0.08]"
         >
-          ArcScan Explorer <ExternalLink className="w-4 h-4" />
+          Arc Explorer <ExternalLink className="w-4 h-4" />
         </a>
       </div>
 

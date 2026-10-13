@@ -1,5 +1,6 @@
 'use client';
 
+import { EXPLORER_URL } from '@/lib/contracts';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -254,7 +255,7 @@ export default function HistoryPage() {
                       </button>
                     )}
                     {(item.txHash || item.explorerUrl) && (
-                      <a href={item.explorerUrl ?? `https://testnet.arcscan.app/tx/${item.txHash}`}
+                      <a href={item.explorerUrl ?? `${EXPLORER_URL}/tx/${item.txHash}`}
                         target="_blank" rel="noopener noreferrer"
                         className="text-surface-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-0.5 inline-block">
                         <ExternalLink className="w-3.5 h-3.5" />

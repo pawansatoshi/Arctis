@@ -35,6 +35,8 @@ export interface ActivityEvent {
     sourceChain?: string;
     tier?: string;
     creditsUsed?: number;
+    chainId?: number;
+    networkName?: string;
   };
 }
 

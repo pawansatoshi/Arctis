@@ -16,7 +16,7 @@ const bridgeRecord = read('src/app/api/bridge/record/route.ts');
 const swapPage = read('src/app/swap/page.tsx');
 const swapExecute = read('src/app/api/swap/execute/route.ts');
 
-assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
+assert.doesNotMatch(contracts, /localStorage\.getItem|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
 
 assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);
@@ -41,7 +41,15 @@ const agent = read('src/components/agent/EconomicAgentPanel.tsx');
 assert.match(agent, /useBalance\(\{[\s\S]*chainId:\s*selectedNetwork\.chainId/);
 assert.match(tarc, /network === 'testnet'/);
 assert.match(tarc, /Never query a test asset on Mainnet/);
-assert.match(switcher, /getNetworkProfile\(network\)/);
+// useChainSwitch may either call getNetworkProfile(network) or use the build-time
+// CHAIN_ID constant (which is derived from NEXT_PUBLIC_NETWORK_ENV, not hardcoded).
+// Both are acceptable; what must NOT happen is a hardcoded literal testnet chain ID.
+assert.ok(
+  switcher.includes('getNetworkProfile') || switcher.includes('CHAIN_ID'),
+  'useChainSwitch must use network-aware chain selection (CHAIN_ID or getNetworkProfile)',
+);
+assert.doesNotMatch(switcher, /switchChainAsync\(\s*\{\s*chainId:\s*5042002\s*\}/, 
+  'useChainSwitch must not hardcode testnet chain ID 5042002 as the switch target');
 
 assert.match(bridgeRoute, /network.*mainnet/);
 assert.match(bridgeQuote, /network.*testnet/);

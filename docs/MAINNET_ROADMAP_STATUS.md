@@ -1,103 +1,75 @@
-# ARCTIS Mainnet Roadmap Status
+# ARCTIS Dual-Network Roadmap Status
 
-This document is the execution checklist for the Arc Mainnet migration. It separates code-complete work from actions that require production credentials, a production wallet, third-party route verification, or an explicit live-money approval.
+**Goal:** complete ARCTIS for Arc Testnet and Arc Mainnet without regressing the existing working Testnet product.
 
-## 1. Core network migration
+**Blueprint:** [DUAL_NETWORK_COMPLETION_BLUEPRINT.md](./DUAL_NETWORK_COMPLETION_BLUEPRINT.md)
 
-- [x] Environment-aware Arc network selection.
-- [x] Arc Mainnet chain ID `5042`.
-- [x] Arc Mainnet RPC `https://rpc.mainnet.arc.io`.
-- [x] Arc Mainnet explorer `https://explorer.arc.io`.
-- [x] Arc Native USDC configured as the native gas asset with 18-decimal native units.
-- [x] Arc ERC-20 USDC interface configured at `0x3600000000000000000000000000000000000000` with 6 decimals.
-- [x] Mainnet treasury is configuration-driven; no wallet address is invented or committed.
+Status meanings: **Implemented** = source exists; **Verified** = automated checks passed with evidence; **Live verified** = end-to-end smoke test succeeded on intended network; **Blocked** = external support, liquidity, credentials, audit or owner authorization is missing. Do not mark complete based only on UI presence or successful build.
 
-## 2. Wallet transfer rail
+## Phase 0 — Testnet baseline and protection
+- [ ] Record known-good Testnet baseline and current production commit.
+- [ ] Inventory features, APIs, contracts, environment variables and external integrations.
+- [ ] Run and record existing Testnet regression suite before Mainnet changes.
+- [ ] Confirm rollback procedure and focused PR workflow.
+- [ ] Re-run Testnet regression after every shared/network-sensitive change.
 
-- [x] Remove hardcoded `Arc_Testnet` send execution from the primary transfer path.
-- [x] Use the selected Arc network dynamically.
-- [x] Switch wallet to the selected Arc network before signing.
-- [x] Resolve direct EVM addresses and `.arc` Passport recipients.
-- [x] Validate amount and recipient before execution.
-- [x] Read ERC-20 USDC balance before signing.
-- [x] Read native USDC gas balance before signing.
-- [x] Estimate transfer gas before signing.
-- [x] Record submitted/confirmed/failed lifecycle states.
-- [x] Require wallet proof for transfer-record mutations.
+## Phase 1 — Network isolation and security
+- [x] Arc Testnet chain profile exists (5042002; https://rpc.testnet.arc.io).
+- [x] Arc Mainnet chain profile exists (5042; https://rpc.mainnet.arc.io).
+- [x] Independent wallet chain definitions/transports exist in source.
+- [ ] Verify selector, wallet chain, RPC, assets and feature flags align at runtime.
+- [ ] Enforce explicit network context and server-side chain/contract verification for money-sensitive APIs.
+- [ ] Test invalid chain IDs, wrong-chain hashes, incorrect token contracts and cross-network API attacks.
 
-## 3. Testnet isolation
+## Phase 2 — Wallet, assets, transfers and receipts
+- [x] Network-aware transfer path exists in source.
+- [x] Recipient/amount preflight, balance reads and gas estimation exist in source.
+- [ ] Independently verify official production asset addresses and decimals/gas semantics.
+- [ ] Test submitted/pending/confirmed/failed states and failed receipts on both networks.
+- [ ] Complete explicitly authorized, controlled Mainnet transfer smoke test.
+- [ ] Verify receipt and history on official explorer.
 
-- [x] Disable executable `tUSDC` and `tARC` assets on Arc Mainnet.
-- [x] Keep testnet CCTP bridge routes testnet-only.
-- [x] Keep ARCTIS OTC test-asset swap routes testnet-only.
-- [x] Do not expose testnet contract addresses as mainnet contracts.
-- [x] Keep unaudited Treasury/Escrow contracts out of the mainnet money path.
+## Phase 3 — History, payment APIs and product surfaces
+- [ ] Audit membership, credits, activity, treasury logs, memos, history, settings and onboarding for hardcoded network assumptions.
+- [ ] Bind payment verification to actual transaction chain and verified asset/recipient/amount.
+- [ ] Test a transaction from one chain cannot grant entitlements or credits on the other.
+- [ ] Verify labels, explorer links, faucet links and unsupported-feature errors.
+- [ ] Confirm Testnet records and workflows remain intact.
 
-## 4. Swap / bridge
+## Phase 4 — Agent workflows
+- [ ] Test intent → proposal → preflight → wallet approval → submission → receipt → history.
+- [ ] Revalidate network, recipient, amount and asset immediately before execution.
+- [ ] Test chain switching, rejected approvals, stale proposals, duplicates and failures.
+- [ ] Keep production custody/treasury execution disabled until Phase 6 gates pass.
 
-- [x] Mainnet API gates prevent the current testnet OTC swap from being treated as a mainnet route.
-- [x] Mainnet API gates prevent the current testnet CCTP route registry from being treated as a mainnet route.
-- [ ] Enable production Swap only after a production liquidity/settlement rail is verified and independently configured.
-- [ ] Enable production CCTP only after production Circle route identifiers, domains, USDC addresses, App Kit identifiers, and end-to-end transactions are verified.
+## Phase 5 — Swap and bridge
+- [x] Existing Testnet-oriented routes are gated from Mainnet in source.
+- [ ] Verify official production protocol support, identifiers, routes and liquidity.
+- [ ] Verify quotes, slippage, fees, source transaction and destination settlement.
+- [ ] Enable only real verified integrations; otherwise document blocker and keep disabled.
 
-These are intentionally blocked rather than guessed.
+## Phase 6 — Treasury and escrow
+- [x] Contract source/test scaffolding is preserved.
+- [x] Unverified Treasury/Escrow is not assumed production-ready.
+- [ ] Complete contract threat model and automated security tests.
+- [ ] Obtain independent review before production custody.
+- [ ] Deploy using secured deployer only with explicit authorization.
+- [ ] Verify source, address, roles and lifecycle on-chain.
+- [ ] Enable flags only after all checks pass.
 
-## 5. Economic Agent Treasury
+## Phase 7 — CI, release and deployment
+- [ ] Type checks, lint, unit/integration, network regression, Solidity tests and production build pass on exact candidate commit.
+- [ ] Review and merge focused PRs only after required checks pass.
+- [ ] Verify Vercel preview READY and tied to reviewed commit.
+- [ ] Verify production commit SHA and environment configuration.
+- [ ] Record independent Testnet and Mainnet smoke-test evidence.
+- [ ] Publish final feature matrix and unavoidable external blockers.
 
-- [x] Canonical Treasury contract remains isolated from the manual transfer rail.
-- [x] Existing testnet Treasury tests remain part of CI.
-- [x] Mainnet configuration does not silently point to the testnet Treasury.
-- [ ] Independent security review for the production custody/authorization model.
-- [ ] Production Treasury deployment from a secured production deployer.
-- [ ] Exact production source verification.
-- [ ] Production contract address recorded only after onchain confirmation.
-- [ ] Feature-flagged production agent execution after isolated mainnet transaction tests.
+## Known external / owner-dependent gates
+- Mainnet swap requires verified production routes and actual liquidity/settlement.
+- Mainnet bridge requires verified protocol support, official identifiers and end-to-end settlement.
+- Treasury/escrow production use requires independent security review, secured deployment and explicit authorization.
+- A live-money transfer requires explicit authorization; it must never be automated by CI.
 
-No production contract address is claimed until those gates are complete.
-
-## 6. Escrow
-
-- [x] Solidity source and test scaffold remain preserved.
-- [x] Escrow remains out of the current production money path.
-- [ ] Independent security review.
-- [ ] Mainnet deployment.
-- [ ] Source verification.
-- [ ] Isolated create/fund/submit/release/refund/dispute tests.
-- [ ] Feature-flagged UI/API integration.
-
-## 7. CI / release gates
-
-- [x] PR branch: `feat/arc-mainnet-migration`.
-- [x] PR #14 is the isolated migration review surface.
-- [ ] Latest CI run green across Solidity, TypeScript, regression, architecture truth, lint and production build.
-- [ ] Latest Vercel preview deployment reaches `READY`.
-- [ ] Production deployment reaches `READY` after CI is green and production environment variables are verified.
-
-## 8. Production environment
-
-Required production configuration:
-
-```text
-NEXT_PUBLIC_NETWORK_ENV=mainnet
-NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY=<production receiving wallet>
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<project id>
-NEXT_PUBLIC_APP_URL=<production app url>
-```
-
-Never place private keys or seed phrases in GitHub, browser-exposed variables, or this repository.
-
-## 9. Live-money acceptance gate
-
-Before the first real transaction:
-
-1. Confirm the deployed frontend is the intended commit.
-2. Confirm the environment resolves to Arc Mainnet (`5042`).
-3. Confirm the wallet is on Arc Mainnet.
-4. Confirm the recipient address independently.
-5. Confirm the amount independently.
-6. Confirm the wallet shows the intended USDC contract and recipient.
-7. Send only a deliberately small controlled amount.
-8. Verify the receipt on the Arc explorer.
-9. Verify ARCTIS history shows the same transaction hash and final state.
-
-A live transaction cannot be honestly marked complete until an actual receipt is observed. No transaction is submitted automatically by this repository migration.
+## Release rule
+Testnet is the protected baseline. Any regression blocks the PR. Mainnet features fail closed when configuration, contracts, route support or receipts cannot be verified. No feature is complete without evidence.

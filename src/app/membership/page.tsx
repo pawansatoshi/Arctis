@@ -12,6 +12,7 @@ import { cn, formatDate, txUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { MembershipTier, UserMembership } from '@/types';
 import { getNetworkProfile, getSelectedNetworkEnv } from '@/lib/network/profile';
+import { MAINNET_NETWORK, TESTNET_NETWORK } from '@/lib/contracts';
 
 const TIER_STYLES: Record<MembershipTier, { border: string; badge: string; highlight: boolean }> = {
   free: { border: 'border-black/[0.06] dark:border-white/[0.06]', badge: 'bg-surface-300/50 text-surface-600', highlight: false },
@@ -179,7 +180,7 @@ export default function MembershipPage() {
             </div>
             <div className="flex items-center gap-2">
               {membership.txHash && (
-                <a href={txUrl(membership.txHash)} target="_blank" rel="noopener noreferrer" className="btn-secondary text-xs py-2">
+                <a href={`${membership.network === 'mainnet' ? MAINNET_NETWORK.explorer : TESTNET_NETWORK.explorer}/tx/${membership.txHash}`} target="_blank" rel="noopener noreferrer" className="btn-secondary text-xs py-2">
                   <ExternalLink className="w-3.5 h-3.5" /> Transaction
                 </a>
               )}

@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         title: `Purchased ${totalCredits} credits`,
         description: `${pkg.label || pkg.id} · ${pkg.usdcAmount} USDC · ${profile.networkName}`,
         severity: 'success',
-        metadata: { txHash, explorerURL: explorerUrl, amount: pkg.usdcAmount, creditsUsed: totalCredits, network, chainId: profile.chainId },
+        metadata: { txHash, explorerURL: explorerUrl, amount: pkg.usdcAmount, creditsUsed: totalCredits, chainId: profile.chainId },
       }),
     ]);
 

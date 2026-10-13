@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
 
     const plan = MEMBERSHIP_PLANS.find((p) => p.id === tier);
     if (!plan) return NextResponse.json({ error: 'Invalid tier' }, { status: 400 });
+    if (plan.priceUSDC === 0) {
+      return NextResponse.json({ error: 'Use the dedicated free-membership activation endpoint for the free tier' }, { status: 400 });
+    }
 
     if (plan.priceUSDC > 0) {
       const verification = await verifyUSDCPayment(txHash as `0x${string}`, plan.priceUSDC, network, walletAddress);

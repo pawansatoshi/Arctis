@@ -35,7 +35,7 @@ export async function logTreasuryEvent(
     type, amount, description,
     walletAddress: walletAddress?.toLowerCase() ?? null,
     txHash: txHash ?? null,
-    explorerUrl: txHash && (meta?.explorerUrl ?? EXPLORER_URL) ? `${meta?.explorerUrl ?? EXPLORER_URL}/tx/${txHash}` : null,
+    explorerUrl: txHash ? (meta?.explorerUrl ?? `${EXPLORER_URL}/tx/${txHash}`) : null,
     networkName: meta?.networkName ?? NETWORK_NAME,
     chainId: meta?.chainId ?? CHAIN_ID,
     blockNumber: meta?.blockNumber ?? null,

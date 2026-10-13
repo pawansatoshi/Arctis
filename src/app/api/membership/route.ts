@@ -73,9 +73,9 @@ export async function POST(req: NextRequest) {
         type: 'membership_purchase',
         category: 'treasury',
         title: `${plan.name} membership activated`,
-        description: `${plan.priceUSDC} USDC · Arc Testnet`,
+        description: `${plan.priceUSDC} USDC · ${NETWORK_NAME}`,
         severity: 'success',
-        metadata: { txHash, explorerURL: txUrl(txHash), amount: plan.priceUSDC, tier },
+        metadata: { txHash, explorerURL: txUrl(txHash), amount: plan.priceUSDC, tier, networkName: NETWORK_NAME, chainId: CHAIN_ID },
       }),
       plan.priceUSDC > 0
         ? logTreasuryEvent('membership_payment', plan.priceUSDC, `${plan.name} membership — ${walletAddress.slice(0, 8)}`, walletAddress, txHash, {

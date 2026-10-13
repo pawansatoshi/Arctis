@@ -15,6 +15,7 @@ const bridgeQuote = read('src/app/api/bridge/quote/route.ts');
 const bridgeRecord = read('src/app/api/bridge/record/route.ts');
 const swapPage = read('src/app/swap/page.tsx');
 const swapExecute = read('src/app/api/swap/execute/route.ts');
+const membershipRoute = read('src/app/api/membership/route.ts');
 
 assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
@@ -52,5 +53,11 @@ assert.match(bridgePage, /network: networkEnv/);
 
 assert.match(swapPage, /network: networkEnv/);
 assert.match(swapExecute, /body\.network !== 'testnet'/);
+
+// Prevent the membership activity feed from claiming Testnet when the
+// server's verified payment rail is configured for Mainnet.
+assert.match(membershipRoute, /description:\s*`\$\{plan\.priceUSDC\} USDC · \$\{NETWORK_NAME\}`/);
+assert.doesNotMatch(membershipRoute, /Arc Testnet/,
+  'membership activity must use the configured network name');
 
 console.log('network isolation regression checks passed');

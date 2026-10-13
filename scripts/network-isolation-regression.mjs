@@ -24,7 +24,7 @@ const creditEngine = read('src/lib/credits/engine.ts');
 const membershipService = read('src/lib/memberships/service.ts');
 const treasuryService = read('src/lib/treasury/service.ts');
 
-assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
+assert.doesNotMatch(contracts.replace(/\/\/.*$/gm, ''), /localStorage|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
 
 assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);

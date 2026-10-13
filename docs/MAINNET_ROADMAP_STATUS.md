@@ -33,6 +33,20 @@ This document is the execution checklist for the Arc Mainnet migration. It separ
 - [x] Do not expose testnet contract addresses as mainnet contracts.
 - [x] Keep unaudited Treasury/Escrow contracts out of the mainnet money path.
 
+## 3.5 Membership / credit payment verification
+
+- [x] Payment verifier accepts an explicit network and selects that network's RPC/client.
+- [x] Verify receipt success, transaction chain ID, authenticated sender, configured USDC contract, treasury recipient, and exact amount.
+- [x] Membership and credit APIs reject missing/unknown network context and persist network-specific chain/explorer metadata.
+- [x] Payment-backed credit ledger entries use deterministic idempotency keys; replayed payment hashes cannot be repurposed for another operation.
+- [x] Mainnet payments fail closed unless `NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY` is explicitly configured; UI blocks payment when the treasury is unset.
+- [ ] Type-check, regression tests, production build, and preview deployment pass on the final PR head.
+- [ ] Testnet membership/credit end-to-end regression smoke test passes after merge.
+- [ ] Mainnet treasury address is independently confirmed and configured in Vercel before enabling paid Mainnet actions.
+- [ ] Mainnet payment flow is verified with a controlled, explicitly authorized transaction and explorer receipt.
+
+The checked items describe code present on the isolated implementation branch, not a claim that runtime verification is complete. The Testnet known-good backup remains unchanged.
+
 ## 4. Swap / bridge
 
 - [x] Mainnet API gates prevent the current testnet OTC swap from being treated as a mainnet route.

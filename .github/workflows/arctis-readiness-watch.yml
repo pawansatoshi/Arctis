@@ -1,0 +1,104 @@
+name: ARCTIS 15-minute readiness watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: arctis-readiness-watch
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    name: Verify active payment-hardening branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout active repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/network-aware-payment-verification
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        id: types
+        continue-on-error: true
+        run: npm run type-check
+
+      - name: Network isolation and payment regression
+        id: network
+        continue-on-error: true
+        run: npm run network-regression
+
+      - name: Architecture truth checks
+        id: architecture
+        continue-on-error: true
+        run: npm run architecture-truth
+
+      - name: Transaction regression
+        id: transactions
+        continue-on-error: true
+        run: npm test
+
+      - name: Production build
+        id: build
+        continue-on-error: true
+        run: npm run build
+
+      - name: Publish readiness summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TYPES: ${{ steps.types.outcome }}
+          NETWORK: ${{ steps.network.outcome }}
+          ARCHITECTURE: ${{ steps.architecture.outcome }}
+          TRANSACTIONS: ${{ steps.transactions.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## ARCTIS readiness watch"
+            echo
+            echo "- Commit: \`$COMMIT_SHA\`"
+            echo "- Type-check: $TYPES"
+            echo "- Network regression: $NETWORK"
+            echo "- Architecture checks: $ARCHITECTURE"
+            echo "- Transaction regression: $TRANSACTIONS"
+            echo "- Production build: $BUILD"
+            echo
+            echo "This workflow checks code readiness only. It does not submit transactions, deploy contracts, or enable Mainnet payments."
+          } > readiness-report.md
+          cat readiness-report.md
+          if [ "$TYPES" = success ] && [ "$NETWORK" = success ] && [ "$ARCHITECTURE" = success ] && [ "$TRANSACTIONS" = success ] && [ "$BUILD" = success ]; then
+            echo "All configured checks passed."
+            exit 0
+          fi
+          gh issue list --repo "$REPOSITORY" --state open --label "arctis-readiness" --json number --jq '.[0].number // empty' > issue-number.txt
+          issue_number="$(cat issue-number.txt)"
+          title="ARCTIS readiness watch: checks failing"
+          body="$(cat readiness-report.md)"
+          if [ -n "$issue_number" ]; then
+            gh issue comment "$issue_number" --repo "$REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$REPOSITORY" --title "$title" --label "arctis-readiness" --body "$body" || {
+              gh label create "arctis-readiness" --repo "$REPOSITORY" --color "D93F0B" --description "ARCTIS automated readiness monitoring" || true
+              gh issue create --repo "$REPOSITORY" --title "$title" --label "arctis-readiness" --body "$body"
+            }
+          fi
+          exit 1

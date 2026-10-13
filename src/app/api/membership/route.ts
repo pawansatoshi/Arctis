@@ -9,6 +9,7 @@ import { saveTransaction } from '@/lib/firebase/transactions';
 import { writeActivity } from '@/lib/firebase/activity';
 import { buildMembershipMemo } from '@/lib/memo/service';
 import { verifyApiWallet, isValidEthAddress } from '@/lib/auth/middleware';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/security/rateLimit';
 import type { MembershipTier } from '@/types';
 
 function parseNetwork(value: unknown): NetworkEnv | null {
@@ -48,6 +49,11 @@ export async function POST(req: NextRequest) {
 
     const auth = await verifyApiWallet(req, walletAddress, true);
     if (!auth.ok) return NextResponse.json({ error: auth.reason ?? 'Wallet signature required' }, { status: 401 });
+
+    const rl = await checkRateLimit(`membership:${walletAddress.toLowerCase()}`, RATE_LIMITS.membership.maxCalls, RATE_LIMITS.membership.windowMs);
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many membership activation attempts — please wait before trying again', resetAt: rl.resetAt }, { status: 429 });
+    }
 
     const plan = MEMBERSHIP_PLANS.find((p) => p.id === tier);
     if (!plan) return NextResponse.json({ error: 'Invalid tier' }, { status: 400 });

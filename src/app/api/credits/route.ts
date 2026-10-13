@@ -9,6 +9,7 @@ import { isValidEthAddress, verifyApiWallet } from '@/lib/auth/middleware';
 import { saveTransaction } from '@/lib/firebase/transactions';
 import { writeActivity } from '@/lib/firebase/activity';
 import { buildCreditsMemo } from '@/lib/memo/service';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/security/rateLimit';
 
 function parseNetwork(value: unknown): NetworkEnv | null {
   return value === 'testnet' || value === 'mainnet' ? value : null;
@@ -35,6 +36,11 @@ export async function POST(req: NextRequest) {
 
     const auth = await verifyApiWallet(req, walletAddress, true);
     if (!auth.ok) return NextResponse.json({ error: auth.reason ?? 'Wallet signature required' }, { status: 401 });
+
+    const rl = await checkRateLimit(`credits:${walletAddress.toLowerCase()}`, RATE_LIMITS.credits.maxCalls, RATE_LIMITS.credits.windowMs);
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many credit purchase attempts — please wait before trying again', resetAt: rl.resetAt }, { status: 429 });
+    }
 
     const pkg = CREDIT_PACKAGES.find((p) => p.id === packageId);
     if (!pkg) return NextResponse.json({ error: 'Invalid package' }, { status: 400 });
@@ -95,9 +101,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// GET /api/credits?wallet=0x... — requires wallet signature to prevent cross-wallet enumeration
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet');
   if (!wallet) return NextResponse.json({ error: 'wallet required' }, { status: 400 });
+  const auth = await verifyApiWallet(req, wallet, true);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Wallet signature required to read credit history' }, { status: 401 });
+  }
   const [balance, history] = await Promise.all([getCreditBalance(wallet), getCreditHistory(wallet, 20)]);
   return NextResponse.json({ balance, history });
 }

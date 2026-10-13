@@ -21,7 +21,7 @@ export async function checkRateLimit(key: string, maxCalls: number, windowMs: nu
   const db = getAdminDb();
   const ref = db.collection('rate_limits').doc(key);
   const reset = (start: number) => new Date(start + windowMs).toISOString();
-  const sensitive = /(^|:)(agentAction|swap|bridge|transfer|treasury)(:|$)/i.test(key);
+  const sensitive = /(^|:)(agentAction|swap|bridge|transfer|treasury|credits|membership)(:|$)/i.test(key);
 
   try {
     const snap = await ref.get();
@@ -60,7 +60,11 @@ export async function checkRateLimit(key: string, maxCalls: number, windowMs: nu
 export const RATE_LIMITS = {
   aiChat:      { maxCalls: 30, windowMs: 60_000 },
   agentAction: { maxCalls: 10, windowMs: 60_000 },
-  swap:        { maxCalls: 5, windowMs: 60_000 },
-  bridge:      { maxCalls: 5, windowMs: 60_000 },
-  passport:    { maxCalls: 5, windowMs: 300_000 },
+  swap:        { maxCalls: 5,  windowMs: 60_000 },
+  bridge:      { maxCalls: 5,  windowMs: 60_000 },
+  passport:    { maxCalls: 5,  windowMs: 300_000 },
+  // Financial payment routes — 3 per 10 minutes per wallet (generous for legitimate use,
+  // tight enough to block brute-force hash guessing and free-tier farming loops).
+  credits:    { maxCalls: 3,  windowMs: 600_000 },
+  membership: { maxCalls: 3,  windowMs: 600_000 },
 } as const;

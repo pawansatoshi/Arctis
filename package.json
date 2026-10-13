@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit",
     "architecture-truth": "node scripts/check-architecture-truth.mjs",
     "network-regression": "node scripts/network-isolation-regression.mjs",
+    "security-regression": "node scripts/security-regression.mjs",
     "test": "node scripts/transaction-regression.mjs"
   },
   "dependencies": {

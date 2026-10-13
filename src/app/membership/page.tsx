@@ -11,7 +11,8 @@ import { MEMBERSHIP_PLANS } from '@/lib/memberships/plans';
 import { cn, formatDate, txUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { MembershipTier, UserMembership } from '@/types';
-import { TREASURY_WALLET } from '@/lib/contracts';
+import { getNetworkProfile, getSelectedNetworkEnv } from '@/lib/network/profile';
+import { MAINNET_NETWORK, TESTNET_NETWORK } from '@/lib/contracts';
 
 const TIER_STYLES: Record<MembershipTier, { border: string; badge: string; highlight: boolean }> = {
   free: { border: 'border-black/[0.06] dark:border-white/[0.06]', badge: 'bg-surface-300/50 text-surface-600', highlight: false },
@@ -36,6 +37,7 @@ export default function MembershipPage() {
   const [freeActivating, setFreeActivating] = useState(false);
   const pendingTierRef = useRef<MembershipTier | null>(null);
   const grantedRef = useRef<Set<string>>(new Set());
+  const pendingNetworkRef = useRef<'testnet' | 'mainnet'>('testnet');
 
   const fetchMembership = useCallback(async () => {
     if (!address) {
@@ -66,7 +68,7 @@ export default function MembershipPage() {
       .then((authHeaders) => fetch('/api/membership', {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ walletAddress: address, tier, txHash }),
+        body: JSON.stringify({ walletAddress: address, tier, txHash, network: pendingNetworkRef.current }),
       }))
       .then(async (r) => {
         const data = await r.json();
@@ -114,10 +116,17 @@ export default function MembershipPage() {
     const plan = MEMBERSHIP_PLANS.find((p) => p.id === tier);
     if (!plan || !address || plan.priceUSDC === 0 || purchasing || freeActivating) return;
 
+    const network = getSelectedNetworkEnv();
+    const treasury = getNetworkProfile(network).treasury;
+    if (/^0x0{40}$/i.test(treasury)) {
+      toast.error('Mainnet treasury is not configured; payment is disabled.');
+      return;
+    }
     pendingTierRef.current = tier;
+    pendingNetworkRef.current = network;
     setPurchasing(tier);
     await transfer({
-      to: TREASURY_WALLET,
+      to: getNetworkProfile(pendingNetworkRef.current).treasury,
       amount: plan.priceUSDC.toString(),
       note: `ARCTIS ${plan.name} membership`,
     });
@@ -171,7 +180,7 @@ export default function MembershipPage() {
             </div>
             <div className="flex items-center gap-2">
               {membership.txHash && (
-                <a href={txUrl(membership.txHash)} target="_blank" rel="noopener noreferrer" className="btn-secondary text-xs py-2">
+                <a href={`${membership.network === 'mainnet' ? MAINNET_NETWORK.explorer : TESTNET_NETWORK.explorer}/tx/${membership.txHash}`} target="_blank" rel="noopener noreferrer" className="btn-secondary text-xs py-2">
                   <ExternalLink className="w-3.5 h-3.5" /> Transaction
                 </a>
               )}

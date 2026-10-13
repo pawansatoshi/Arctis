@@ -53,6 +53,7 @@ export interface UserMembership {
   priceUSDC?: number;
   monthlyCredits?: number;
   txHash?: string;
+  network?: 'testnet' | 'mainnet';
   autoRenew: boolean;
 }
 

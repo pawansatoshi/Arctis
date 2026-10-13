@@ -6,7 +6,6 @@ import { addCredits } from '@/lib/credits/engine';
 import { MEMBERSHIP_PLANS } from '@/lib/memberships/plans';
 
 const MEMBERSHIPS_COL = 'memberships';
-const TREASURY_COL = 'treasury_logs';
 
 function addOneCalendarMonth(date: Date): Date {
   const result = new Date(date);
@@ -51,6 +50,7 @@ export async function activateMembership(
   walletAddress: string,
   tier: MembershipTier,
   txHash?: string,
+  network: 'testnet' | 'mainnet' = 'testnet',
 ): Promise<UserMembership> {
   const db = getAdminDb();
   const addr = walletAddress.toLowerCase();
@@ -61,9 +61,17 @@ export async function activateMembership(
   const existingSnap = await ref.get();
   const existing = existingSnap.exists ? existingSnap.data() : null;
 
-  // Never grant the same on-chain payment twice, even if the client retries.
+  // A retry is idempotent only for the same wallet and tier. A reused hash
+  // cannot be repurposed to activate a different tier.
   if (txHash && existing?.txHash === txHash) {
+    if (existing.tier !== tier) throw new Error('transaction_already_processed');
     return normalizeMembership(existing, addr);
+  }
+
+  // Prevent the same payment from being claimed by another wallet.
+  if (txHash) {
+    const priorClaim = await db.collection(MEMBERSHIPS_COL).where('txHash', '==', txHash).limit(1).get();
+    if (!priorClaim.empty) throw new Error('transaction_already_processed');
   }
 
   const now = new Date();
@@ -79,6 +87,7 @@ export async function activateMembership(
     priceUSDC: plan.priceUSDC,
     monthlyCredits: plan.credits,
     ...(txHash ? { txHash } : {}),
+    network,
     autoRenew: false,
   };
 
@@ -93,17 +102,6 @@ export async function activateMembership(
 
   // Monthly membership allocation is granted exactly once per activation.
   await addCredits(addr, plan.credits, 'bonus', `${plan.name} membership credits`, txHash);
-
-  if (plan.priceUSDC > 0 && txHash) {
-    await db.collection(TREASURY_COL).doc().set({
-      type: 'membership_payment',
-      amount: plan.priceUSDC,
-      description: `${plan.name} subscription — ${addr.slice(0, 8)}`,
-      walletAddress: addr,
-      txHash,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
 
   return membership;
 }

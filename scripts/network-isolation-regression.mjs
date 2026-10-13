@@ -15,8 +15,16 @@ const bridgeQuote = read('src/app/api/bridge/quote/route.ts');
 const bridgeRecord = read('src/app/api/bridge/record/route.ts');
 const swapPage = read('src/app/swap/page.tsx');
 const swapExecute = read('src/app/api/swap/execute/route.ts');
+const paymentVerifier = read('src/lib/chain/verify.ts');
+const membershipApi = read('src/app/api/membership/route.ts');
+const creditsApi = read('src/app/api/credits/route.ts');
+const membershipPage = read('src/app/membership/page.tsx');
+const creditsPage = read('src/app/credits/page.tsx');
+const creditEngine = read('src/lib/credits/engine.ts');
+const membershipService = read('src/lib/memberships/service.ts');
+const treasuryService = read('src/lib/treasury/service.ts');
 
-assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
+assert.doesNotMatch(contracts.replace(/\/\/.*$/gm, ''), /localStorage|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
 
 assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);
@@ -53,4 +61,32 @@ assert.match(bridgePage, /network: networkEnv/);
 assert.match(swapPage, /network: networkEnv/);
 assert.match(swapExecute, /body\.network !== 'testnet'/);
 
-console.log('network isolation regression checks passed');
+// Financial APIs must reject absent/unknown network context and bind payment to
+// the authenticated sender, network-specific token and treasury, and exact amount.
+// String assertions avoid over-escaped regex literals breaking this test itself.
+assert.ok(paymentVerifier.includes('network: NetworkEnv'));
+assert.ok(paymentVerifier.includes('expectedSender: string'));
+assert.ok(paymentVerifier.includes('clients[network]'));
+assert.ok(paymentVerifier.includes('tx.from.toLowerCase() !== expectedSender.toLowerCase()'));
+assert.ok(paymentVerifier.includes('value === expectedAmount'));
+assert.ok(paymentVerifier.includes('process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY'));
+assert.ok(contracts.includes('NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || ZERO_ADDRESS'));
+assert.ok(membershipApi.includes('!network'));
+assert.ok(membershipApi.includes('plan.priceUSDC, network, walletAddress'));
+assert.ok(creditsApi.includes('!network'));
+assert.ok(creditsApi.includes('pkg.usdcAmount, network, walletAddress'));
+assert.ok(membershipPage.includes('network: pendingNetworkRef.current'));
+assert.ok(creditsPage.includes('network: pendingNetworkRef.current'));
+assert.ok(membershipPage.includes('getNetworkProfile(pendingNetworkRef.current).treasury'));
+assert.ok(creditsPage.includes('getNetworkProfile(pendingNetworkRef.current).treasury'));
+assert.ok(membershipPage.includes('Mainnet treasury is not configured; payment is disabled'));
+assert.ok(creditsPage.includes('Mainnet treasury is not configured; payment is disabled'));
+assert.ok(creditEngine.includes('tx_' + '${txHash.toLowerCase()}'));
+assert.ok(creditEngine.includes('transaction_already_processed'));
+assert.ok(membershipService.includes("priorClaim = await db.collection(MEMBERSHIPS_COL).where('txHash', '==', txHash)"));
+assert.ok(membershipService.includes('existing.tier !== tier'));
+assert.ok(membershipApi.includes('Use the dedicated free-membership activation endpoint'));
+assert.ok(treasuryService.includes('doc(`${type}_${txHash.toLowerCase()}`)'));
+assert.ok(treasuryService.includes('meta?.explorerUrl ?? `${EXPLORER_URL}/tx/${txHash}`'));
+
+console.log('network isolation and payment verification regression checks passed');

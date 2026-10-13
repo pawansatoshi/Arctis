@@ -20,6 +20,8 @@ const membershipApi = read('src/app/api/membership/route.ts');
 const creditsApi = read('src/app/api/credits/route.ts');
 const membershipPage = read('src/app/membership/page.tsx');
 const creditsPage = read('src/app/credits/page.tsx');
+const creditEngine = read('src/lib/credits/engine.ts');
+const membershipService = read('src/lib/memberships/service.ts');
 
 assert.doesNotMatch(contracts, /localStorage|getItem\(['"]arctis-network-env/,
   'contracts.ts must not derive module-level network constants from browser storage');
@@ -76,5 +78,9 @@ assert.match(membershipPage, /getNetworkProfile\(pendingNetworkRef\.current\)\.t
 assert.match(creditsPage, /getNetworkProfile\(pendingNetworkRef\.current\)\.treasury/);
 assert.match(membershipPage, /Mainnet treasury is not configured; payment is disabled/);
 assert.match(creditsPage, /Mainnet treasury is not configured; payment is disabled/);
+assert.match(creditEngine, /doc\(`tx_\$\{txHash\.toLowerCase\(\)\}`\)/);
+assert.match(creditEngine, /transaction_already_processed/);
+assert.match(membershipService, /priorClaim = await db\.collection\(MEMBERSHIPS_COL\)\.where\('txHash', '==', txHash\)/);
+assert.match(membershipService, /existing\.tier !== tier/);
 
 console.log('network isolation and payment verification regression checks passed');

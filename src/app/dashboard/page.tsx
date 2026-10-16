@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import {
@@ -18,6 +17,12 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
 import { NETWORK_NAME } from '@/lib/contracts';
 import type { PassportData } from "@/components/passport/PassportIdentityCard";
+import dynamic from 'next/dynamic';
+
+const WalletConnectionGuard = dynamic(
+  () => import('@/components/ui/WalletConnectionGuard'),
+  { ssr: false },
+);
 
 const PassportIdentityCard = dynamic(
   () => import('@/components/passport/PassportIdentityCard'),
@@ -236,9 +241,13 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          <p className="text-surface-600 text-xs">
+          <p className="text-surface-600 text-xs mb-6">
             Connect via the button in the top-right corner
           </p>
+
+          {/* Brave mobile fallback — only visible when Brave wallet is
+              detected and RainbowKit's standard flow would get stuck */}
+          <WalletConnectionGuard className="w-full max-w-xs mx-auto text-left" />
         </div>
       </motion.div>
     );

@@ -20,7 +20,8 @@ import { useAppStore } from '@/lib/store';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useChainSwitch } from '@/lib/hooks/useChainSwitch';
 import { useAccount } from 'wagmi';
-import { NETWORK_NAME } from '@/lib/contracts';
+import { getSelectedNetworkProfile } from '@/lib/network/profile';
+import NetworkSelector from '@/components/ui/NetworkSelector';
 
 const ConnectButton = dynamic(
   () => import('@rainbow-me/rainbowkit').then((m) => ({ default: m.ConnectButton })),
@@ -87,6 +88,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { formatted: balance } = useUSDCBalance();
   const { isCorrectChain, switchToArc } = useChainSwitch();
   const { isConnected } = useAccount();
+  // Derive display name from the live-selected network profile so the sidebar
+  // and header always reflect what localStorage says, not the build-time env.
+  const networkName = getSelectedNetworkProfile().networkName;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const { address } = useAccount();
@@ -243,7 +247,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className={cn('status-dot flex-shrink-0', isCorrectChain ? 'status-dot-online' : 'status-dot-offline')} />
-            <span className="text-surface-600">{isCorrectChain ? `${NETWORK_NAME} · Connected` : 'Wrong chain'}</span>
+            <span className="text-surface-600">{isCorrectChain ? `${networkName} · Connected` : 'Wrong chain'}</span>
           </div>
         </div>
       )}
@@ -319,6 +323,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="flex items-center gap-2 ml-auto">
+            {/* Network selector — always visible so users can switch
+                between Arc Testnet and Arc Mainnet at any time.
+                Selecting a new network persists to localStorage, sets a
+                cookie for SSR reads, and reloads the page so wagmi,
+                balances and contract config all reinitialise cleanly. */}
+            <NetworkSelector />
+
             {isConnected && (
               <div
                 className={cn(
@@ -331,7 +342,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 role={!isCorrectChain ? 'button' : undefined}
               >
                 <span className={cn('w-1.5 h-1.5 rounded-full', isCorrectChain ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse')} />
-                {isCorrectChain ? NETWORK_NAME : 'Switch Network'}
+                {isCorrectChain ? networkName : 'Switch Network'}
               </div>
             )}
             <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />

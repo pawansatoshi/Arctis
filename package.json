@@ -13,7 +13,8 @@
     "test": "node scripts/transaction-regression.mjs",
     "mainnet-regression": "node scripts/mainnet-regression.mjs",
     "chain-switch-regression": "node scripts/chain-switch-regression.mjs",
-    "wallet-connection-regression": "node scripts/wallet-connection-regression.mjs"
+    "wallet-connection-regression": "node scripts/wallet-connection-regression.mjs",
+    "network-selector-regression": "node scripts/network-selector-regression.mjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.1",

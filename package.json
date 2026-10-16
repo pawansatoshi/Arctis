@@ -12,7 +12,8 @@
     "network-regression": "node scripts/network-isolation-regression.mjs",
     "test": "node scripts/transaction-regression.mjs",
     "mainnet-regression": "node scripts/mainnet-regression.mjs",
-    "chain-switch-regression": "node scripts/chain-switch-regression.mjs"
+    "chain-switch-regression": "node scripts/chain-switch-regression.mjs",
+    "swap-bridge-regression": "node scripts/swap-bridge-regression.mjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.1",

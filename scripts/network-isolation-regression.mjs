@@ -63,11 +63,13 @@ assert.doesNotMatch(
   'useChainSwitch must not contain literal 5042 anywhere',
 );
 
-assert.match(bridgeRoute, /network.*mainnet/);
-assert.match(bridgeQuote, /network.*testnet/);
+assert.match(bridgeRoute, /network === 'mainnet'/);
+assert.match(bridgeQuote, /network.*testnet|network.*mainnet/);
 assert.match(bridgeRecord, /network !== 'testnet'/);
 assert.match(bridgeRecord, /rpc\.testnet\.arc\.io/);
-assert.match(bridgePage, /networkEnv !== 'testnet'/);
+// Bridge page now supports mainnet via CCTP_BRIDGE_CHAINS_MAINNET.
+// The old static "Bridge is not enabled" screen is replaced by a disclaimer banner.
+assert.match(bridgePage, /Arc Mainnet.*Circle CCTP V2 bridge/s);
 assert.match(bridgePage, /network: networkEnv/);
 
 assert.match(swapPage, /network: networkEnv/);

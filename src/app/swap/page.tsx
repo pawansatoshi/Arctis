@@ -5,6 +5,7 @@ import { useAccount, useSwitchChain, useWriteContract } from 'wagmi';
 import { createViemAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { AppKit } from '@circle-fin/app-kit';
 import { ArcTestnet } from '@circle-fin/app-kit/chains';
+import { ARC_APPKIT_CHAIN } from '@/lib/contracts';
 import { createPublicClient, custom, formatEther, parseUnits } from 'viem';
 import { ArrowLeftRight, History, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { ERC20_ABI, NETWORK_PROFILES } from '@/lib/contracts';
@@ -124,15 +125,25 @@ function SwapPageInner() {
     }
     setS({ step: 'estimating', error: undefined }, target);
     try {
-      if (networkEnv === 'mainnet') {
-        setS({ quote: null, step: 'error', error: 'Swap is disabled on Arc Mainnet in this stable build.' }, target);
-      } else if (isCircleSwapPair(q.from, q.to)) {
+      if (isCircleSwapPair(q.from, q.to)) {
+        // Circle App Kit swap — works on both Arc_Testnet and Arc (mainnet).
+        // The "Arc" chain identifier is accepted by the SDK for Arc Mainnet.
+        // USDC↔NATIVE is a no-op on Arc (same asset); the pair guard above
+        // prevents that before reaching here.
+        // "Arc" is supported at runtime (docs.arc.io/app-kit/references/supported-blockchains)
+        // but @circle-fin/app-kit@1.12.0 types only include Arc_Testnet in the SwapChain enum.
+        // Cast to string to unblock the type checker until the package types catch up.
+        const arcChain = ARC_APPKIT_CHAIN[networkEnv] as string;
+        const supportedChains = networkEnv === 'mainnet' ? [] : [ArcTestnet];
         const provider = await connector.getProvider();
-        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
+        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains } });
         const kit = new AppKit();
-        const e = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100 } });
+        const e = await kit.estimateSwap({ from: { adapter, chain: arcChain as never }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100 } });
         if (quoteSeq.current[target] !== seq || sessionsRef.current[target].executing) return;
         setS({ quote: { rail: 'circle', input: n, output: Number(e.estimatedOutput.amount), fee: 0, available: true }, step: 'idle' }, target);
+      } else if (networkEnv === 'mainnet') {
+        // OTC routes (tUSDC, tARC) are testnet-only assets; block clearly on mainnet.
+        setS({ quote: null, step: 'error', error: 'ARCTIS OTC routes (tUSDC/tARC) are Testnet-only assets and are not available on Arc Mainnet.' }, target);
       } else if (otcPair(q.from, q.to)) {
         const r = await fetch(`/api/swap/quote?network=${networkEnv}&from=${q.from}&to=${q.to}&amount=${q.amount}`);
         const d = await r.json();
@@ -174,14 +185,17 @@ function SwapPageInner() {
     try {
       announceTransactionState('preflight');
       if (q.quote.rail === 'circle') {
+        // See comment in loadQuote: "Arc" is runtime-valid but not yet in @circle-fin/app-kit@1.12.0 types.
+        const arcChain = ARC_APPKIT_CHAIN[networkEnv] as string;
+        const supportedChains = networkEnv === 'mainnet' ? [] : [ArcTestnet];
         const provider = await connector.getProvider();
-        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains: [ArcTestnet] } });
+        const adapter = await createViemAdapterFromProvider({ provider: provider as never, capabilities: { addressContext: 'user-controlled', supportedChains } });
         const kit = new AppKit();
-        const e = await kit.estimateSwap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100 } });
+        const e = await kit.estimateSwap({ from: { adapter, chain: arcChain as never }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100 } });
         const freshOutput = Number(e.estimatedOutput.amount);
         setS({ quote: { ...q.quote, output: freshOutput }, step: 'sending' }, target);
         announceTransactionState('wallet_approval');
-        const result = await kit.swap({ from: { adapter, chain: 'Arc_Testnet' }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100, stopLimit: e.stopLimit.amount } });
+        const result = await kit.swap({ from: { adapter, chain: arcChain as never }, tokenIn: q.from, tokenOut: q.to, amountIn: n.toString(), config: { slippageBps: 100, stopLimit: e.stopLimit.amount } });
         const hash = result.txHash as `0x${string}`;
         if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error('Swap returned no valid transaction hash');
         const output = Number(result.amountOut ?? freshOutput);
@@ -237,18 +251,20 @@ function SwapPageInner() {
     setSessions(prev => ({ ...prev, [modalMode]: { ...prev[modalMode], step: 'idle', executing: false, quote: null, txHash: undefined, outbound: undefined, error: undefined, amount: '' } }));
   };
 
-  if (networkEnv === 'mainnet') {
-    return <div className="page-container max-w-lg safe-bottom">
-      <div className="glass-card p-6 sm:p-8 text-center space-y-4">
-        <div className="mx-auto w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center"><ShieldCheck className="w-6 h-6 text-emerald-600" /></div>
-        <div><p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Arc Mainnet</p><h1 className="text-2xl font-bold mt-2">Swap is not enabled</h1><p className="text-sm text-surface-600 mt-2 leading-relaxed">This mainnet environment does not expose the Testnet Circle/OTC swap rails. No Testnet assets or Testnet transactions are available here.</p></div>
-        <div className="rounded-xl bg-surface-100 p-3 text-xs text-surface-600">Network boundary: Mainnet only · chain 5042</div>
-      </div>
-    </div>;
-  }
+  // On mainnet only Circle App Kit pairs (USDC, EURC) are available.
+  // tUSDC and tARC are testnet-only assets.
+  const availableTokens = networkEnv === 'mainnet'
+    ? (['USDC', 'EURC'] as SwapToken[])
+    : TOKENS;
 
   return <div className="page-container max-w-lg safe-bottom">
-    <div className="flex items-center justify-between mb-6"><div><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span><h1 className="text-2xl font-bold mt-1">Swap</h1><p className="text-surface-600 text-sm mt-1">Circle liquidity + ARCTIS OTC settlement</p></div><button onClick={() => setShowHistory(v => !v)} className="btn-ghost p-2" aria-label="Swap history"><History className="w-4 h-4" /></button></div>
+    {networkEnv === 'mainnet' && (
+      <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 flex gap-2">
+        <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <span><strong>Arc Mainnet</strong> — Circle App Kit swap only. USDC ↔ EURC via LiFi aggregator. OTC routes (tUSDC, tARC) are Testnet-only. Swaps move real funds.</span>
+      </div>
+    )}
+    <div className="flex items-center justify-between mb-6"><div><span className="text-surface-500 text-xs font-semibold uppercase tracking-widest">Stablecoin OS</span><h1 className="text-2xl font-bold mt-1">Swap</h1><p className="text-surface-600 text-sm mt-1">{networkEnv === 'mainnet' ? 'Circle App Kit · Arc Mainnet' : 'Circle liquidity + ARCTIS OTC settlement'}</p></div><button onClick={() => setShowHistory(v => !v)} className="btn-ghost p-2" aria-label="Swap history"><History className="w-4 h-4" /></button></div>
     <ModeTabs mode={mode} onChange={next => { setMode(next); setModal(false); }} />
     {mode === 'agent' ? <div className="mt-4 space-y-3">
       <EconomicAgentPanel action="swap" onExecute={agentExecute} executionStatus={s.executing ? 'executing' : s.step === 'completed' ? 'success' : s.step === 'error' ? 'failed' : 'idle'} executionError={s.error} executionTxHash={s.outbound ?? s.txHash ?? null} />
@@ -257,9 +273,9 @@ function SwapPageInner() {
       {s.quote?.available && !s.executing && s.step === 'idle' && <button onClick={() => void execute('agent')} disabled={!isConnected || chainId !== NETWORK_PROFILES[networkEnv].chainId} className="btn-primary w-full py-3.5 disabled:opacity-40">Review quote & approve in wallet</button>}
       {!s.quote && s.error && <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2"><AlertCircle className="w-4 h-4" />{s.error}</div>}
     </div> : showHistory ? <div className="space-y-2 mt-4">{history.length === 0 ? <div className="glass-card p-8 text-center text-sm text-surface-600">No swaps found.</div> : history.map(x => <div key={String(x.id ?? x.inboundTxHash)} className="glass-card p-4"><div className="flex justify-between"><span className="text-sm font-semibold">{String(x.inputAmount)} {String(x.fromToken)} → {String(x.outputAmount)} {String(x.toToken)}</span><span className="text-xs text-emerald-600">{String(x.status)} · {String(x.mode ?? 'manual')}</span></div><p className="text-xs text-surface-500 mt-1">{formatRelative(String(x.createdAt))}</p></div>)}</div> : <div className="space-y-4 mt-4">
-      <div className="glass-card p-5 space-y-4"><div><label className="text-surface-600 text-xs font-medium">FROM</label><select value={s.from} onChange={e => setS({ from: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{TOKENS.map(t => <option key={t}>{t}</option>)}</select></div>
+      <div className="glass-card p-5 space-y-4"><div><label className="text-surface-600 text-xs font-medium">FROM</label><select value={s.from} onChange={e => setS({ from: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{availableTokens.map(t => <option key={t}>{t}</option>)}</select></div>
       <div className="flex justify-center"><button onClick={() => setS({ from: s.to, to: s.from, quote: null })} className="w-9 h-9 rounded-full border flex items-center justify-center" aria-label="Reverse swap"><ArrowLeftRight className="w-4 h-4" /></button></div>
-      <div><label className="text-surface-600 text-xs font-medium">TO</label><select value={s.to} onChange={e => setS({ to: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{TOKENS.filter(t => t !== s.from).map(t => <option key={t}>{t}</option>)}</select></div>
+      <div><label className="text-surface-600 text-xs font-medium">TO</label><select value={s.to} onChange={e => setS({ to: e.target.value as SwapToken, quote: null, error: undefined })} className="input-base mt-1">{availableTokens.filter(t => t !== s.from).map(t => <option key={t}>{t}</option>)}</select></div>
       <div><label className="text-surface-600 text-xs font-medium">Amount</label><input value={s.amount} onChange={e => setS({ amount: e.target.value, quote: null, error: undefined })} type="number" min="0.000001" step="0.000001" placeholder="0.00" className="input-base mt-1" /></div></div>
       <div className="min-h-[120px] flex items-start">{s.quote ? <QuoteCard quote={s.quote} from={s.from} to={s.to} /> : s.error ? <div className="glass-card p-3 border-rose-500/20 bg-rose-500/5 text-sm text-rose-600 flex gap-2 w-full"><AlertCircle className="w-4 h-4" />{s.error}</div> : s.step === 'estimating' ? <div className="w-full text-center text-xs text-surface-500 pt-4"><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Getting live quote…</div> : <div className="w-full min-h-[90px]" />}</div>
       <div className="min-h-[58px] flex items-center"><button onClick={() => void execute('manual')} disabled={!isConnected || chainId !== NETWORK_PROFILES[networkEnv].chainId || !s.quote?.available || s.executing || isSwitching} className="btn-primary w-full py-3.5 disabled:opacity-40">{s.executing ? 'Confirm in wallet…' : 'Review & Swap'}</button></div>

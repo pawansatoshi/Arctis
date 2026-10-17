@@ -58,6 +58,13 @@ jobs:
       - name: Production build
         id: build
         continue-on-error: true
+        env:
+          # Build-time placeholders only: CI validates compilation, not live service connectivity.
+          # Never use these values for deployments or production transactions.
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: arctis-ci-placeholder
+          OPENROUTER_API_KEY: ci-placeholder
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ci-placeholder
         run: npm run build
 
       - name: Publish readiness summary

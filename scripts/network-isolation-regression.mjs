@@ -70,7 +70,7 @@ assert.ok(paymentVerifier.includes('clients[network]'));
 assert.ok(paymentVerifier.includes('tx.from.toLowerCase() !== expectedSender.toLowerCase()'));
 assert.ok(paymentVerifier.includes('value === expectedAmount'));
 assert.ok(paymentVerifier.includes('process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY'));
-assert.ok(contracts.includes('NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY || ZERO_ADDRESS'));
+assert.ok(contracts.includes('MAINNET_PAYMENTS_ENABLED && process.env.NEXT_PUBLIC_ARCTIS_MAINNET_TREASURY'));
 assert.ok(membershipApi.includes('!network'));
 assert.ok(membershipApi.includes('plan.priceUSDC, network, walletAddress'));
 assert.ok(creditsApi.includes('!network'));

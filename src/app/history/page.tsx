@@ -1,6 +1,6 @@
 'use client';
 
-import { EXPLORER_URL } from '@/lib/contracts';
+import { getSelectedNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -61,19 +61,27 @@ export default function HistoryPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [networkEnv, setNetworkEnv] = useState<NetworkEnv>('testnet');
+
+  useEffect(() => {
+    const syncNetwork = () => setNetworkEnv(getSelectedNetworkEnv());
+    syncNetwork();
+    window.addEventListener('arctis-network-changed', syncNetwork);
+    return () => window.removeEventListener('arctis-network-changed', syncNetwork);
+  }, []);
 
   const fetchHistory = useCallback(async () => {
     if (!address) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/activity?wallet=${address}&limit=300`);
+      const res = await fetch(`/api/activity?wallet=${address}&limit=300&network=${networkEnv}`, { cache: 'no-store' });
       const data = await res.json();
       setItems(data.items ?? []);
     } catch {
       toast.error('Could not load history');
     }
     setLoading(false);
-  }, [address]);
+  }, [address, networkEnv]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
@@ -255,7 +263,7 @@ export default function HistoryPage() {
                       </button>
                     )}
                     {(item.txHash || item.explorerUrl) && (
-                      <a href={item.explorerUrl ?? `${EXPLORER_URL}/tx/${item.txHash}`}
+                      <a href={item.explorerUrl ?? `${networkEnv === 'mainnet' ? 'https://explorer.arc.io' : 'https://testnet.arcscan.app'}/tx/${item.txHash}`}
                         target="_blank" rel="noopener noreferrer"
                         className="text-surface-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-0.5 inline-block">
                         <ExternalLink className="w-3.5 h-3.5" />

@@ -7,6 +7,7 @@ import { Wallet, Sparkles, History, Download, X, ExternalLink, Copy, CheckCircle
 import { cn, copyToClipboard } from '@/lib/utils';
 import { exportCSV, exportExcel, exportPDF, exportTXT } from '@/lib/utils/export';
 import toast from 'react-hot-toast';
+import { getSelectedNetworkEnv, type NetworkEnv } from '@/lib/network/profile';
 
 export type ExecutionMode = 'manual' | 'agent';
 type ContextKind = 'transfer' | 'swap' | 'bridge';
@@ -21,10 +22,12 @@ const formatDate=(v:string)=>{const d=new Date(v);return Number.isNaN(d.getTime(
 const explorerFor=(r:HistoryRecord)=>r.explorerUrl||(r.txHash?`https://testnet.arcscan.app/tx/${r.txHash}`:undefined);
 
 function ContextHistory({kind,open,onClose}:{kind:ContextKind;open:boolean;onClose:()=>void}) {
-  const {address}=useAccount(); const [records,setRecords]=useState<HistoryRecord[]>([]); const [selected,setSelected]=useState<HistoryRecord|null>(null); const [status,setStatus]=useState<StatusFilter>('all'); const [loading,setLoading]=useState(false); const [exportOpen,setExportOpen]=useState(false);
+  const {address}=useAccount(); const [networkEnv,setNetworkEnv]=useState<NetworkEnv>('testnet'); const [records,setRecords]=useState<HistoryRecord[]>([]); const [selected,setSelected]=useState<HistoryRecord|null>(null); const [status,setStatus]=useState<StatusFilter>('all'); const [loading,setLoading]=useState(false); const [exportOpen,setExportOpen]=useState(false);
+  useEffect(()=>{const sync=()=>setNetworkEnv(getSelectedNetworkEnv());sync();window.addEventListener('arctis-network-changed',sync);return()=>window.removeEventListener('arctis-network-changed',sync)},[]);
   const load=async()=>{if(!address)return;setLoading(true);try{let next:HistoryRecord[]=[];
+    if(networkEnv==='mainnet'&&(kind==='swap'||kind==='bridge')){setRecords([]);return;}
     if(kind==='transfer'){
-      const d=await fetch(`/api/activity?wallet=${address}&limit=300`).then(r=>r.json()) as {items?:Array<Record<string,unknown>>};
+      const d=await fetch(`/api/activity?wallet=${address}&limit=300&network=${networkEnv}`, {cache:'no-store'}).then(r=>r.json()) as {items?:Array<Record<string,unknown>>};
       next=(d.items??[]).filter(x=>x.type==='transfer').map(x=>{const m=(x.meta??{}) as {mode?:'manual'|'agent';toAddress?:string;fromAddress?:string};return {id:String(x.id),kind,mode:m.mode,status:normalizeStatus(String(x.status??'pending')),createdAt:String(x.timestamp),amount:x.amount?`${x.amount} ${x.token??'USDC'}`:undefined,from:m.fromAddress,to:m.toAddress??String(x.description??''),txHash:typeof x.txHash==='string'?x.txHash:undefined,explorerUrl:typeof x.explorerUrl==='string'?x.explorerUrl:undefined,raw:x};});
     } else if(kind==='swap'){
       const [remote,localRaw]=await Promise.all([fetch(`/api/swap/history?wallet=${address}`).then(r=>r.json()).catch(()=>({swaps:[]})),Promise.resolve(typeof window!=='undefined'?localStorage.getItem(`arctis-swap-history:${address.toLowerCase()}`):null)]); const local=localRaw?JSON.parse(localRaw) as Array<Record<string,unknown>>:[]; const all=[...(remote.swaps??[]),...local];
@@ -35,7 +38,7 @@ function ContextHistory({kind,open,onClose}:{kind:ContextKind;open:boolean;onClo
     }
     next.sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());setRecords(next);
   }catch{toast.error(`Unable to load ${kind} history`);}finally{setLoading(false);}};
-  useEffect(()=>{if(open)void load();if(!open)setSelected(null);},[open,kind,address]);
+  useEffect(()=>{if(open)void load();if(!open)setSelected(null);},[open,kind,address,networkEnv]);
   const filtered=useMemo(()=>status==='all'?records:records.filter(r=>r.status===status),[records,status]);
   const exportRows=filtered.map(r=>({Date:formatDate(r.createdAt),Type:r.kind,Mode:r.mode??'—',Status:statusLabel(r.status),Amount:r.amount??'',From:r.from??'',To:r.to??'','Source Network':r.sourceChain??'','Destination Network':r.destinationChain??'','Transaction ID':r.txHash??'','Burn Transaction ID':r.burnTxHash??'','Forward Transaction ID':r.forwardTxHash??'',Rail:r.rail??'','Failure Reason':r.reason??''}));
   if(!open)return null;

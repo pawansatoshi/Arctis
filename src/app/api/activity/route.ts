@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   if (!wallet) return NextResponse.json({ error: 'wallet required' }, { status: 400 });
   try {
     const [txHistory, creditHistory, aiSessions, agentExecs, swapHistory, bridgeHistory] = await Promise.all([
-      getTransactionHistory(wallet, limitCount).catch(() => []), getCreditHistory(wallet, limitCount).catch(() => []),
+      getTransactionHistory(wallet, Math.min(limitCount * 3, 900)).catch(() => []), getCreditHistory(wallet, limitCount).catch(() => []),
       getUserSessions(wallet, 20).catch(() => []), getOwnerExecutions(wallet, 20).catch(() => []),
       getSwapHistory(wallet, Math.max(limitCount, 50)).catch(() => []), getBridgeHistory(wallet, Math.max(limitCount, 50)).catch(() => []),
     ]);

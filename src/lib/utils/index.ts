@@ -74,8 +74,8 @@ const EXPLORER_BY_CHAIN: Record<number, string> = {
  * call this function when the record has no pre-stamped explorerUrl.
  */
 export function getTxUrlByChainId(chainId: number | undefined, txHash: string): string {
-  const base = (chainId !== undefined ? EXPLORER_BY_CHAIN[chainId] : undefined)
-    ?? 'https://testnet.arcscan.app';
+  const base = chainId !== undefined ? EXPLORER_BY_CHAIN[chainId] : undefined;
+  if (!base) return `unknown-chain-${chainId ?? 'none'}/tx/${txHash}`;
   return `${base}/tx/${txHash}`;
 }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveTransaction, updateTransactionStatus } from '@/lib/firebase/transactions';
 import { obs } from '@/lib/observability/logger';
 import { isValidEthAddress, verifyApiWallet } from '@/lib/auth/middleware';
-import { CHAIN_ID, NETWORK_NAME, TESTNET_NETWORK, MAINNET_NETWORK } from '@/lib/contracts';
+import { TESTNET_NETWORK, MAINNET_NETWORK } from '@/lib/contracts';
 import type { TransactionRecord } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -33,6 +33,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid execution mode' }, { status: 400 });
     }
 
+    // network is required — reject requests that don't specify it to prevent
+    // recording transfers on the wrong chain. All current callers (useTransfer.ts)
+    // pass this field. Legacy clients without it should be updated.
+    if (!network) {
+      return NextResponse.json(
+        { error: 'network is required (testnet | mainnet). Update your client to send this field.' },
+        { status: 400 },
+      );
+    }
+
     const profile = network === 'mainnet' ? MAINNET_NETWORK : TESTNET_NETWORK;
 
     const id = await saveTransaction(walletAddress, {
@@ -41,8 +51,8 @@ export async function POST(req: NextRequest) {
       amountFormatted,
       status: 'pending',
       token: token ?? 'USDC',
-      chainId: network ? profile.chainId : CHAIN_ID,
-      networkName: network ? profile.networkName : NETWORK_NAME,
+      chainId: profile.chainId,
+      networkName: profile.networkName,
       ...(note !== undefined ? { note } : {}),
       mode: mode ?? 'manual',
       type: 'send',

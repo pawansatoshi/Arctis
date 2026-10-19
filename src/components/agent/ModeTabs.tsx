@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { Wallet, Sparkles, History, Download, X, ExternalLink, Copy, CheckCircle2, Clock3, XCircle, RefreshCw, ChevronRight } from 'lucide-react';
 import { cn, copyToClipboard, resolveExplorerUrl } from '@/lib/utils';
+import { getSelectedNetworkEnv } from '@/lib/network/profile';
 import { exportCSV, exportExcel, exportPDF, exportTXT } from '@/lib/utils/export';
 import toast from 'react-hot-toast';
 
@@ -26,13 +27,19 @@ function ContextHistory({kind,open,onClose}:{kind:ContextKind;open:boolean;onClo
   const {address}=useAccount(); const [records,setRecords]=useState<HistoryRecord[]>([]); const [selected,setSelected]=useState<HistoryRecord|null>(null); const [status,setStatus]=useState<StatusFilter>('all'); const [loading,setLoading]=useState(false); const [exportOpen,setExportOpen]=useState(false);
   const load=async()=>{if(!address)return;setLoading(true);try{let next:HistoryRecord[]=[];
     if(kind==='transfer'){
-      const d=await fetch(`/api/activity?wallet=${address}&limit=300`).then(r=>r.json()) as {items?:Array<Record<string,unknown>>};
+      const networkEnv=getSelectedNetworkEnv();
+      const d=await fetch(`/api/activity?wallet=${address}&limit=300&network=${networkEnv}`).then(r=>r.json()) as {items?:Array<Record<string,unknown>>};
       next=(d.items??[]).filter(x=>x.type==='transfer').map(x=>{const m=(x.meta??{}) as {mode?:'manual'|'agent';toAddress?:string;fromAddress?:string};return {id:String(x.id),kind,mode:m.mode,status:normalizeStatus(String(x.status??'pending')),createdAt:String(x.timestamp),amount:x.amount?`${x.amount} ${x.token??'USDC'}`:undefined,from:m.fromAddress,to:m.toAddress??String(x.description??''),txHash:typeof x.txHash==='string'?x.txHash:undefined,explorerUrl:typeof x.explorerUrl==='string'?x.explorerUrl:undefined,raw:x};});
     } else if(kind==='swap'){
-      const [remote,localRaw]=await Promise.all([fetch(`/api/swap/history?wallet=${address}`).then(r=>r.json()).catch(()=>({swaps:[]})),Promise.resolve(typeof window!=='undefined'?localStorage.getItem(`arctis-swap-history:${address.toLowerCase()}`):null)]); const local=localRaw?JSON.parse(localRaw) as Array<Record<string,unknown>>:[]; const all=[...(remote.swaps??[]),...local];
-      next=Array.from(new Map(all.map(x=>[String(x.id??x.inboundTxHash),x])).values()).map(x=>({id:String(x.id??x.inboundTxHash),kind,mode:x.mode==='agent'||x.mode==='manual'?x.mode:undefined,status:normalizeStatus(String(x.status)),createdAt:String(x.createdAt),amount:`${x.inputAmount??''} ${x.fromToken??''}`.trim(),from:String(x.fromToken??''),to:String(x.toToken??''),txHash:String(x.outboundTxHash??x.inboundTxHash??''),rail:typeof x.rail==='string'?x.rail:undefined,reason:typeof x.failureReason==='string'?x.failureReason:undefined,raw:x}));
+      const networkEnv=getSelectedNetworkEnv();
+      const [remote,localRaw]=await Promise.all([fetch(`/api/swap/history?wallet=${address}&network=${networkEnv}`).then(r=>r.json()).catch(()=>({swaps:[]})),Promise.resolve(typeof window!=='undefined'?localStorage.getItem(`arctis-swap-history:${address.toLowerCase()}`):null)]); const local=localRaw?JSON.parse(localRaw) as Array<Record<string,unknown>>:[]; const all=[...(remote.swaps??[]),...local];
+      // Client-side network filter: testnet swaps use tUSDC/tARC tokens; mainnet swaps use USDC/EURC.
+      // Until server-side swap filtering is added, filter by token name as a heuristic.
+      const isTestnet=networkEnv==='testnet';
+      next=Array.from(new Map(all.map(x=>[String(x.id??x.inboundTxHash),x])).values()).filter(x=>{const ft=String(x.fromToken??'').toLowerCase();const tt=String(x.toToken??'').toLowerCase();const hasTestnetToken=ft.startsWith('t')||tt.startsWith('t');return isTestnet?hasTestnetToken||ft==='usdc'||tt==='usdc':!hasTestnetToken;}).map(x=>({id:String(x.id??x.inboundTxHash),kind,mode:x.mode==='agent'||x.mode==='manual'?x.mode:undefined,status:normalizeStatus(String(x.status)),createdAt:String(x.createdAt),amount:`${x.inputAmount??''} ${x.fromToken??''}`.trim(),from:String(x.fromToken??''),to:String(x.toToken??''),txHash:String(x.outboundTxHash??x.inboundTxHash??''),rail:typeof x.rail==='string'?x.rail:undefined,reason:typeof x.failureReason==='string'?x.failureReason:undefined,raw:x}));
     } else {
-      const [remote,localRaw]=await Promise.all([fetch(`/api/bridge/history?wallet=${address}&limit=100`).then(r=>r.json()).catch(()=>({bridges:[]})),Promise.resolve(typeof window!=='undefined'?localStorage.getItem(`arctis-bridge-history:${address.toLowerCase()}`):null)]); const local=localRaw?JSON.parse(localRaw) as Array<Record<string,unknown>>:[]; const all=[...(remote.bridges??[]),...local];
+      const networkEnv=getSelectedNetworkEnv();
+      const [remote,localRaw]=await Promise.all([fetch(`/api/bridge/history?wallet=${address}&limit=100&network=${networkEnv}`).then(r=>r.json()).catch(()=>({bridges:[]})),Promise.resolve(typeof window!=='undefined'?localStorage.getItem(`arctis-bridge-history:${address.toLowerCase()}`):null)]); const local=localRaw?JSON.parse(localRaw) as Array<Record<string,unknown>>:[]; const all=[...(remote.bridges??[]),...local];
       next=Array.from(new Map(all.map(x=>[String(x.burnTxHash),x])).values()).map(x=>({id:String(x.burnTxHash),kind,mode:x.mode==='agent'||x.mode==='manual'?x.mode:undefined,status:normalizeStatus(String(x.status)),createdAt:String(x.createdAt),amount:`${x.amount??''} USDC`,sourceChain:String(x.sourceChain??''),destinationChain:String(x.destinationChain??''),from:String(x.sourceChain??''),to:String(x.destinationChain??''),txHash:String(x.forwardTxHash??x.burnTxHash??''),burnTxHash:typeof x.burnTxHash==='string'?x.burnTxHash:undefined,forwardTxHash:typeof x.forwardTxHash==='string'?x.forwardTxHash:undefined,rail:'Circle CCTP V2',reason:typeof x.failureReason==='string'?x.failureReason:undefined,raw:x}));
     }
     next.sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());setRecords(next);

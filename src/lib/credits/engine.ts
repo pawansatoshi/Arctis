@@ -28,7 +28,8 @@ export async function addCredits(
   credits: number,
   type: CreditLedgerEntry['type'],
   description: string,
-  txHash?: string
+  txHash?: string,
+  chainId?: number,
 ): Promise<void> {
   const db = getAdminDb();
   const addr = walletAddress.toLowerCase();
@@ -79,6 +80,7 @@ export async function addCredits(
       balanceAfter: current + credits,
       description,
       txHash: txHash ?? null,
+      ...(chainId !== undefined ? { chainId } : {}),
       createdAt: FieldValue.serverTimestamp(),
     });
   });

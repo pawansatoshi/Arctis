@@ -8,7 +8,7 @@ import { useTransfer } from '@/lib/hooks/useTransfer';
 import { useWalletAuth } from '@/lib/auth/useWalletAuth';
 import { useAppStore } from '@/lib/store';
 import { MEMBERSHIP_PLANS } from '@/lib/memberships/plans';
-import { cn, formatDate, txUrl } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { MembershipTier, UserMembership } from '@/types';
 import { getNetworkProfile, getSelectedNetworkEnv } from '@/lib/network/profile';

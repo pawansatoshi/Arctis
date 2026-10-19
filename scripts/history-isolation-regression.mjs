@@ -38,14 +38,21 @@ function read(path) {
 }
 
 // ─── Files ──────────────────────────────────────────────────────────────────
-const utilsIndex    = read('src/lib/utils/index.ts');
-const historyPage   = read('src/app/history/page.tsx');
-const activityRoute = read('src/app/api/activity/route.ts');
-const activityLib   = read('src/lib/firebase/activity.ts');
-const modeTabs      = read('src/components/agent/ModeTabs.tsx');
-const agentPanel    = read('src/components/agent/EconomicAgentPanel.tsx');
-const guardComp     = read('src/components/ui/WalletConnectionGuard.tsx');
-const contracts     = read('src/lib/contracts.ts');
+const utilsIndex      = read('src/lib/utils/index.ts');
+const historyPage     = read('src/app/history/page.tsx');
+const activityRoute   = read('src/app/api/activity/route.ts');
+const activityLib     = read('src/lib/firebase/activity.ts');
+const modeTabs        = read('src/components/agent/ModeTabs.tsx');
+const agentPanel      = read('src/components/agent/EconomicAgentPanel.tsx');
+const guardComp       = read('src/components/ui/WalletConnectionGuard.tsx');
+const contracts       = read('src/lib/contracts.ts');
+const dashPage        = read('src/app/dashboard/page.tsx');
+const transferRecord  = read('src/app/api/transfer/record/route.ts');
+const treasuryService = read('src/lib/treasury/service.ts');
+const chainSwitch     = read('src/lib/hooks/useChainSwitch.ts');
+const creditsPage     = read('src/app/credits/page.tsx');
+const creditsEngine   = read('src/lib/credits/engine.ts');
+const typesIndex      = read('src/types/index.ts');
 
 // ─── 1. getTxUrlByChainId and resolveExplorerUrl helpers ────────────────────
 console.log('\n1. Network-aware explorer URL helpers');
@@ -225,6 +232,99 @@ assert('Testnet explorer preserved', () => {
 });
 assert('Mainnet explorer preserved', () => {
   match(contracts, /explorer\.arc\.io/);
+});
+
+// ─── 9. Dashboard: resolveExplorerUrl replaces txUrl ────────────────────────
+console.log('\n9. Dashboard explorer links');
+
+assert('Dashboard does NOT use build-time txUrl for tx links', () => {
+  doesNotMatch(dashPage, /href=\{txUrl\(/);
+});
+assert('Dashboard uses resolveExplorerUrl with tx.chainId', () => {
+  match(dashPage, /resolveExplorerUrl\(tx\.txHash.*tx\.chainId\)/);
+});
+assert('Dashboard imports resolveExplorerUrl from utils', () => {
+  match(dashPage, /resolveExplorerUrl.*from.*@\/lib\/utils/);
+});
+
+// ─── 10. /api/transfer/record: network param required ───────────────────────
+console.log('\n10. Transfer record API: network required');
+
+assert('transfer/record POST returns 400 when network absent', () => {
+  match(transferRecord, /network is required.*testnet.*mainnet/s);
+  match(transferRecord, /status: 400/);
+});
+assert('transfer/record no longer uses build-time CHAIN_ID fallback', () => {
+  doesNotMatch(transferRecord, /CHAIN_ID,/);
+});
+assert('transfer/record uses profile.chainId exclusively', () => {
+  match(transferRecord, /chainId: profile\.chainId/);
+});
+
+// ─── 11. Treasury service: no build-time EXPLORER_URL fallback ──────────────
+console.log('\n11. Treasury service explorer URL');
+
+assert('treasury/service.ts does NOT use EXPLORER_URL', () => {
+  doesNotMatch(treasuryService, /EXPLORER_URL/);
+});
+assert('treasury/service.ts derives explorer from chainId', () => {
+  match(treasuryService, /MAINNET_NETWORK\.chainId.*MAINNET_NETWORK/s);
+  match(treasuryService, /TESTNET_NETWORK\.chainId.*TESTNET_NETWORK/s);
+});
+
+// ─── 12. useChainSwitch: wallet_addEthereumChain auto-add ───────────────────
+console.log('\n12. Network switching: auto-add chain');
+
+assert('useChainSwitch imports ARC chain params', () => {
+  match(chainSwitch, /ARC_CHAIN_PARAMS/);
+});
+assert('useChainSwitch defines tryAddChain', () => {
+  match(chainSwitch, /async function tryAddChain/);
+});
+assert('tryAddChain calls wallet_addEthereumChain', () => {
+  match(chainSwitch, /wallet_addEthereumChain/);
+});
+assert('switchToArc handles code 4902 (chain not added)', () => {
+  match(chainSwitch, /4902/);
+});
+assert('switchToArc handles "unrecognized chain" message', () => {
+  match(chainSwitch, /unrecognized chain/i);
+});
+assert('switchToArc retries switch after adding chain', () => {
+  match(chainSwitch, /tryAddChain.*switchChainAsync/s);
+});
+assert('ARC_CHAIN_PARAMS includes testnet chain definition', () => {
+  match(chainSwitch, /TESTNET_NETWORK\.chainId.*chainName.*TESTNET_NETWORK/s);
+});
+assert('ARC_CHAIN_PARAMS includes mainnet chain definition', () => {
+  match(chainSwitch, /MAINNET_NETWORK\.chainId.*chainName.*MAINNET_NETWORK/s);
+});
+
+// ─── 13. Credits: chainId stamped in ledger and passed to resolveExplorerUrl ─
+console.log('\n13. Credits: chainId in ledger');
+
+assert('CreditLedgerEntry type has chainId field', () => {
+  match(typesIndex, /chainId\?:\s*number/);
+});
+assert('credits/engine.ts addCredits accepts chainId param', () => {
+  match(creditsEngine, /addCredits.*chainId\?:\s*number/s);
+});
+assert('credits/engine.ts stamps chainId in Firestore ledger row', () => {
+  match(creditsEngine, /chainId !== undefined.*chainId/s);
+});
+assert('credits/page.tsx uses resolveExplorerUrl instead of txUrl', () => {
+  doesNotMatch(creditsPage, /href=\{txUrl\(/);
+  match(creditsPage, /resolveExplorerUrl\(entry\.txHash.*entry\.chainId\)/);
+});
+
+// ─── 14. getTxUrlByChainId: no hardcoded testnet fallback ───────────────────
+console.log('\n14. getTxUrlByChainId: no fabricated fallback');
+
+assert('getTxUrlByChainId does NOT fall back to testnet.arcscan.app for unknown chains', () => {
+  doesNotMatch(utilsIndex, /\?\? 'https:\/\/testnet\.arcscan\.app'/);
+});
+assert('getTxUrlByChainId returns undefined-safe string for unknown chains', () => {
+  match(utilsIndex, /unknown-chain/);
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useTARCBalance } from '@/lib/hooks/useTARCBalance';
 import { useAppStore } from '@/lib/store';
-import { formatAddress, formatRelative, txUrl, cn } from '@/lib/utils';
+import { formatAddress, formatRelative, resolveExplorerUrl, cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { TransactionRecord } from '@/types';
 import { NETWORK_NAME } from '@/lib/contracts';
@@ -551,7 +551,7 @@ export default function DashboardPage() {
                       <span className="text-surface-600 text-xs">{formatRelative(tx.createdAt)}</span>
                       {tx.txHash && (
                         <a
-                          href={txUrl(tx.txHash)}
+                          href={resolveExplorerUrl(tx.txHash, tx.chainId) ?? '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 dark:text-blue-400/70 text-[10px] hover:text-blue-800 dark:hover:text-blue-400 transition-colors font-mono"

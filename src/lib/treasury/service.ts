@@ -2,7 +2,7 @@ import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase/admin';
 import type { TreasuryLog } from '@/types';
-import { CHAIN_ID, NETWORK_NAME, EXPLORER_URL } from '@/lib/contracts';
+import { CHAIN_ID, NETWORK_NAME, TESTNET_NETWORK, MAINNET_NETWORK } from '@/lib/contracts';
 
 const SNAPSHOTS_COL = 'treasury_snapshots';
 const LOGS_COL = 'treasury_logs';
@@ -35,7 +35,17 @@ export async function logTreasuryEvent(
     type, amount, description,
     walletAddress: walletAddress?.toLowerCase() ?? null,
     txHash: txHash ?? null,
-    explorerUrl: txHash ? (meta?.explorerUrl ?? `${EXPLORER_URL}/tx/${txHash}`) : null,
+    explorerUrl: txHash
+      ? (meta?.explorerUrl ?? (() => {
+          // Derive explorer from chainId when caller doesn't pass explorerUrl.
+          // Prefer passed chainId so mainnet vs testnet is never confused.
+          const chainForLookup = meta?.chainId ?? CHAIN_ID;
+          const profile = chainForLookup === MAINNET_NETWORK.chainId ? MAINNET_NETWORK
+            : chainForLookup === TESTNET_NETWORK.chainId ? TESTNET_NETWORK
+            : undefined;
+          return profile ? `${profile.explorer}/tx/${txHash}` : null;
+        })())
+      : null,
     networkName: meta?.networkName ?? NETWORK_NAME,
     chainId: meta?.chainId ?? CHAIN_ID,
     blockNumber: meta?.blockNumber ?? null,

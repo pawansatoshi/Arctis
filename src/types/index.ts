@@ -77,6 +77,7 @@ export interface CreditLedgerEntry {
   aiModel?: string;
   sessionId?: string;
   txHash?: string;
+  chainId?: number;
   createdAt: string;
   source?: 'membership' | 'topup' | 'ai' | 'refund' | 'system';
 }

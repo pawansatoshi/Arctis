@@ -2,8 +2,47 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useSwitchChain, useChainId } from 'wagmi';
 import { getSelectedNetworkProfile } from '@/lib/network/profile';
+import { TESTNET_NETWORK, MAINNET_NETWORK } from '@/lib/contracts';
 import { announceTransactionState } from '@/lib/transaction/voice';
 import toast from 'react-hot-toast';
+
+// wallet_addEthereumChain parameters for Arc chains.
+// Provides all required fields so wallets can auto-add the chain without
+// requiring the user to manually enter RPC URL, chain ID, or explorer URL.
+const ARC_CHAIN_PARAMS: Record<number, {
+  chainId: string;
+  chainName: string;
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+  rpcUrls: string[];
+  blockExplorerUrls: string[];
+}> = {
+  [TESTNET_NETWORK.chainId]: {
+    chainId: `0x${TESTNET_NETWORK.chainId.toString(16)}`,
+    chainName: TESTNET_NETWORK.networkName,
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+    rpcUrls: [TESTNET_NETWORK.rpc],
+    blockExplorerUrls: [TESTNET_NETWORK.explorer],
+  },
+  [MAINNET_NETWORK.chainId]: {
+    chainId: `0x${MAINNET_NETWORK.chainId.toString(16)}`,
+    chainName: MAINNET_NETWORK.networkName,
+    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+    rpcUrls: [MAINNET_NETWORK.rpc],
+    blockExplorerUrls: [MAINNET_NETWORK.explorer],
+  },
+};
+
+/**
+ * Attempts to add an Arc chain to the wallet when it is not yet known.
+ * Uses wallet_addEthereumChain (EIP-3085). Safe to call before switchChain.
+ */
+async function tryAddChain(chainId: number): Promise<void> {
+  const params = ARC_CHAIN_PARAMS[chainId];
+  if (!params) return; // Unknown chain — cannot add.
+  if (typeof window === 'undefined' || typeof window.ethereum === 'undefined') return;
+  const provider = window.ethereum as { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+  await provider.request({ method: 'wallet_addEthereumChain', params: [params] });
+}
 
 /**
  * Network-aware chain switch hook.
@@ -57,7 +96,26 @@ export function useChainSwitch() {
     announceTransactionState('network_required');
     try {
       announceTransactionState('switching_network');
-      await switchChainAsync({ chainId: currentTargetId });
+      // Attempt the switch. If the wallet doesn't know this chain (code 4902
+      // or "Unrecognized chain ID"), add it automatically via EIP-3085
+      // wallet_addEthereumChain before retrying.
+      try {
+        await switchChainAsync({ chainId: currentTargetId });
+      } catch (switchErr) {
+        const se = switchErr as { code?: number; message?: string };
+        const chainUnknown =
+          se.code === 4902 ||
+          se.message?.toLowerCase().includes('unrecognized chain') ||
+          se.message?.toLowerCase().includes('chain not added') ||
+          se.message?.toLowerCase().includes('try adding the chain');
+        if (chainUnknown) {
+          // Chain is not yet in the wallet — add it, then retry the switch.
+          await tryAddChain(currentTargetId);
+          await switchChainAsync({ chainId: currentTargetId });
+        } else {
+          throw switchErr;
+        }
+      }
 
       // Verification: wait for wagmi's reactive chainId to update.
       // This works across all provider types including Brave mobile,

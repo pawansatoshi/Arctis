@@ -48,6 +48,64 @@ export function formatRelative(date: string | Date): string {
 // Re-export explorer URL helpers from contracts (single source of truth)
 export { txUrl, addressUrl } from '@/lib/contracts';
 
+// ─── Network-aware explorer URL helper ──────────────────────────────────────
+// Use this for client-side components that must respect the runtime-selected
+// network, NOT the build-time EXPLORER_URL constant from contracts.ts.
+//
+// When a transaction record already carries an explorerUrl field, prefer it —
+// it was stamped at write time with the correct chain-specific URL.
+// Fall back to a chain-ID lookup only when the record has no explorerUrl.
+const EXPLORER_BY_CHAIN: Record<number, string> = {
+  5042002: 'https://testnet.arcscan.app',   // Arc Testnet
+  5042:    'https://explorer.arc.io',        // Arc Mainnet
+  11155111: 'https://sepolia.etherscan.io',  // Ethereum Sepolia
+  84532:   'https://sepolia.basescan.org',   // Base Sepolia
+  421614:  'https://sepolia.arbiscan.io',    // Arbitrum Sepolia
+  1:       'https://etherscan.io',           // Ethereum Mainnet
+  8453:    'https://basescan.org',           // Base Mainnet
+  42161:   'https://arbiscan.io',            // Arbitrum One
+  10:      'https://optimistic.etherscan.io',// OP Mainnet
+  137:     'https://polygonscan.com',        // Polygon PoS
+};
+
+/**
+ * Returns an explorer transaction URL derived from the chain ID.
+ * Prefer passing the stored explorerUrl from a record directly — only
+ * call this function when the record has no pre-stamped explorerUrl.
+ */
+export function getTxUrlByChainId(chainId: number | undefined, txHash: string): string {
+  const base = (chainId !== undefined ? EXPLORER_BY_CHAIN[chainId] : undefined)
+    ?? 'https://testnet.arcscan.app';
+  return `${base}/tx/${txHash}`;
+}
+
+/**
+ * Resolves the explorer URL for a transaction record that may or may not
+ * carry a pre-stamped explorerUrl. Correctly handles both legacy records
+ * (no explorerUrl) and new records (explorerUrl present).
+ *
+ * Never displays a Testnet transaction link on a Mainnet page, and vice
+ * versa — chain ID is used as the authoritative discriminant.
+ */
+export function resolveExplorerUrl(
+  txHash: string | undefined,
+  chainId: number | undefined,
+  storedExplorerUrl?: string | undefined,
+): string | undefined {
+  if (!txHash) return undefined;
+  // If we have a chain-specific explorer URL already stamped on the record,
+  // use it directly — it is more reliable than re-deriving from chain ID.
+  if (storedExplorerUrl && storedExplorerUrl.startsWith('http')) {
+    return storedExplorerUrl;
+  }
+  // Derive from chain ID — never assume testnet when chain ID is unknown.
+  if (chainId !== undefined) {
+    return getTxUrlByChainId(chainId, txHash);
+  }
+  // Unknown chain: do not fabricate an explorer URL.
+  return undefined;
+}
+
 // Legacy aliases (keep backward compat)
 export function getTxExplorerUrl(hash: string): string {
   return _txUrl(hash);

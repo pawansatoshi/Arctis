@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { Wallet, Sparkles, History, Download, X, ExternalLink, Copy, CheckCircle2, Clock3, XCircle, RefreshCw, ChevronRight } from 'lucide-react';
-import { cn, copyToClipboard } from '@/lib/utils';
+import { cn, copyToClipboard, resolveExplorerUrl } from '@/lib/utils';
 import { exportCSV, exportExcel, exportPDF, exportTXT } from '@/lib/utils/export';
 import toast from 'react-hot-toast';
 
@@ -18,7 +18,9 @@ const statusLabel = (s:string) => s === 'confirmed' ? 'Successful' : s === 'fail
 function StatusIcon({status}:{status:string}) { return status === 'confirmed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600"/> : status === 'failed' ? <XCircle className="w-4 h-4 text-rose-600"/> : <Clock3 className="w-4 h-4 text-amber-600 animate-pulse"/>; }
 const shortHash=(h?:string)=>h?`${h.slice(0,10)}…${h.slice(-8)}`:'—';
 const formatDate=(v:string)=>{const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});};
-const explorerFor=(r:HistoryRecord)=>r.explorerUrl||(r.txHash?`https://testnet.arcscan.app/tx/${r.txHash}`:undefined);
+// Use resolveExplorerUrl so links always target the chain the transaction
+// was actually submitted on, not a hardcoded Testnet URL.
+const explorerFor=(r:HistoryRecord)=>resolveExplorerUrl(r.txHash, (r.raw as {chainId?:number}).chainId, r.explorerUrl);
 
 function ContextHistory({kind,open,onClose}:{kind:ContextKind;open:boolean;onClose:()=>void}) {
   const {address}=useAccount(); const [records,setRecords]=useState<HistoryRecord[]>([]); const [selected,setSelected]=useState<HistoryRecord|null>(null); const [status,setStatus]=useState<StatusFilter>('all'); const [loading,setLoading]=useState(false); const [exportOpen,setExportOpen]=useState(false);

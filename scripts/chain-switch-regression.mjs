@@ -81,11 +81,11 @@ assert.ok(
 // 2. Settings page — network-aware display
 // ══════════════════════════════════════════════════════════════
 
-// Must NOT hardcode the testnet RPC string.
+// The retired Arc Testnet RPC must not remain in settings or wallet transports.
 assert.doesNotMatch(
   settings,
   /rpc\.testnet\.arc\.network/,
-  'Settings: must not hardcode rpc.testnet.arc.network as a string literal',
+  'Settings: must not hardcode the retired rpc.testnet.arc.network endpoint',
 );
 assert.doesNotMatch(
   settings,

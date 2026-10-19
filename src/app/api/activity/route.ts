@@ -5,6 +5,7 @@ import { getUserSessions } from '@/lib/firebase/sessions';
 import { getOwnerExecutions } from '@/lib/agents/service';
 import { getSwapHistory } from '@/lib/swap/service';
 import { getBridgeHistory } from '@/lib/bridge/service';
+import { MAINNET_NETWORK, TESTNET_NETWORK, type NetworkEnv } from '@/lib/contracts';
 
 interface ActivityItem { id: string; type: string; title: string; description: string; timestamp: string; amount?: string; token?: string; status?: string; txHash?: string; explorerUrl?: string; credits?: number; meta?: Record<string, unknown>; }
 
@@ -42,7 +43,10 @@ function dedupeActivityItems(items: ActivityItem[]): ActivityItem[] {
 
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get('wallet');
-  const limitCount = parseInt(req.nextUrl.searchParams.get('limit') ?? '50');
+  const limitCount = Math.max(1, Math.min(300, parseInt(req.nextUrl.searchParams.get('limit') ?? '50') || 50));
+  const requestedNetwork = req.nextUrl.searchParams.get('network');
+  const network: NetworkEnv = requestedNetwork === 'mainnet' ? 'mainnet' : 'testnet';
+  const profile = network === 'mainnet' ? MAINNET_NETWORK : TESTNET_NETWORK;
   if (!wallet) return NextResponse.json({ error: 'wallet required' }, { status: 400 });
   try {
     const [txHistory, creditHistory, aiSessions, agentExecs, swapHistory, bridgeHistory] = await Promise.all([
@@ -50,13 +54,26 @@ export async function GET(req: NextRequest) {
       getUserSessions(wallet, 20).catch(() => []), getOwnerExecutions(wallet, 20).catch(() => []),
       getSwapHistory(wallet, Math.max(limitCount, 50)).catch(() => []), getBridgeHistory(wallet, Math.max(limitCount, 50)).catch(() => []),
     ]);
+    // Chain-bound records must never bleed between the selected Arc networks.
+    // Legacy records without chainId are excluded rather than guessed.
+    const scopedTransactions = txHistory.filter((tx) => tx.chainId === profile.chainId);
+    const scopedTxHashes = new Set(scopedTransactions.map((tx) => tx.txHash?.toLowerCase()).filter(Boolean));
+    // OTC swaps and the currently configured CCTP bridge are Testnet-only.
+    const scopedSwaps = network === 'testnet' ? swapHistory : [];
+    const scopedBridges = network === 'testnet' ? bridgeHistory : [];
+    // Credit purchases are linked to an on-chain payment and are scoped by its
+    // matching transaction hash. Credit usage/AI activity remains platform-wide.
+    const scopedCreditHistory = creditHistory.filter((cr) => {
+      if (cr.type !== 'purchase' || !cr.txHash) return true;
+      return scopedTxHashes.has(cr.txHash.toLowerCase());
+    });
     const items: ActivityItem[] = [];
-    for (const tx of txHistory) items.push({ id: tx.id, type: 'transfer', title: `${(tx.type ?? 'Transfer').replace('_', ' ')} — ${tx.token}`, description: `${tx.amountFormatted} ${tx.token} → ${tx.toAddress.slice(0, 10)}…`, timestamp: tx.createdAt, amount: tx.amountFormatted, token: tx.token, status: historyStatus(tx.status), txHash: tx.txHash, explorerUrl: tx.explorerUrl, meta: { blockNumber: tx.blockNumber, gasUsed: tx.gasUsed, rawStatus: tx.status, toAddress: tx.toAddress, fromAddress: tx.walletAddress, mode: tx.mode ?? 'manual' } });
-    for (const cr of creditHistory) items.push({ id: cr.id, type: 'credit', title: cr.type === 'purchase' ? 'Credits Purchased' : cr.type === 'deduct' ? 'Credits Used' : 'Credits Bonus', description: cr.description, timestamp: cr.createdAt, credits: cr.credits, txHash: cr.txHash, meta: { sessionId: cr.sessionId } });
+    for (const tx of scopedTransactions) items.push({ id: tx.id, type: 'transfer', title: `${(tx.type ?? 'Transfer').replace('_', ' ')} — ${tx.token}`, description: `${tx.amountFormatted} ${tx.token} → ${tx.toAddress.slice(0, 10)}…`, timestamp: tx.createdAt, amount: tx.amountFormatted, token: tx.token, status: historyStatus(tx.status), txHash: tx.txHash, explorerUrl: tx.explorerUrl, meta: { blockNumber: tx.blockNumber, gasUsed: tx.gasUsed, rawStatus: tx.status, toAddress: tx.toAddress, fromAddress: tx.walletAddress, mode: tx.mode ?? 'manual' } });
+    for (const cr of scopedCreditHistory) items.push({ id: cr.id, type: 'credit', title: cr.type === 'purchase' ? 'Credits Purchased' : cr.type === 'deduct' ? 'Credits Used' : 'Credits Bonus', description: cr.description, timestamp: cr.createdAt, credits: cr.credits, txHash: cr.txHash, meta: { sessionId: cr.sessionId } });
     for (const session of aiSessions) items.push({ id: session.id, type: 'ai_session', title: 'ARCTIS AI Session', description: session.title || 'Chat session', timestamp: session.updatedAt || session.createdAt, credits: session.totalCredits, meta: { messageCount: session.messages.length } });
     for (const exec of agentExecs) items.push({ id: exec.id, type: 'agent_execution', title: `${exec.agentName} — ${exec.status}`, description: exec.task.slice(0, 80), timestamp: exec.startedAt, credits: exec.creditsConsumed, status: historyStatus(exec.status), meta: { agentType: exec.agentType, durationMs: exec.durationMs, reportId: exec.reportId, rawStatus: exec.status } });
-    for (const swap of swapHistory) items.push({ id: swap.id, type: 'swap', title: `Swap ${swap.fromToken} → ${swap.toToken}`, description: `${swap.inputAmount} ${swap.fromToken} → ${swap.outputAmount} ${swap.toToken}`, timestamp: swap.createdAt, amount: `${swap.inputAmount} ${swap.fromToken}`, token: swap.fromToken, status: historyStatus(swap.status), txHash: swap.outboundTxHash ?? swap.inboundTxHash, meta: { rawStatus: swap.status, failureReason: swap.failureReason, fromToken: swap.fromToken, toToken: swap.toToken, inputAmount: swap.inputAmount, outputAmount: swap.outputAmount, inboundTxHash: swap.inboundTxHash, outboundTxHash: swap.outboundTxHash } });
-    for (const bridge of bridgeHistory) items.push({ id: bridge.burnTxHash, type: 'bridge', title: `Bridge ${bridge.sourceChain} → ${bridge.destinationChain}`, description: `${bridge.amount} USDC · ${bridge.status}`, timestamp: bridge.createdAt, amount: `${bridge.amount} USDC`, token: 'USDC', status: historyStatus(bridge.status), txHash: bridge.forwardTxHash ?? bridge.burnTxHash, meta: { rawStatus: bridge.status, failureReason: bridge.failureReason, sourceChain: bridge.sourceChain, destinationChain: bridge.destinationChain, burnTxHash: bridge.burnTxHash, forwardTxHash: bridge.forwardTxHash } });
+    for (const swap of scopedSwaps) items.push({ id: swap.id, type: 'swap', title: `Swap ${swap.fromToken} → ${swap.toToken}`, description: `${swap.inputAmount} ${swap.fromToken} → ${swap.outputAmount} ${swap.toToken}`, timestamp: swap.createdAt, amount: `${swap.inputAmount} ${swap.fromToken}`, token: swap.fromToken, status: historyStatus(swap.status), txHash: swap.outboundTxHash ?? swap.inboundTxHash, meta: { rawStatus: swap.status, failureReason: swap.failureReason, fromToken: swap.fromToken, toToken: swap.toToken, inputAmount: swap.inputAmount, outputAmount: swap.outputAmount, inboundTxHash: swap.inboundTxHash, outboundTxHash: swap.outboundTxHash } });
+    for (const bridge of scopedBridges) items.push({ id: bridge.burnTxHash, type: 'bridge', title: `Bridge ${bridge.sourceChain} → ${bridge.destinationChain}`, description: `${bridge.amount} USDC · ${bridge.status}`, timestamp: bridge.createdAt, amount: `${bridge.amount} USDC`, token: 'USDC', status: historyStatus(bridge.status), txHash: bridge.forwardTxHash ?? bridge.burnTxHash, meta: { rawStatus: bridge.status, failureReason: bridge.failureReason, sourceChain: bridge.sourceChain, destinationChain: bridge.destinationChain, burnTxHash: bridge.burnTxHash, forwardTxHash: bridge.forwardTxHash } });
 
     const uniqueItems = dedupeActivityItems(items);
     uniqueItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

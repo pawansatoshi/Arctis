@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useAccount, useSwitchChain } from 'wagmi';
 import { ChevronDown, FlaskConical, Globe2 } from 'lucide-react';
 import { getSelectedNetworkEnv } from '@/lib/network/profile';
 
@@ -32,6 +33,8 @@ const OPTIONS: Array<{
 ];
 
 export default function NetworkSelector() {
+  const { isConnected } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
   const [network, setNetwork] = useState<NetworkEnv>('testnet');
   const [mounted, setMounted] = useState(false);
 
@@ -47,14 +50,24 @@ export default function NetworkSelector() {
     }
   }, []);
 
-  function switchNetwork(value: NetworkEnv) {
+  async function switchNetwork(value: NetworkEnv) {
     if (value === network) return;
     try {
       window.localStorage.setItem('arctis-network-env', value);
       // Cookie so SSR middleware and server components read the same value.
       document.cookie = `arctis-network-env=${value}; Path=/; Max-Age=31536000; SameSite=Lax`;
     } catch { /* storage blocked — proceed to reload anyway */ }
-    // Notify any in-page subscribers before the reload.
+    // Ask the connected wallet to follow the selected app environment. This
+    // is an explicit wallet request (approval remains in the wallet), never a
+    // silent chain change. Reload after the attempt so all profile-bound data
+    // is recreated from the newly selected environment.
+    if (isConnected) {
+      const target = OPTIONS.find((option) => option.value === value);
+      if (target) {
+        try { await switchChainAsync({ chainId: target.chainId as 5042 | 5042002 }); }
+        catch { /* Keep the selected profile; UI will continue to show mismatch. */ }
+      }
+    }
     window.dispatchEvent(new Event('arctis-network-changed'));
     window.location.reload();
   }

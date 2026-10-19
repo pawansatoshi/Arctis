@@ -115,12 +115,10 @@ export const wagmiConfig = getDefaultConfig({
   transports: {
     // Testnet keeps a resilient read path so balance/gas queries do not depend
     // on a single public RPC endpoint. All fallbacks target Arc Testnet only.
-    [arcTestnet.id]: fallback([
-      http('https://rpc.testnet.arc.io'),
-      http('https://rpc.testnet.arc.network'),
-      http('https://rpc.drpc.testnet.arc.network'),
-      http('https://rpc.quicknode.testnet.arc.network'),
-    ]),
+    // Arc announced the canonical Testnet RPC migration to rpc.testnet.arc.io.
+    // Do not fall back to retired .arc.network endpoints: they can mask stale
+    // configuration and cause intermittent connection failures.
+    [arcTestnet.id]: http('https://rpc.testnet.arc.io'),
     // Mainnet remains explicitly isolated and never inherits Testnet RPCs.
     [arcMainnet.id]: http('https://rpc.mainnet.arc.io'),
     [ethereumSepolia.id]: http('https://ethereum-sepolia-rpc.publicnode.com'),

@@ -23,7 +23,8 @@ assert.match(wagmi, /id:\s*5042002[\s\S]*rpc\.testnet\.arc\.io/);
 assert.match(wagmi, /id:\s*5042[\s\S]*rpc\.mainnet\.arc\.io/);
 assert.doesNotMatch(contracts, /RPC_FALLBACK_URLS/);
 assert.match(wagmi, /transports:\s*\{/);
-assert.match(wagmi, /\[arcTestnet\.id\]: fallback\(\[/);
+assert.match(wagmi, /\[arcTestnet\.id\]: http\('https:\/\/rpc\.testnet\.arc\.io'\)/,
+  'Arc Testnet transport must use the canonical RPC endpoint');
 assert.match(wagmi, /\[arcMainnet\.id\]: http\('https:\/\/rpc\.mainnet\.arc\.io'\)/);
 assert.doesNotMatch(wagmi, /\[arcMainnet\.id\][\s\S]*rpc\.testnet/);
 assert.doesNotMatch(wagmi, /RPC_FALLBACK_URLS/,

@@ -51,6 +51,33 @@ function isBraveMobile(): boolean {
   return isMobile && (hasBraveUA || hasBraveNavigator);
 }
 
+/**
+ * Brave mobile can expose an injected provider wrapped in a Proxy whose
+ * get-trap violates the Proxy invariant for its non-configurable
+ * removeListener property. Build a plain EIP-1193 facade and read that one
+ * method from its property descriptor so wagmi never reads it through the
+ * broken Proxy get-trap.
+ */
+function getSafeInjectedProvider(): any {
+  if (typeof window === 'undefined' || !window.ethereum) return undefined;
+  const raw: any = window.ethereum;
+  const ownRemoveListener = Object.getOwnPropertyDescriptor(raw, 'removeListener');
+  const removeListener = ownRemoveListener && 'value' in ownRemoveListener
+    ? ownRemoveListener.value
+    : undefined;
+  const safe: any = {
+    request: (args: any) => raw.request(args),
+    on: (event: any, listener: any) => raw.on?.(event, listener),
+    removeListener: typeof removeListener === 'function'
+      ? (event: any, listener: any) => removeListener.call(raw, event, listener)
+      : (event: any, listener: any) => raw.removeListener?.(event, listener),
+  };
+  for (const key of ['chainId', 'selectedAddress', 'isBraveWallet', 'isMetaMask', 'providers']) {
+    try { safe[key] = raw[key]; } catch { /* ignore hostile provider getters */ }
+  }
+  return safe;
+}
+
 /** True if window.ethereum reports itself as Brave Wallet. */
 function hasBraveProvider(): boolean {
   if (typeof window === 'undefined' || typeof window.ethereum === 'undefined') return false;
@@ -95,15 +122,22 @@ export default function WalletConnectionGuard({ className }: WalletConnectionGua
     setState('connecting');
     setErrorMsg('');
     try {
-      // Step 1: Direct eth_requestAccounts to trigger Brave's native approval
-      // dialog. This bypasses RainbowKit's extension-check gate entirely.
-      if (typeof window !== 'undefined' && typeof window.ethereum !== 'undefined') {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-      }
+      // Use a plain provider facade: some Brave Android builds expose
+      // removeListener through a Proxy that violates the JS Proxy invariant.
+      // Trigger approval through the same facade, then hand it to wagmi.
+      const provider = getSafeInjectedProvider();
+      if (!provider) throw new Error('No injected wallet provider found');
+      await provider.request({ method: 'eth_requestAccounts' });
 
-      // Step 2: Complete the wagmi connection handshake via the injected connector.
-      // This wires the approved provider into wagmi state so useAccount() works.
-      await connectAsync({ connector: injected() });
+      await connectAsync({
+        connector: injected({
+          target: {
+            id: 'brave-wallet-safe-provider',
+            name: 'Brave Wallet',
+            provider,
+          },
+        }),
+      });
 
       setState('success');
     } catch (err) {

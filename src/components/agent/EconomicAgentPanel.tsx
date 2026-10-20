@@ -19,7 +19,7 @@ type LockedAction = 'transfer' | 'swap' | 'bridge';
 type AgentExecutionStatus = 'idle' | 'executing' | 'success' | 'failed';
 
 const BRIDGE_NETWORKS = ['Arc Testnet', 'Ethereum Sepolia', 'Base Sepolia', 'Arbitrum Sepolia'] as const;
-const SWAP_TOKENS = ['USDC', 'EURC', 'tUSDC', 'tARC'] as const;
+const SWAP_TOKENS = ['USDC', 'EURC', 'cirBTC', 'tUSDC', 'tARC'] as const;
 const QUICK_AMOUNTS = ['1', '5', '10', '25'] as const;
 
 const INTRO_COPY: Record<LockedAction, { prompt: string; examples: string[] }> = {

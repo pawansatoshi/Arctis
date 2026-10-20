@@ -71,45 +71,27 @@ type EthereumProvider = {
 };
 
 function wrapBraveProvider(provider: EthereumProvider): EthereumProvider {
-  const safe: EthereumProvider = {
-    ...provider,
-    // Override all EventEmitter methods with safe wrappers that catch the
-    // Proxy invariant error and continue silently. wagmi's connector cleanup
-    // calls removeListener during the connect/disconnect lifecycle — if this
-    // throws, the entire connection attempt fails.
-    on: (event: string, handler: unknown) => {
-      try {
-        return typeof provider.on === 'function' ? provider.on(event, handler) : undefined;
-      } catch { return undefined; }
-    },
-    off: (event: string, handler: unknown) => {
-      try {
-        return typeof provider.off === 'function' ? provider.off(event, handler) : undefined;
-      } catch { return undefined; }
-    },
-    removeListener: (event: string, handler: unknown) => {
-      try {
-        return typeof provider.removeListener === 'function'
-          ? provider.removeListener(event, handler)
-          : undefined;
-      } catch { return undefined; }
-    },
-    addListener: (event: string, handler: unknown) => {
-      try {
-        return typeof provider.addListener === 'function'
-          ? provider.addListener(event, handler)
-          : undefined;
-      } catch { return undefined; }
-    },
-    emit: (event: string, ...args: unknown[]) => {
-      try {
-        return typeof provider.emit === 'function' ? provider.emit(event, ...args) : undefined;
-      } catch { return undefined; }
-    },
-    // request must be forwarded exactly — no wrapping that could swallow errors
-    request: (args) => provider.request(args),
+  // Do not spread or replace window.ethereum: Brave may expose it through a
+  // Proxy with non-configurable properties. Spreading it can itself trigger
+  // Proxy invariant errors. Expose only the EIP-1193 methods wagmi needs.
+  const callSafely = (method: 'on' | 'off' | 'removeListener' | 'addListener' | 'emit', args: unknown[]) => {
+    try {
+      const fn = provider[method];
+      return typeof fn === 'function' ? fn.apply(provider, args) : undefined;
+    } catch {
+      // Some Brave versions throw from optional EventEmitter cleanup methods.
+      return undefined;
+    }
   };
-  return safe;
+
+  return {
+    request: (args) => provider.request.call(provider, args),
+    on: (event, handler) => callSafely('on', [event, handler]),
+    off: (event, handler) => callSafely('off', [event, handler]),
+    removeListener: (event, handler) => callSafely('removeListener', [event, handler]),
+    addListener: (event, handler) => callSafely('addListener', [event, handler]),
+    emit: (event, ...args) => callSafely('emit', [event, ...args]),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,69 +157,40 @@ export default function WalletConnectionGuard({ className }: WalletConnectionGua
     setState('connecting');
     setErrorMsg('');
     try {
-      // Step 1: Direct eth_requestAccounts to trigger Brave's native approval
-      // dialog. This bypasses RainbowKit's extension-check gate entirely.
-      if (typeof window !== 'undefined' && typeof window.ethereum !== 'undefined') {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('No injected wallet provider found. Open this site inside Brave Wallet and retry.');
       }
 
-      // Step 2: Apply the Brave provider safety wrapper to window.ethereum before
-      // wagmi's injected connector sees it. This prevents the Proxy invariant
-      // error ("'get' on proxy: property 'removeListener' is a read-only and
-      // non-configurable data property") that fires when wagmi's connector calls
-      // provider.removeListener() during its connect/disconnect lifecycle.
-      //
-      // We patch window.ethereum in place (the shim delegates everything to the
-      // original) so that wagmi's injected() connector picks up the safe version.
-      // The patch is temporary — the original value is restored after connectAsync
-      // resolves or rejects. This avoids interfering with other wallet operations.
-      const originalEthereum =
-        typeof window !== 'undefined' ? (window.ethereum as EthereumProvider | undefined) : undefined;
-      if (originalEthereum) {
-        try {
-          // Only patch if writable — some environments freeze window.ethereum.
-          Object.defineProperty(window, 'ethereum', {
-            value: wrapBraveProvider(originalEthereum),
-            writable: true,
-            configurable: true,
-          });
-        } catch {
-          // window.ethereum is non-configurable in this environment — skip the patch.
-          // The connection attempt will still proceed; it may throw the proxy error
-          // on cleanup but the account state will already be set at that point.
-        }
-      }
-      try {
-        await connectAsync({ connector: injected() });
-      } finally {
-        // Restore the original provider regardless of outcome.
-        if (originalEthereum) {
-          try {
-            Object.defineProperty(window, 'ethereum', {
-              value: originalEthereum,
-              writable: true,
-              configurable: true,
-            });
-          } catch { /* non-configurable, leave as-is */ }
-        }
-      }
+      // Use wagmi's explicit provider target rather than mutating window.ethereum.
+      // This avoids the Brave mobile proxy invariant error and ensures wagmi
+      // connects to the same provider for which the user approved access.
+      const originalEthereum = window.ethereum as EthereumProvider;
+      const safeProvider = wrapBraveProvider(originalEthereum);
+      const connector = injected({
+        target: {
+          id: 'brave-wallet',
+          name: 'Brave Wallet',
+          provider: () => safeProvider,
+        },
+      });
 
+      await connectAsync({ connector });
       setState('success');
     } catch (err) {
-      const e = err as { code?: number; message?: string };
+      const e = err as { code?: number; message?: string; shortMessage?: string };
       if (e.code === 4001) {
-        // User rejected — clear state silently
         setState('idle');
         return;
       }
       setState('error');
+      const detail = e.shortMessage || e.message;
       setErrorMsg(
-        e.message
-          ? `Connection failed: ${e.message.slice(0, 80)}`
-          : 'Connection failed. Please try again.',
+        detail
+          ? `Connection failed: ${detail.slice(0, 120)}`
+          : 'Connection failed. Check Brave Wallet and retry.',
       );
     }
-  }, [connectAsync]);
+  }
 
   const handleRetry = useCallback(() => {
     setState('idle');

@@ -114,11 +114,12 @@ check('navigator.brave detection in isBraveMobile', () => {
 check('Android UA pattern checked', () => {
   match(guard, /Android/, 'Must check for Android in user-agent');
 });
-check('Uses eth_requestAccounts (not a custom sign flow)', () => {
-  match(guard, /eth_requestAccounts/, 'Must call eth_requestAccounts for direct provider approval');
+check('Uses wagmi injected connector with explicit Brave provider target', () => {
+  match(guard, /injected\(\s*\{\s*target:/, 'Must pass the Brave provider as an explicit injected connector target');
+  match(guard, /provider:\s*\(\)\s*=>\s*safeProvider/, 'Connector must use the safe provider wrapper');
 });
-check('Falls back to wagmi injected() connector', () => {
-  match(guard, /injected\(\)/, 'Must use wagmi injected() connector to complete connection');
+check('Does not mutate window.ethereum during connection', () => {
+  doesNotMatch(guard, /Object\.defineProperty\(window,\s*['"]ethereum/, 'Must not replace the Brave injected provider');
 });
 check('User rejection (code 4001) handled silently', () => {
   match(guard, /4001/, 'User rejection code 4001 must clear state silently');

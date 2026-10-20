@@ -7,6 +7,7 @@ import "./Assert.sol";
 
 interface EscrowVm {
     function warp(uint256 newTimestamp) external;
+    function etch(address target, bytes calldata code) external;
 }
 
 contract ProviderActor {
@@ -58,23 +59,63 @@ contract BehaviorToken {
     }
 }
 
+// ─── MockArcUSDC ─────────────────────────────────────────────
+// Simulates Arc's USDC precompile: the contract is etch'd at the
+// ARC_USDC address so code.length > 0 in forge's local EVM, letting
+// the escrow's safeTransfer(From) call succeed.  The precompile
+// exemption test uses a separate EoaMockToken helper instead.
+contract MockArcUSDC {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    uint8 public decimals = 6;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "BAL");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(allowance[from][msg.sender] >= amount, "ALLOW");
+        require(balanceOf[from] >= amount, "BAL");
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
 contract ARCTISAgentEscrowTest is Assert {
     EscrowVm internal constant vm = EscrowVm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     ARCTISAgentEscrow internal escrow;
-    MockERC20 internal token;
-    ProviderActor internal provider;
-    uint256 internal constant FUND = 100;
+    MockERC20          internal token;
+    ProviderActor      internal provider;
+    uint256 internal constant FUND     = 100;
     bytes32 internal constant JOB_HASH = keccak256("job-1");
 
     function setUp() public {
-        escrow = new ARCTISAgentEscrow(address(this));
-        token = new MockERC20();
+        escrow   = new ARCTISAgentEscrow(address(this));
+        token    = new MockERC20();
         provider = new ProviderActor();
 
         token.mint(address(this), FUND * 20);
         token.approve(address(escrow), type(uint256).max);
     }
+
+    // ──────────────────────────────────────────────────────────
+    // Existing tests (unchanged)
+    // ──────────────────────────────────────────────────────────
 
     function testCreateSubmitReleaseLifecycle() external {
         uint256 providerBefore = token.balanceOf(address(provider));
@@ -218,5 +259,58 @@ contract ARCTISAgentEscrowTest is Assert {
             )
         );
         _assertTrue(!revertOk, "reverting token was accepted");
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // New tests for hackathon-final changes
+    // ──────────────────────────────────────────────────────────
+
+    /// @notice transferOwnership transfers control; old owner can no longer pause.
+    function testTransferOwnershipWorks() external {
+        address newOwner = address(0xC0FFEE);
+        escrow.transferOwnership(newOwner);
+        _assertEq(escrow.owner(), newOwner, "owner not updated");
+
+        // Old owner (address(this)) can no longer call onlyOwner functions.
+        (bool pauseOk,) = address(escrow).call(abi.encodeWithSelector(escrow.pause.selector));
+        _assertTrue(!pauseOk, "old owner still pauses after transfer");
+    }
+
+    /// @notice transferOwnership to zero address reverts.
+    function testTransferOwnershipToZeroReverts() external {
+        (bool ok,) = address(escrow).call(
+            abi.encodeWithSelector(escrow.transferOwnership.selector, address(0))
+        );
+        _assertTrue(!ok, "transfer to zero address did not revert");
+        _assertEq(escrow.owner(), address(this), "owner changed on failed transfer");
+    }
+
+    /// @notice Arc USDC precompile address (code.length == 0 in normal EVM, but
+    ///         exempted by the ARC_USDC constant) is accepted by createJob.
+    ///         In forge's local EVM, etch MockArcUSDC code at the precompile address
+    ///         so the safeTransferFrom call can succeed with real token balances.
+    function testArcUsdcPrecompileIsAccepted() external {
+        address ARC_USDC = 0x3600000000000000000000000000000000000000;
+
+        // Deploy mock USDC logic and etch it at the precompile address.
+        MockArcUSDC mock = new MockArcUSDC();
+        vm.etch(ARC_USDC, address(mock).code);
+
+        // Fund the payer via the mock at the etch'd address.
+        MockArcUSDC(ARC_USDC).mint(address(this), FUND * 2);
+        MockArcUSDC(ARC_USDC).approve(address(escrow), type(uint256).max);
+
+        // createJob must succeed — Arc USDC is exempted from the code.length check.
+        uint256 jobId = escrow.createJob(
+            address(provider),
+            ARC_USDC,
+            FUND,
+            JOB_HASH,
+            uint64(block.timestamp + 1 days)
+        );
+        (, , address jobToken, uint256 amount, , , ARCTISAgentEscrow.Status status) = escrow.jobs(jobId);
+        _assertEq(jobToken, ARC_USDC, "token mismatch");
+        _assertEq(amount, FUND, "amount mismatch");
+        _assertTrue(status == ARCTISAgentEscrow.Status.Funded, "not funded");
     }
 }

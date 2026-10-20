@@ -65,12 +65,18 @@ export async function swapTxAlreadyProcessed(inboundTxHash: string): Promise<Swa
   } catch { return null; }
 }
 
-export async function createSwapRecord(data: Omit<SwapRecord, 'createdAt' | 'completedAt'>): Promise<void> {
+export async function createSwapRecord(data: Omit<SwapRecord, 'createdAt' | 'completedAt'>): Promise<boolean> {
   const db = getAdminDb();
-  await db.collection(COL).doc(data.id).set({
-    ...data,
-    walletAddress: data.walletAddress.toLowerCase(),
-    createdAt: FieldValue.serverTimestamp(),
+  const ref = db.collection(COL).doc(data.id);
+  return db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) return false;
+    tx.create(ref, {
+      ...data,
+      walletAddress: data.walletAddress.toLowerCase(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return true;
   });
 }
 

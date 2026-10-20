@@ -33,6 +33,86 @@ import { Shield, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
+// Brave provider safety wrapper
+//
+// ROOT CAUSE of the "'get' on proxy: property 'removeListener' is a
+// read-only and non-configurable data property" error:
+//
+// Brave Android exposes window.ethereum as a JavaScript Proxy. The underlying
+// target object has `removeListener` defined as a non-configurable,
+// non-writable property. When wagmi's injected connector calls
+//   provider.removeListener('connect', handler)
+// the Proxy invariant check fires: the JS engine verifies that the Proxy's
+// `get` result for a non-configurable, non-writable property matches the
+// target's value. The connector then tries to use the returned function as a
+// normal EventEmitter method, but because the Proxy has defined that property
+// as invariant, subsequent operations fail with the above error.
+//
+// FIX: Before passing the Brave provider to the wagmi injected connector,
+// wrap it in a safe shim that delegates all EventEmitter operations (on,
+// off, removeListener, addListener, emit) through try/catch. The shim
+// prevents the Proxy invariant error from propagating to wagmi's cleanup
+// code. All other provider methods are forwarded unchanged.
+//
+// This shim is ONLY applied in WalletConnectionGuard's direct-connect path.
+// Normal RainbowKit flows use the provider as-is (wagmi handles its own
+// connector lifecycle). The shim addresses the specific case where we call
+// connectAsync({ connector: injected() }) manually after eth_requestAccounts.
+// ---------------------------------------------------------------------------
+
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, handler: unknown) => unknown;
+  off?: (event: string, handler: unknown) => unknown;
+  removeListener?: (event: string, handler: unknown) => unknown;
+  addListener?: (event: string, handler: unknown) => unknown;
+  emit?: (event: string, ...args: unknown[]) => unknown;
+  [key: string]: unknown;
+};
+
+function wrapBraveProvider(provider: EthereumProvider): EthereumProvider {
+  const safe: EthereumProvider = {
+    ...provider,
+    // Override all EventEmitter methods with safe wrappers that catch the
+    // Proxy invariant error and continue silently. wagmi's connector cleanup
+    // calls removeListener during the connect/disconnect lifecycle — if this
+    // throws, the entire connection attempt fails.
+    on: (event: string, handler: unknown) => {
+      try {
+        return typeof provider.on === 'function' ? provider.on(event, handler) : undefined;
+      } catch { return undefined; }
+    },
+    off: (event: string, handler: unknown) => {
+      try {
+        return typeof provider.off === 'function' ? provider.off(event, handler) : undefined;
+      } catch { return undefined; }
+    },
+    removeListener: (event: string, handler: unknown) => {
+      try {
+        return typeof provider.removeListener === 'function'
+          ? provider.removeListener(event, handler)
+          : undefined;
+      } catch { return undefined; }
+    },
+    addListener: (event: string, handler: unknown) => {
+      try {
+        return typeof provider.addListener === 'function'
+          ? provider.addListener(event, handler)
+          : undefined;
+      } catch { return undefined; }
+    },
+    emit: (event: string, ...args: unknown[]) => {
+      try {
+        return typeof provider.emit === 'function' ? provider.emit(event, ...args) : undefined;
+      } catch { return undefined; }
+    },
+    // request must be forwarded exactly — no wrapping that could swallow errors
+    request: (args) => provider.request(args),
+  };
+  return safe;
+}
+
+// ---------------------------------------------------------------------------
 // Detection helpers
 // ---------------------------------------------------------------------------
 
@@ -101,9 +181,46 @@ export default function WalletConnectionGuard({ className }: WalletConnectionGua
         await window.ethereum.request({ method: 'eth_requestAccounts' });
       }
 
-      // Step 2: Complete the wagmi connection handshake via the injected connector.
-      // This wires the approved provider into wagmi state so useAccount() works.
-      await connectAsync({ connector: injected() });
+      // Step 2: Apply the Brave provider safety wrapper to window.ethereum before
+      // wagmi's injected connector sees it. This prevents the Proxy invariant
+      // error ("'get' on proxy: property 'removeListener' is a read-only and
+      // non-configurable data property") that fires when wagmi's connector calls
+      // provider.removeListener() during its connect/disconnect lifecycle.
+      //
+      // We patch window.ethereum in place (the shim delegates everything to the
+      // original) so that wagmi's injected() connector picks up the safe version.
+      // The patch is temporary — the original value is restored after connectAsync
+      // resolves or rejects. This avoids interfering with other wallet operations.
+      const originalEthereum =
+        typeof window !== 'undefined' ? (window.ethereum as EthereumProvider | undefined) : undefined;
+      if (originalEthereum) {
+        try {
+          // Only patch if writable — some environments freeze window.ethereum.
+          Object.defineProperty(window, 'ethereum', {
+            value: wrapBraveProvider(originalEthereum),
+            writable: true,
+            configurable: true,
+          });
+        } catch {
+          // window.ethereum is non-configurable in this environment — skip the patch.
+          // The connection attempt will still proceed; it may throw the proxy error
+          // on cleanup but the account state will already be set at that point.
+        }
+      }
+      try {
+        await connectAsync({ connector: injected() });
+      } finally {
+        // Restore the original provider regardless of outcome.
+        if (originalEthereum) {
+          try {
+            Object.defineProperty(window, 'ethereum', {
+              value: originalEthereum,
+              writable: true,
+              configurable: true,
+            });
+          } catch { /* non-configurable, leave as-is */ }
+        }
+      }
 
       setState('success');
     } catch (err) {

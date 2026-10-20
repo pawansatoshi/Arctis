@@ -1,6 +1,7 @@
 'use client';
 
-import { EXPLORER_URL } from '@/lib/contracts';
+import { resolveExplorerUrl } from '@/lib/utils';
+import { getSelectedNetworkEnv } from '@/lib/network/profile';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -37,6 +38,7 @@ interface HistoryItem {
   txHash?: string;
   explorerUrl?: string;
   credits?: number;
+  chainId?: number;
 }
 
 type TypeFilter = 'all' | 'transfer' | 'swap' | 'bridge' | 'credit' | 'ai_session' | 'agent_execution';
@@ -66,7 +68,8 @@ export default function HistoryPage() {
     if (!address) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/activity?wallet=${address}&limit=300`);
+      const networkEnv = getSelectedNetworkEnv();
+      const res = await fetch(`/api/activity?wallet=${address}&limit=300&network=${networkEnv}`);
       const data = await res.json();
       setItems(data.items ?? []);
     } catch {
@@ -76,6 +79,14 @@ export default function HistoryPage() {
   }, [address]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Re-fetch whenever the user switches networks so history never shows
+  // stale cross-network records.
+  useEffect(() => {
+    const onNetworkChange = () => { setPage(1); void fetchHistory(); };
+    window.addEventListener('arctis-network-changed', onNetworkChange);
+    return () => window.removeEventListener('arctis-network-changed', onNetworkChange);
+  }, [fetchHistory]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -254,8 +265,8 @@ export default function HistoryPage() {
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {(item.txHash || item.explorerUrl) && (
-                      <a href={item.explorerUrl ?? `${EXPLORER_URL}/tx/${item.txHash}`}
+                    {(item.txHash || item.explorerUrl) && resolveExplorerUrl(item.txHash, item.chainId, item.explorerUrl) && (
+                      <a href={resolveExplorerUrl(item.txHash, item.chainId, item.explorerUrl)}
                         target="_blank" rel="noopener noreferrer"
                         className="text-surface-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-0.5 inline-block">
                         <ExternalLink className="w-3.5 h-3.5" />

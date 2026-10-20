@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     const recordedExplorer = destination.explorer;
     await Promise.allSettled([
       saveTransaction(walletAddress, { toAddress: walletAddress, amount: String(amount), amountFormatted: String(amount), txHash: recordedHash, status: 'confirmed', token: 'USDC', chainId: destinationChainId, networkName: destination.name, explorerUrl: `${recordedExplorer}/tx/${recordedHash}`, type: 'bridge', note: `Bridged from ${source.name} to ${destination.name} via Circle App Kit / CCTP V2` }),
-      writeActivity(buildBridgeActivity(walletAddress, amount, `${source.name} → ${destination.name}`, burnTxHash, recordedHash)),
+      writeActivity(buildBridgeActivity(walletAddress, amount, `${source.name} → ${destination.name}`, burnTxHash, recordedHash, network ?? 'testnet', destinationChainId)),
       logTreasuryEvent('bridge_activity', amount, `USDC bridged from ${source.name} to ${destination.name} via Circle App Kit`, walletAddress, recordedHash),
     ]);
     return NextResponse.json({ bridgeId: burnTxHash, status: 'completed', burnTxHash, forwardTxHash, sourceChain: source.name, destinationChain: destination.name, completedAt: now });

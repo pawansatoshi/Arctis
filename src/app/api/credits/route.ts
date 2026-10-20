@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     const explorerUrl = `${profile.explorer}/tx/${txHash}`;
     const totalCredits = pkg.credits + pkg.bonus;
     try {
-      await addCredits(walletAddress, totalCredits, 'purchase', `Credit pack: ${pkg.label || pkg.id}`, txHash);
+      await addCredits(walletAddress, totalCredits, 'purchase', `Credit pack: ${pkg.label || pkg.id}`, txHash, profile.chainId);
       await logTreasuryEvent(
         'credit_purchase', pkg.usdcAmount,
         `Credit purchase ${pkg.id} — ${walletAddress.slice(0, 8)}`, walletAddress, txHash,

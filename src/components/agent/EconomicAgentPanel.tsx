@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { PendingFinancialAction } from '@/lib/store';
 import { isCircleSwapToken } from '@/lib/swap/circle';
-import { cn, generateId } from '@/lib/utils';
+import { cn, generateId, resolveExplorerUrl } from '@/lib/utils';
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance';
 import { useRecipientValidation } from '@/lib/hooks/useRecipientValidation';
 import { getSelectedNetworkEnv, getNetworkProfile, type NetworkEnv } from '@/lib/network/profile';
@@ -510,7 +510,7 @@ export function EconomicAgentPanel({
           {executionTxHash && <p className="mt-1 text-[11px] font-mono text-surface-600 break-all">TX: {executionTxHash}</p>}
           {executionStatus === 'success' && executionTxHash && (
             <a
-              href={`https://testnet.arcscan.app/tx/${executionTxHash}`}
+              href={resolveExplorerUrl(executionTxHash, selectedNetwork.chainId)}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"

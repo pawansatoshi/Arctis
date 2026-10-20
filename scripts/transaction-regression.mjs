@@ -9,6 +9,8 @@ const agent=read('src/components/agent/EconomicAgentPanel.tsx');
 const circle=read('src/lib/swap/circle.ts');
 const parser=read('src/lib/ai/intent/parser.ts');
 const lock=read('src/lib/transaction/execution-lock.ts');
+const swapService=read('src/lib/swap/service.ts');
+const swapExecute=read('src/app/api/swap/execute/route.ts');
 const history=read('src/components/agent/ModeTabs.tsx');
 assert.match(voice,/network_required/); assert.match(voice,/wallet_approval/); assert.match(voice,/submitted/); assert.match(voice,/confirmed/); assert.match(voice,/failed/); assert.match(voice,/hi-IN/); assert.match(voice,/en-US/);
 assert.match(transfer,/useTransfer\('manual'\)/); assert.match(transfer,/useTransfer\('agent'\)/); assert.match(transfer,/useRecipientValidation/); assert.match(transfer,/TransactionConfirmationModal/);
@@ -17,5 +19,6 @@ assert.match(bridge,/sessionsRef/); assert.match(bridge,/quoteSeq/); assert.matc
 assert.match(agent,/const SWAP_TOKENS = \['USDC', 'EURC', 'tUSDC', 'tARC'\]/); assert.match(agent,/approvalLock/);
 assert.match(circle,/CIRCLE_SWAP_TOKENS = \['USDC', 'EURC'\]/); assert.doesNotMatch(circle,/CIRCLE_SWAP_TOKENS[^\n]*cirBTC/); assert.doesNotMatch(parser,/const SWAP_TOKENS = [^\n]*cirBTC/); assert.doesNotMatch(agent,/const SWAP_TOKENS = [^\n]*cirBTC/);
 assert.match(lock,/tryAcquireExecution/); assert.match(lock,/releaseExecution/);
+assert.match(swapService,/runTransaction\(async \(tx\)/); assert.match(swapService,/tx\.create\(ref/); assert.match(swapService,/if \(existing\.exists\) return false/); assert.match(swapExecute,/if \(!created\)/); assert.match(swapExecute,/status: 409/);
 const filters=[...history.matchAll(/\['all','confirmed','pending','failed'\]/g)]; assert.equal(filters.length,1,'history must expose exactly one canonical status filter set');
 console.log('transaction regression checks passed');

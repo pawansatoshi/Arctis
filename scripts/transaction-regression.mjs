@@ -12,10 +12,17 @@ const lock=read('src/lib/transaction/execution-lock.ts');
 const history=read('src/components/agent/ModeTabs.tsx');
 assert.match(voice,/network_required/); assert.match(voice,/wallet_approval/); assert.match(voice,/submitted/); assert.match(voice,/confirmed/); assert.match(voice,/failed/); assert.match(voice,/hi-IN/); assert.match(voice,/en-US/);
 assert.match(transfer,/useTransfer\('manual'\)/); assert.match(transfer,/useTransfer\('agent'\)/); assert.match(transfer,/useRecipientValidation/); assert.match(transfer,/TransactionConfirmationModal/);
-assert.match(swap,/sessionsRef/); assert.match(swap,/quoteSeq/); assert.match(swap,/tryAcquireExecution/); assert.match(swap,/releaseExecution/); assert.match(swap,/type\s+SwapToken\s*=\s*'USDC'\s*\|\s*'tUSDC'\s*\|\s*'tARC'\s*\|\s*'EURC'/); assert.match(swap,/TOKENS\s*:\s*SwapToken\[\]\s*=\s*\['USDC',\s*'tUSDC',\s*'tARC',\s*'EURC'\]/);
+assert.match(swap,/sessionsRef/); assert.match(swap,/quoteSeq/); assert.match(swap,/tryAcquireExecution/); assert.match(swap,/releaseExecution/);
+// SwapToken now includes cirBTC (mainnet asset); TOKENS includes full set
+assert.match(swap,/type\s+SwapToken\s*=\s*'USDC'\s*\|\s*'tUSDC'\s*\|\s*'tARC'\s*\|\s*'EURC'\s*\|\s*'cirBTC'/);
+assert.match(swap,/TOKENS\s*:\s*SwapToken\[\]\s*=\s*\['USDC',\s*'tUSDC',\s*'tARC',\s*'EURC',\s*'cirBTC'\]/);
 assert.match(bridge,/sessionsRef/); assert.match(bridge,/quoteSeq/); assert.match(bridge,/tryAcquireExecution/); assert.match(bridge,/releaseExecution/); assert.match(bridge,/ArrowDownUp/); assert.match(bridge,/verifyChain/); assert.match(bridge,/Switch Network/); assert.match(bridge,/TransactionConfirmationModal/);
-assert.match(agent,/const SWAP_TOKENS = \['USDC', 'EURC', 'tUSDC', 'tARC'\]/); assert.match(agent,/approvalLock/);
-assert.match(circle,/CIRCLE_SWAP_TOKENS = \['USDC', 'EURC'\]/); assert.doesNotMatch(circle,/CIRCLE_SWAP_TOKENS[^\n]*cirBTC/); assert.doesNotMatch(parser,/const SWAP_TOKENS = [^\n]*cirBTC/); assert.doesNotMatch(agent,/const SWAP_TOKENS = [^\n]*cirBTC/);
+// EconomicAgentPanel SWAP_TOKENS now includes cirBTC for mainnet support
+assert.match(agent,/const SWAP_TOKENS = \['USDC', 'EURC', 'cirBTC', 'tUSDC', 'tARC'\]/); assert.match(agent,/approvalLock/);
+// circle.ts now exports per-network token lists; cirBTC is mainnet-only
+assert.match(circle,/CIRCLE_SWAP_TOKENS_MAINNET = \['USDC', 'EURC', 'cirBTC'\]/);
+assert.match(circle,/CIRCLE_SWAP_TOKENS_TESTNET = \['USDC', 'EURC'\]/);
+assert.doesNotMatch(parser,/const SWAP_TOKENS = [^\n]*cirBTC/);
 assert.match(lock,/tryAcquireExecution/); assert.match(lock,/releaseExecution/);
 const filters=[...history.matchAll(/\['all','confirmed','pending','failed'\]/g)]; assert.equal(filters.length,1,'history must expose exactly one canonical status filter set');
 console.log('transaction regression checks passed');

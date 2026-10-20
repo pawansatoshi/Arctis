@@ -65,12 +65,29 @@ export async function swapTxAlreadyProcessed(inboundTxHash: string): Promise<Swa
   } catch { return null; }
 }
 
-export async function createSwapRecord(data: Omit<SwapRecord, 'createdAt' | 'completedAt'>): Promise<void> {
+/**
+ * Atomically creates a swap record using a Firestore transaction.
+ *
+ * Returns true when the record was created, false when it already exists.
+ * The caller must return HTTP 409 on false to prevent double settlement.
+ *
+ * Race condition fixed: the previous implementation used db.collection().doc().set()
+ * which is not atomic — two concurrent requests with the same inboundTxHash could
+ * both pass the swapTxAlreadyProcessed() check and both write a record.
+ * Firestore transactions guarantee the existence check and write are atomic.
+ */
+export async function createSwapRecord(data: Omit<SwapRecord, 'createdAt' | 'completedAt'>): Promise<boolean> {
   const db = getAdminDb();
-  await db.collection(COL).doc(data.id).set({
-    ...data,
-    walletAddress: data.walletAddress.toLowerCase(),
-    createdAt: FieldValue.serverTimestamp(),
+  const ref = db.collection(COL).doc(data.id);
+  return db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) return false;
+    tx.create(ref, {
+      ...data,
+      walletAddress: data.walletAddress.toLowerCase(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return true;
   });
 }
 

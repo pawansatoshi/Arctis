@@ -68,7 +68,10 @@ assert.match(bridgeRoute, /network.*mainnet/);
 assert.match(bridgeQuote, /network.*testnet/);
 assert.match(bridgeRecord, /network !== 'testnet'/);
 assert.match(bridgeRecord, /rpc\.testnet\.arc\.io/);
-assert.match(bridgePage, /networkEnv !== 'testnet'/);
+// Bridge page mainnet is now enabled — the old disabled guard is replaced by a disclaimer banner.
+// Verify the banner exists instead of the old disabled guard.
+assert.match(bridgePage, /Arc Mainnet.*Circle CCTP V2 bridge/s);
+assert.doesNotMatch(bridgePage, /Bridge is not enabled/);
 assert.match(bridgePage, /network: networkEnv/);
 
 assert.match(swapPage, /network: networkEnv/);

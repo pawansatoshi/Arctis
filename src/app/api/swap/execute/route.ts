@@ -73,12 +73,18 @@ export async function POST(req: NextRequest) {
     // Persist the lifecycle immediately after the signed inbound transaction is
     // identified. This guarantees History can show pending/failed swaps even
     // when verification or settlement fails later.
-    await createSwapRecord({
+    // createSwapRecord returns false when the document already exists (atomic
+    // Firestore transaction). A false return means a concurrent request already
+    // claimed this inboundTxHash — return 409 immediately.
+    const created = await createSwapRecord({
       id: inboundTxHash,
       walletAddress, routeId, fromToken, toToken,
       inputAmount: quote.inputAmount, outputAmount: quote.outputAmount, fee: quote.fee,
       inboundTxHash, status: 'pending',
     });
+    if (!created) {
+      return NextResponse.json({ error: 'This inbound transaction is already being processed or has already been recorded.' }, { status: 409 });
+    }
 
     const swapWalletAddress = getSwapWalletAddress();
     const expectedAmountRaw = parseUnits(numericAmount.toFixed(TOKEN_DECIMALS[fromToken]), TOKEN_DECIMALS[fromToken]);

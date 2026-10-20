@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
+import { CCTP_BRIDGE_CHAINS, CCTP_BRIDGE_CHAINS_MAINNET } from '@/lib/contracts';
 
 export async function GET(req: NextRequest) {
-  if (req.nextUrl.searchParams.get('network') === 'mainnet') {
-    return NextResponse.json({ available: false, mode: null, protocol: null, direction: null, destination: null, chains: [], routes: [], reason: 'Circle CCTP routes are not enabled for ARCTIS Arc Mainnet yet.' });
-  }
-  const chains = Object.entries(CCTP_BRIDGE_CHAINS).map(([chainId, chain]) => ({
+  const network = req.nextUrl.searchParams.get('network') ?? 'testnet';
+
+  const chainRegistry = network === 'mainnet' ? CCTP_BRIDGE_CHAINS_MAINNET : CCTP_BRIDGE_CHAINS;
+
+  const chains = Object.entries(chainRegistry).map(([chainId, chain]) => ({
     chain: chain.name,
     chainId: Number(chainId),
     domain: chain.domain,

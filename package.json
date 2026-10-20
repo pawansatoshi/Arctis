@@ -14,7 +14,8 @@
     "mainnet-regression": "node scripts/mainnet-regression.mjs",
     "chain-switch-regression": "node scripts/chain-switch-regression.mjs",
     "wallet-connection-regression": "node scripts/wallet-connection-regression.mjs",
-    "network-selector-regression": "node scripts/network-selector-regression.mjs"
+    "network-selector-regression": "node scripts/network-selector-regression.mjs",
+    "swap-bridge-regression": "node scripts/swap-bridge-regression.mjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.1",

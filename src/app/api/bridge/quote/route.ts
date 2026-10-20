@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CCTP_BRIDGE_CHAINS } from '@/lib/contracts';
+import { CCTP_BRIDGE_CHAINS, CCTP_BRIDGE_CHAINS_MAINNET } from '@/lib/contracts';
 import { BRIDGE_MIN_AMOUNT, BRIDGE_MAX_AMOUNT } from '@/lib/bridge/types';
 
 export async function GET(req: NextRequest) {
   const network = req.nextUrl.searchParams.get('network') ?? 'testnet';
-  if (network !== 'testnet') {
-    return NextResponse.json({ error: 'Bridge is not enabled on Arc Mainnet in this build.' }, { status: 503 });
-  }
+
+  const chainRegistry = network === 'mainnet'
+    ? (CCTP_BRIDGE_CHAINS_MAINNET as Record<string, { name: string; domain: number; usdc: string; explorer: string; appKitChain: string }>)
+    : (CCTP_BRIDGE_CHAINS as Record<string, { name: string; domain: number; usdc: string; explorer: string; appKitChain: string }>);
 
   const sourceChainParam = req.nextUrl.searchParams.get('sourceChain');
   const destinationChainParam = req.nextUrl.searchParams.get('destinationChain');
@@ -23,8 +24,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Source and destination chains must differ' }, { status: 400 });
   }
 
-  const source = CCTP_BRIDGE_CHAINS[sourceChainParam as keyof typeof CCTP_BRIDGE_CHAINS];
-  const destination = CCTP_BRIDGE_CHAINS[destinationChainParam as keyof typeof CCTP_BRIDGE_CHAINS];
+  const source = chainRegistry[sourceChainParam];
+  const destination = chainRegistry[destinationChainParam];
 
   if (!source || !destination) {
     return NextResponse.json({ error: 'Unsupported bridge route' }, { status: 400 });
@@ -56,5 +57,6 @@ export async function GET(req: NextRequest) {
     maxAmount: BRIDGE_MAX_AMOUNT,
     feeEstimated: true,
     note: 'Live bridge fee is calculated by Circle App Kit in the connected wallet flow.',
+    network,
   });
 }
